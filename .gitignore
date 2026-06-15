@@ -1,0 +1,31 @@
+# Agent skills
+.agents/skills/
+
+# Dependencies and local environments
+node_modules/
+app/node_modules/
+.venv/
+venv/
+
+# Build outputs
+app/dist/
+app/src-tauri/target/
+dist/
+target/
+
+# Runtime artifacts
+models/*
+outputs/*
+work/*
+logs/*
+
+# Local config and secrets
+.env
+.env.*
+*.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
