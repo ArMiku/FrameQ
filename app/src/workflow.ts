@@ -114,6 +114,13 @@ export function startInsightRetry(state: WorkflowState): WorkflowState {
   };
 }
 
+export function cancelProcessing(state: WorkflowState): WorkflowState {
+  return {
+    ...createInitialWorkflow(),
+    url: state.submittedUrl || state.url,
+  };
+}
+
 export function getProgressSteps(state: WorkflowState): ProgressStep[] {
   const activeIndex = PROGRESS_STEP_LABELS.findIndex((step) => step.id === state.stage);
 

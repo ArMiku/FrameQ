@@ -4,7 +4,16 @@ import { listen } from "@tauri-apps/api/event";
 import type { Event } from "@tauri-apps/api/event";
 import type { WorkerProgressEvent, WorkerResult, WorkflowStage } from "./workflow";
 
+export type CancelProcessResult = {
+  cancelled: boolean;
+  error?: string | null;
+};
+
 export type WorkerCommandRunner = (command: string, args: InvokeArgs) => Promise<WorkerResult>;
+export type CancelCommandRunner = (
+  command: string,
+  args: InvokeArgs,
+) => Promise<CancelProcessResult>;
 export type WorkerProgressListener = (
   eventName: string,
   handler: (event: Event<unknown>) => void,
@@ -27,11 +36,12 @@ export type RetryInsightsRequest = {
   text: string;
 };
 
-const defaultRunner: WorkerCommandRunner = (command, args) => invoke(command, args);
+const defaultWorkerRunner: WorkerCommandRunner = (command, args) => invoke(command, args);
+const defaultCancelRunner: CancelCommandRunner = (command, args) => invoke(command, args);
 
 export async function processVideo(
   url: string,
-  runner: WorkerCommandRunner = defaultRunner,
+  runner: WorkerCommandRunner = defaultWorkerRunner,
   onProgress?: WorkerProgressHandler,
   progressListener: WorkerProgressListener = listen,
 ): Promise<WorkerResult> {
@@ -71,7 +81,7 @@ export async function processVideo(
 export async function retryInsights(
   transcriptPath: string,
   text: string,
-  runner: WorkerCommandRunner = defaultRunner,
+  runner: WorkerCommandRunner = defaultWorkerRunner,
 ): Promise<WorkerResult> {
   const request: RetryInsightsRequest = {
     transcript_path: transcriptPath,
@@ -92,6 +102,19 @@ export async function retryInsights(
         message: error instanceof Error ? error.message : String(error),
         stage: "insights_generating",
       },
+    };
+  }
+}
+
+export async function cancelProcess(
+  runner: CancelCommandRunner = defaultCancelRunner,
+): Promise<CancelProcessResult> {
+  try {
+    return await runner("cancel_process", {});
+  } catch (error) {
+    return {
+      cancelled: false,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }

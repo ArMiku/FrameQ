@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
   WORKER_PROGRESS_EVENT,
+  cancelProcess,
   processVideo,
   retryInsights,
+  type CancelCommandRunner,
   type WorkerCommandRunner,
   type WorkerProgressListener,
 } from "./workerClient";
@@ -168,6 +170,32 @@ describe("worker client", () => {
         message: "retry worker process could not start",
         stage: "insights_generating",
       },
+    });
+  });
+
+  test("invokes the Tauri cancel_process command", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: CancelCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return { cancelled: true };
+    };
+
+    const result = await cancelProcess(runner);
+
+    expect(calls).toEqual([{ command: "cancel_process", args: {} }]);
+    expect(result).toEqual({ cancelled: true });
+  });
+
+  test("maps cancel command errors to a non-cancelled result", async () => {
+    const runner: CancelCommandRunner = async () => {
+      throw new Error("worker process could not be terminated");
+    };
+
+    const result = await cancelProcess(runner);
+
+    expect(result).toEqual({
+      cancelled: false,
+      error: "worker process could not be terminated",
     });
   });
 });

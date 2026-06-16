@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import {
   Copy,
   Download,
@@ -13,6 +13,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import "./App.css";
 import {
   canSubmitUrl,
+  cancelProcessing,
   createInitialWorkflow,
   formatWorkerError,
   getDetailText,
@@ -28,7 +29,7 @@ import {
   type ResultCard,
   type WorkflowState,
 } from "./workflow";
-import { processVideo, retryInsights } from "./workerClient";
+import { cancelProcess, processVideo, retryInsights } from "./workerClient";
 
 const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }> = {
   waiting_input: {
@@ -65,6 +66,7 @@ function App() {
   const [workflow, setWorkflow] = useState(createInitialWorkflow);
   const [detailTab, setDetailTab] = useState<DetailTab | null>(null);
   const [actionNotice, setActionNotice] = useState("");
+  const operationIdRef = useRef(0);
   const canSubmit = canSubmitUrl(workflow.url);
   const progressSteps = useMemo(() => getProgressSteps(workflow), [workflow]);
   const resultCards = useMemo(() => getResultCards(workflow), [workflow]);
@@ -75,10 +77,17 @@ function App() {
       return;
     }
     const submittedUrl = workflow.url;
+    const operationId = operationIdRef.current + 1;
+    operationIdRef.current = operationId;
     setWorkflow((current) => startProcessing(current, submittedUrl));
     const result = await processVideo(submittedUrl, undefined, (event) => {
-      setWorkflow((current) => mergeProgressEvent(current, event));
+      if (operationIdRef.current === operationId) {
+        setWorkflow((current) => mergeProgressEvent(current, event));
+      }
     });
+    if (operationIdRef.current !== operationId) {
+      return;
+    }
     setWorkflow((current) => ({
       ...summarizeWorkerResult(result),
       url: submittedUrl,
@@ -87,9 +96,27 @@ function App() {
   }
 
   function resetWorkflow() {
+    operationIdRef.current += 1;
     setDetailTab(null);
     setActionNotice("");
     setWorkflow(createInitialWorkflow());
+  }
+
+  function resetOrCancelWorkflow() {
+    if (isProcessingStage(workflow.stage)) {
+      void cancelCurrentProcessing();
+      return;
+    }
+
+    resetWorkflow();
+  }
+
+  async function cancelCurrentProcessing() {
+    operationIdRef.current += 1;
+    setDetailTab(null);
+    setActionNotice("");
+    setWorkflow((current) => cancelProcessing(current));
+    await cancelProcess();
   }
 
   function openCard(card: ResultCard) {
@@ -111,11 +138,16 @@ function App() {
 
     const transcriptPath = workflow.transcriptPath;
     const transcriptText = workflow.text;
+    const operationId = operationIdRef.current + 1;
+    operationIdRef.current = operationId;
     setDetailTab(null);
     setActionNotice("");
     setWorkflow((current) => startInsightRetry(current));
 
     const result = await retryInsights(transcriptPath, transcriptText);
+    if (operationIdRef.current !== operationId) {
+      return;
+    }
     setWorkflow((current) => ({
       ...summarizeWorkerResult(result),
       url: current.url,
@@ -171,7 +203,12 @@ function App() {
           <p className="eyebrow">FrameQ</p>
           <h1>视频转文字</h1>
         </div>
-        <button className="icon-button" type="button" onClick={resetWorkflow} aria-label="处理新 URL">
+        <button
+          className="icon-button"
+          type="button"
+          onClick={resetOrCancelWorkflow}
+          aria-label="处理新 URL"
+        >
           <RotateCcw size={18} />
         </button>
       </header>
@@ -204,7 +241,7 @@ function App() {
                 <h2>{activeCopy.title}</h2>
               </div>
               {isProcessingStage(workflow.stage) ? (
-                <button className="secondary-button" type="button" onClick={resetWorkflow}>
+                <button className="secondary-button" type="button" onClick={cancelCurrentProcessing}>
                   <X size={17} />
                   <span>取消</span>
                 </button>

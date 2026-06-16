@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  cancelProcessing,
   canSubmitUrl,
   createInitialWorkflow,
   formatWorkerError,
@@ -183,5 +184,21 @@ describe("workflow state model", () => {
     expect(retrying.text).toBe("已经完成的文字稿。");
     expect(retrying.transcriptPath).toBe("outputs/demo_transcript.txt");
     expect(retrying.error).toBeNull();
+  });
+
+  test("cancels active processing and returns to input with the submitted url", () => {
+    const state = startProcessing(
+      createInitialWorkflow(),
+      "https://www.douyin.com/video/7524373044106677544",
+    );
+
+    const cancelled = cancelProcessing(state);
+
+    expect(cancelled.stage).toBe("waiting_input");
+    expect(cancelled.showUrlInput).toBe(true);
+    expect(cancelled.url).toBe("https://www.douyin.com/video/7524373044106677544");
+    expect(cancelled.submittedUrl).toBe("");
+    expect(cancelled.statusMessage).toBe("");
+    expect(cancelled.error).toBeNull();
   });
 });
