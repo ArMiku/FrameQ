@@ -2,15 +2,16 @@
 
 ## 进行中
 
-- [ ] 实现 ASR adapter 和 transcript writers ✅ 生成非空 `outputs/*_transcript.txt` 与 `.md`
+- [ ] 内置并适配 InsightFlow 话题点生成 ✅ `outputs/*_insights.json` 包含非空 `insights` 或返回结构化部分完成错误
 
 ## 待办
 
 - [ ] 安装 Rust/Cargo 以解除 Tauri 桌面构建阻塞 ✅ `cargo -V` 成功且 `npm --prefix app run tauri -- build` 不再因 `program not found` 失败
-- [ ] 内置并适配 InsightFlow 话题点生成 ✅ `outputs/*_insights.json` 包含非空 `insights` 或返回结构化部分完成错误
+- [ ] 运行真实 Qwen3-ASR 模型推理 ✅ `outputs/7524373044106677544_transcript.txt` 由真实 ASR 生成且非空
 
 ## 已完成
 
+- [x] 实现 ASR adapter 和 transcript writers（2026-06-16）✅ fake transcriber 生成非空 `outputs/7524373044106677544_transcript.txt` 与 `.md`
 - [x] 实现下载与媒体校验服务（2026-06-16）✅ 示例 URL 创建 `outputs/7524373044106677544.mp4` 且 ffprobe JSON 有视频/音频流
 - [x] 实现音频提取服务（2026-06-16）✅ `work/7524373044106677544.wav` 为 16 kHz 单声道 `pcm_s16le`
 - [x] 初始化 `app/` Tauri + React + TypeScript 骨架（2026-06-16）✅ `npm --prefix app run build` 通过

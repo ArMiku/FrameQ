@@ -6,6 +6,7 @@ Last updated: 2026-06-16
 
 | Topic | Why it matters | Source | Removal Condition |
 |------|----------------|--------|-------------------|
+| Real Qwen3-ASR inference not verified | Adapter and writers are tested, but model weights have not been downloaded or executed on the sample WAV | `docs/exec-plans/active/2026-06-16-mvp-desktop-client-plan.md` | Run Qwen3-ASR on `work/7524373044106677544.wav` and replace fake transcript validation with real output |
 
 ## Medium Priority
 
