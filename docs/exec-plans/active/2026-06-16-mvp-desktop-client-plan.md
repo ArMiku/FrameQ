@@ -13,7 +13,7 @@ Decision Log, and Outcomes & Retrospective must be kept up to date as work proce
 - [x] 2026-06-16: Python worker scaffolded with structured request/result schema. Validation: `uv run pytest worker\tests`.
 - [x] 2026-06-16: Download, media validation, and audio extraction pipeline works for the sample URL. Validation: sample URL created `outputs/7524373044106677544.mp4`; `probe_media_file` reported valid video/audio; `extract_audio` created 16 kHz mono WAV.
 - [x] 2026-06-16: ASR transcript pipeline writes `.txt` and `.md` outputs. Validation: fake transcriber created non-empty transcript files; `qwen-asr` package is installed and adapter import/API was verified, but real model inference has not run.
-- [ ] 2026-06-16: Embedded InsightFlow topic generation writes `.json` and `.md` outputs.
+- [x] 2026-06-16: Embedded InsightFlow topic generation writes `.json` and `.md` outputs. Validation: fake InsightFlow client created non-empty `outputs/7524373044106677544_insights.json` and `.md`; missing client maps to `partial_completed`.
 - [ ] 2026-06-16: Tauri command connects UI to worker with progress, cancel, retry, and export paths.
 - [ ] 2026-06-16: Focused validation passes and residual risks are documented.
 
@@ -26,6 +26,7 @@ Decision Log, and Outcomes & Retrospective must be kept up to date as work proce
 - Evidence: `extract_audio` created `work/7524373044106677544.wav` as `pcm_s16le`, 16 kHz, 1 channel.
 - Evidence: `qwen-asr==0.0.6` and `modelscope==1.37.1` installed through `uv`; `qwen_asr` exposes `Qwen3ASRModel`.
 - Evidence: fake ASR integration wrote non-empty `outputs/7524373044106677544_transcript.txt` and `.md`; real Qwen model weights have not been downloaded or executed yet.
+- Evidence: embedded `worker/insightflow/` module writes `insights.json` and `insights.md` from a fake LLM client and maps missing LLM config to `partial_completed`.
 
 ## Decision Log
 
@@ -36,7 +37,7 @@ Decision Log, and Outcomes & Retrospective must be kept up to date as work proce
 
 ## Outcomes & Retrospective
 
-In progress. Completed the project-local `uv` worker scaffold, structured request/result schema, worker CLI facade, Tauri React TypeScript scaffold, workflow state model, first-pass UI shell, the real download/media/audio extraction path for the sample URL, and the ASR adapter/transcript writer contract. Tauri desktop build remains blocked because `cargo` is not installed or not on PATH. Real Qwen model inference remains unverified.
+In progress. Completed the project-local `uv` worker scaffold, structured request/result schema, worker CLI facade, Tauri React TypeScript scaffold, workflow state model, first-pass UI shell, the real download/media/audio extraction path for the sample URL, the ASR adapter/transcript writer contract, and embedded InsightFlow topic generation with file outputs. Tauri desktop build remains blocked because `cargo` is not installed or not on PATH. Real Qwen model inference remains unverified.
 
 ## Context and Orientation
 

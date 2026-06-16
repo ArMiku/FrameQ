@@ -2,7 +2,7 @@
 
 ## 进行中
 
-- [ ] 内置并适配 InsightFlow 话题点生成 ✅ `outputs/*_insights.json` 包含非空 `insights` 或返回结构化部分完成错误
+- [ ] 连接 Tauri command、UI 进度与 worker pipeline ✅ 桌面流程能到达结果或结构化失败状态
 
 ## 待办
 
@@ -11,6 +11,7 @@
 
 ## 已完成
 
+- [x] 内置并适配 InsightFlow 话题点生成（2026-06-16）✅ `outputs/7524373044106677544_insights.json` 包含非空 `insights`
 - [x] 实现 ASR adapter 和 transcript writers（2026-06-16）✅ fake transcriber 生成非空 `outputs/7524373044106677544_transcript.txt` 与 `.md`
 - [x] 实现下载与媒体校验服务（2026-06-16）✅ 示例 URL 创建 `outputs/7524373044106677544.mp4` 且 ffprobe JSON 有视频/音频流
 - [x] 实现音频提取服务（2026-06-16）✅ `work/7524373044106677544.wav` 为 16 kHz 单声道 `pcm_s16le`

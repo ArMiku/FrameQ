@@ -14,7 +14,7 @@ FrameQ 是一个桌面客户端：用户输入抖音视频 URL 后，本地 work
 |------|------|------|
 | `app/` | Tauri + React + TypeScript 桌面 UI、状态展示、导出入口 | 已初始化；web build 通过，桌面 build 待 Rust/Cargo |
 | `worker/` | Python 下载、ffprobe 校验、ffmpeg 音频提取、ASR、结果写盘；由 `uv` 管理本项目 `.venv` | 已初始化 schema、CLI facade、下载/媒体校验/音频提取、ASR adapter 和 transcript writers |
-| `worker/insightflow/` | 从参考实现复制并裁剪后的话题点生成模块 | 待初始化 |
+| `worker/insightflow/` | 从参考实现复制并裁剪后的话题点生成模块 | 已初始化 splitter、prompt、JSON parser、generator |
 | `models/` | 本地模型权重缓存，不提交仓库 | 待创建 |
 | `outputs/` | 用户可直接使用的最终视频、文字稿和话题点文件 | 运行时生成 |
 | `work/` | 音频、中间文件、调试日志和临时产物 | 运行时生成 |
@@ -47,6 +47,7 @@ Desktop UI
 - `worker/frameq_worker/media.py`：yt-dlp、ffprobe 和 ffmpeg 音频提取服务。
 - `worker/frameq_worker/asr.py`：Qwen ASR adapter 和 transcript `.txt/.md` 写出。
 - `worker/frameq_worker/pipeline.py`：worker 分阶段 pipeline 与 `ProcessResult` 映射。
+- `worker/frameq_worker/insightflow/`：内置 InsightFlow 话题点生成模块，运行期不依赖外部参考仓库。
 
 ## 架构不变量
 
