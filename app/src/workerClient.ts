@@ -49,7 +49,7 @@ export async function processVideo(
     url,
     language: "Chinese",
     output_formats: ["txt", "md"],
-    model: "Qwen/Qwen3-ASR-0.6B",
+    model: "iic/SenseVoiceSmall",
     generate_insights: true,
     insightflow_mode: "embedded",
   };

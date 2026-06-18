@@ -16,6 +16,11 @@ describe("settings client", () => {
         model: "demo-model",
         timeout_seconds: "30",
         output_dir: "D:\\FrameQ\\outputs",
+        asr_model: "iic/SenseVoiceSmall",
+        supported_asr_models: [
+          "iic/SenseVoiceSmall",
+          "Qwen/Qwen3-ASR-0.6B",
+        ],
         has_api_key: true,
       };
     };
@@ -29,6 +34,11 @@ describe("settings client", () => {
       model: "demo-model",
       timeoutSeconds: "30",
       outputDir: "D:\\FrameQ\\outputs",
+      asrModel: "iic/SenseVoiceSmall",
+      supportedAsrModels: [
+        "iic/SenseVoiceSmall",
+        "Qwen/Qwen3-ASR-0.6B",
+      ],
       hasApiKey: true,
     });
   });
@@ -43,6 +53,11 @@ describe("settings client", () => {
         model: "demo-model",
         timeout_seconds: "30",
         output_dir: "D:\\FrameQ\\outputs",
+        asr_model: "Qwen/Qwen3-ASR-0.6B",
+        supported_asr_models: [
+          "iic/SenseVoiceSmall",
+          "Qwen/Qwen3-ASR-0.6B",
+        ],
         has_api_key: true,
       };
     };
@@ -54,6 +69,7 @@ describe("settings client", () => {
         model: "demo-model",
         timeoutSeconds: "30",
         outputDir: "D:\\FrameQ\\outputs",
+        asrModel: "Qwen/Qwen3-ASR-0.6B",
       },
       runner,
     );
@@ -68,6 +84,7 @@ describe("settings client", () => {
             model: "demo-model",
             timeout_seconds: "30",
             output_dir: "D:\\FrameQ\\outputs",
+            asr_model: "Qwen/Qwen3-ASR-0.6B",
           },
         },
       },
@@ -88,6 +105,7 @@ describe("settings client", () => {
           model: "demo-model",
           timeoutSeconds: "30",
           outputDir: "",
+          asrModel: "iic/SenseVoiceSmall",
         },
         runner,
       ),

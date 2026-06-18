@@ -37,7 +37,7 @@ describe("worker client", () => {
             url: "https://www.douyin.com/video/7524373044106677544",
             language: "Chinese",
             output_formats: ["txt", "md"],
-            model: "Qwen/Qwen3-ASR-0.6B",
+            model: "iic/SenseVoiceSmall",
             generate_insights: true,
             insightflow_mode: "embedded",
           },

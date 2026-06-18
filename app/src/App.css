@@ -26,7 +26,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -123,6 +124,7 @@ h2 {
 
 .url-row input,
 .settings-form input,
+.settings-form select,
 .search-box input {
   background: #ffffff;
   border: 1px solid #cfd8d1;
@@ -133,13 +135,15 @@ h2 {
 }
 
 .url-row input,
-.settings-form input {
+.settings-form input,
+.settings-form select {
   min-height: 46px;
   padding: 0 14px;
 }
 
 .url-row input:focus,
 .settings-form input:focus,
+.settings-form select:focus,
 .search-box:focus-within {
   border-color: #2f7767;
   box-shadow: 0 0 0 3px rgba(47, 119, 103, 0.16);

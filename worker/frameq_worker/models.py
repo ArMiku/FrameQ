@@ -19,7 +19,7 @@ class ProcessRequest:
     url: str
     language: str = "Chinese"
     output_formats: tuple[str, ...] = ("txt", "md")
-    model: str = "Qwen/Qwen3-ASR-0.6B"
+    model: str = "iic/SenseVoiceSmall"
     generate_insights: bool = True
     insightflow_mode: str = "embedded"
 

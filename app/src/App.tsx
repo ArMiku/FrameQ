@@ -72,6 +72,16 @@ const historyStatusCopy: Record<HistoryItem["status"], string> = {
   failed: "失败",
 };
 
+const defaultAsrModels = [
+  "iic/SenseVoiceSmall",
+  "Qwen/Qwen3-ASR-0.6B",
+];
+
+const asrModelLabels: Record<string, string> = {
+  "Qwen/Qwen3-ASR-0.6B": "Qwen3-ASR 0.6B",
+  "iic/SenseVoiceSmall": "SenseVoice Small",
+};
+
 function formatHistoryDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -92,7 +102,9 @@ function App() {
     model: "",
     timeoutSeconds: "60",
     outputDir: "",
+    asrModel: "iic/SenseVoiceSmall",
   });
+  const [settingsSupportedAsrModels, setSettingsSupportedAsrModels] = useState(defaultAsrModels);
   const [settingsHasApiKey, setSettingsHasApiKey] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -265,7 +277,11 @@ function App() {
         model: config.model,
         timeoutSeconds: config.timeoutSeconds,
         outputDir: config.outputDir,
+        asrModel: config.asrModel,
       });
+      setSettingsSupportedAsrModels(
+        config.supportedAsrModels.length > 0 ? config.supportedAsrModels : defaultAsrModels,
+      );
       setSettingsHasApiKey(config.hasApiKey);
       setSettingsNotice(config.hasApiKey ? "已保存密钥；留空可继续保留。" : "尚未保存密钥。");
     } catch (error) {
@@ -288,7 +304,11 @@ function App() {
         model: config.model,
         timeoutSeconds: config.timeoutSeconds,
         outputDir: config.outputDir,
+        asrModel: config.asrModel,
       }));
+      setSettingsSupportedAsrModels(
+        config.supportedAsrModels.length > 0 ? config.supportedAsrModels : defaultAsrModels,
+      );
       setSettingsHasApiKey(config.hasApiKey);
       setSettingsNotice("配置已保存，后续任务会使用新的 LLM 和输出目录设置。");
     } catch (error) {
@@ -568,6 +588,20 @@ function App() {
                 启用云端 LLM 后，文字稿片段会发送到你配置的服务。API Key 只写入本机
                 .env，读取时不会回显完整密钥。
               </p>
+              <label>
+                <span>ASR 模型</span>
+                <select
+                  value={settingsDraft.asrModel}
+                  onChange={(event) => updateSettingsDraft("asrModel", event.currentTarget.value)}
+                  disabled={settingsLoading || settingsSaving}
+                >
+                  {settingsSupportedAsrModels.map((model) => (
+                    <option value={model} key={model}>
+                      {asrModelLabels[model] ?? model}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label>
                 <span>Base URL</span>
                 <input

@@ -52,7 +52,7 @@ def test_openai_compatible_client_posts_prompt_and_returns_message_content() -> 
     assert payload == {
         "model": "demo-model",
         "messages": [{"role": "user", "content": "请生成话题点"}],
-        "temperature": 0.2,
+        "temperature": 0.7,
     }
 
 
@@ -67,3 +67,24 @@ def test_openai_compatible_client_rejects_unusable_response() -> None:
         client.generate("请生成话题点")
 
     assert exc_info.value.code == "INSIGHTFLOW_LLM_INVALID_RESPONSE"
+
+
+def test_openai_compatible_client_reports_timeout_with_actionable_message() -> None:
+    def timeout_transport(request: Request, timeout: float) -> bytes:
+        raise TimeoutError("read timed out")
+
+    client = OpenAICompatibleInsightClient(
+        api_key="secret-key",
+        model="demo-model",
+        timeout_seconds=12,
+        transport=timeout_transport,
+    )
+
+    with pytest.raises(InsightGenerationError) as exc_info:
+        client.generate("请生成话题点")
+
+    assert exc_info.value.code == "INSIGHTFLOW_LLM_REQUEST_TIMEOUT"
+    assert str(exc_info.value) == (
+        "LLM request timed out after 12 seconds. "
+        "Increase FRAMEQ_LLM_TIMEOUT_SECONDS in settings or .env and retry."
+    )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ class CommandResult:
 
 
 CommandRunner = Callable[[list[str]], CommandResult]
+DOUYIN_VIDEO_ID_PATTERN = re.compile(r"(?:^|/)video/(\d+)(?:[/?#]|$)")
 
 
 class CommandExecutionError(RuntimeError):
@@ -39,12 +41,23 @@ class MediaInfo:
     def is_valid(self) -> bool:
         return (
             self.has_video
-            and self.has_audio
+            and self.is_valid_audio
+        )
+
+    @property
+    def is_valid_audio(self) -> bool:
+        return (
+            self.has_audio
             and self.duration_seconds is not None
             and self.duration_seconds > 0
             and self.size_bytes is not None
             and self.size_bytes > 0
         )
+
+
+def extract_douyin_video_id(url: str) -> str | None:
+    match = DOUYIN_VIDEO_ID_PATTERN.search(url)
+    return match.group(1) if match else None
 
 
 def build_ytdlp_command(url: str, output_dir: Path) -> list[str]:

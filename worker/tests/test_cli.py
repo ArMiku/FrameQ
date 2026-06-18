@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import frameq_worker.cli as cli
@@ -49,6 +50,63 @@ class FakeMediaRunner:
         if command[0] == "ffmpeg":
             Path(command[-1]).write_bytes(b"fake wav")
             return CommandResult(command=command, returncode=0, stdout="", stderr="")
+
+        raise AssertionError(f"Unexpected command: {command}")
+
+
+class ExistingMediaRunner:
+    def __init__(self) -> None:
+        self.commands: list[list[str]] = []
+
+    def __call__(self, command: list[str]) -> CommandResult:
+        self.commands.append(command)
+        if command[0] == "yt-dlp":
+            return CommandResult(command=command, returncode=0, stdout="", stderr="")
+
+        if command[0] == "ffprobe":
+            media_path = Path(command[-1])
+            if media_path.suffix == ".wav":
+                return CommandResult(
+                    command=command,
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "streams": [
+                                {
+                                    "index": 0,
+                                    "codec_type": "audio",
+                                    "codec_name": "pcm_s16le",
+                                }
+                            ],
+                            "format": {"duration": "10.0", "size": "320000"},
+                        }
+                    ),
+                    stderr="",
+                )
+
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "streams": [
+                            {
+                                "index": 0,
+                                "codec_type": "video",
+                                "codec_name": "hevc",
+                                "width": 1280,
+                                "height": 720,
+                            },
+                            {"index": 1, "codec_type": "audio", "codec_name": "aac"},
+                        ],
+                        "format": {"duration": "10.0", "size": "2000"},
+                    }
+                ),
+                stderr="",
+            )
+
+        if command[0] == "ffmpeg":
+            raise AssertionError("ffmpeg should not run when existing WAV is valid")
 
         raise AssertionError(f"Unexpected command: {command}")
 
@@ -255,6 +313,51 @@ def test_run_worker_once_runs_to_partial_completion_with_injected_transcriber(
     }
 
 
+def test_run_worker_once_selects_video_by_url_id_and_reuses_valid_audio(
+    tmp_path: Path,
+) -> None:
+    video_id = "7524373044106677544"
+    output_dir = tmp_path / "outputs"
+    work_dir = tmp_path / "work"
+    output_dir.mkdir()
+    work_dir.mkdir()
+    matching_video = output_dir / f"{video_id}.mp4"
+    newer_unrelated_video = output_dir / "9999999999999999999.mp4"
+    existing_audio = work_dir / f"{video_id}.wav"
+    matching_video.write_bytes(b"matching video")
+    newer_unrelated_video.write_bytes(b"newer unrelated video")
+    existing_audio.write_bytes(b"existing wav")
+    os.utime(matching_video, (1, 1))
+    os.utime(newer_unrelated_video, (2, 2))
+
+    runner = ExistingMediaRunner()
+    events: list[dict[str, object]] = []
+
+    result = run_worker_once(
+        json.dumps(
+            {
+                "url": f"https://www.douyin.com/video/{video_id}",
+                "generate_insights": False,
+            }
+        ),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=FakeTranscriber(),
+        progress_callback=events.append,
+    )
+
+    assert result["status"] == "completed"
+    assert result["video_path"] == matching_video.as_posix()
+    assert result["audio_path"] == existing_audio.as_posix()
+    assert [command[0] for command in runner.commands] == ["yt-dlp", "ffprobe", "ffprobe"]
+    assert all(command[0] != "ffmpeg" for command in runner.commands)
+    assert {
+        "stage": "video_extracting",
+        "message": "已复用本地音频，跳过音频提取。",
+        "progress": 50,
+    } in events
+
+
 def test_run_worker_once_uses_configured_output_dir_for_user_artifacts(
     tmp_path: Path,
 ) -> None:
@@ -318,15 +421,15 @@ def test_run_worker_once_builds_real_asr_with_project_model_cache(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_build_qwen_asr_transcriber(model_name: str, cache_dir: Path) -> FakeTranscriber:
+    def fake_build_asr_transcriber(model_name: str, cache_dir: Path) -> FakeTranscriber:
         captured["model_name"] = model_name
         captured["cache_dir"] = cache_dir
         return FakeTranscriber()
 
     monkeypatch.setattr(
         cli,
-        "build_qwen_asr_transcriber",
-        fake_build_qwen_asr_transcriber,
+        "build_asr_transcriber",
+        fake_build_asr_transcriber,
     )
 
     result = run_worker_once(
@@ -338,9 +441,47 @@ def test_run_worker_once_builds_real_asr_with_project_model_cache(
 
     assert result["status"] == "partial_completed"
     assert captured == {
-        "model_name": "Qwen/Qwen3-ASR-0.6B",
+        "model_name": "iic/SenseVoiceSmall",
         "cache_dir": tmp_path / "models",
     }
+
+
+def test_run_worker_once_uses_configured_asr_model_from_project_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    (tmp_path / ".env").write_text(
+        "FRAMEQ_ASR_MODEL=iic/SenseVoiceSmall\n",
+        encoding="utf-8",
+    )
+
+    def fake_build_asr_transcriber(model_name: str, cache_dir: Path) -> FakeTranscriber:
+        captured["model_name"] = model_name
+        captured["cache_dir"] = cache_dir
+        return FakeTranscriber()
+
+    monkeypatch.setattr(
+        cli,
+        "build_asr_transcriber",
+        fake_build_asr_transcriber,
+    )
+
+    result = run_worker_once(
+        json.dumps({"url": "https://www.douyin.com/video/7524373044106677544"}),
+        project_root=tmp_path,
+        command_runner=FakeMediaRunner(),
+        allow_real_asr=True,
+    )
+
+    transcript_md = tmp_path / "outputs" / "demo_transcript.md"
+
+    assert result["status"] == "partial_completed"
+    assert captured == {
+        "model_name": "iic/SenseVoiceSmall",
+        "cache_dir": tmp_path / "models",
+    }
+    assert "- Model: iic/SenseVoiceSmall" in transcript_md.read_text(encoding="utf-8")
 
 
 def test_run_worker_once_emits_progress_events_for_model_startup(
@@ -351,7 +492,7 @@ def test_run_worker_once_emits_progress_events_for_model_startup(
 
     monkeypatch.setattr(
         cli,
-        "build_qwen_asr_transcriber",
+        "build_asr_transcriber",
         lambda model_name, cache_dir: FakeTranscriber(),
     )
 
@@ -381,7 +522,7 @@ def test_run_worker_once_emits_progress_events_for_model_startup(
         },
         {
             "stage": "video_transcribing",
-            "message": "正在准备 Qwen3-ASR-0.6B 模型缓存。",
+            "message": "正在准备 SenseVoice Small 模型缓存。",
             "progress": 58,
         },
         {

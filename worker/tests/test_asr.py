@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -5,9 +6,12 @@ from frameq_worker.asr import (
     ASRDependencyError,
     ASRRuntimeError,
     QwenAsrTranscriber,
+    SenseVoiceTranscriber,
     Transcript,
+    build_asr_transcriber,
     build_qwen_asr_transcriber,
     resolve_model_cache_dir,
+    supported_asr_model_names,
     transcribe_and_write,
     write_transcript_files,
 )
@@ -117,6 +121,64 @@ def test_build_qwen_asr_transcriber_creates_cache_dir_and_passes_it(
     assert transcriber.model_kwargs["cache_dir"] == cache_dir.as_posix()
 
 
+def test_supported_asr_models_include_qwen_and_available_sensevoice_models() -> None:
+    assert supported_asr_model_names() == [
+        "iic/SenseVoiceSmall",
+        "Qwen/Qwen3-ASR-0.6B",
+    ]
+
+
+def test_build_asr_transcriber_selects_sensevoice_for_small(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_dir = tmp_path / "models"
+    monkeypatch.delenv("MODELSCOPE_CACHE", raising=False)
+
+    small = build_asr_transcriber("iic/SenseVoiceSmall", cache_dir=cache_dir)
+
+    assert isinstance(small, SenseVoiceTranscriber)
+    assert small.model_name == "iic/SenseVoiceSmall"
+    assert os.environ["MODELSCOPE_CACHE"] == cache_dir.as_posix()
+    assert "model_cache_dir" not in small.model_kwargs
+
+
+def test_sensevoice_transcriber_uses_funasr_generate_api() -> None:
+    class FakeModel:
+        def generate(self, **kwargs: object) -> list[dict[str, str]]:
+            assert kwargs["input"] == "work/demo.wav"
+            assert kwargs["language"] == "zh"
+            assert kwargs["use_itn"] is True
+            assert kwargs["batch_size_s"] == 60
+            assert kwargs["merge_vad"] is True
+            assert kwargs["merge_length_s"] == 15
+            assert kwargs["cache"] == {}
+            return [{"text": "<|zh|><|HAPPY|><|BGM|><|withitn|>SenseVoice 识别出的文字稿"}]
+
+    received_kwargs: dict[str, object] = {}
+
+    def fake_factory(**kwargs: object) -> FakeModel:
+        received_kwargs.update(kwargs)
+        return FakeModel()
+
+    transcriber = SenseVoiceTranscriber(
+        model_name="iic/SenseVoiceSmall",
+        model_factory=fake_factory,
+        model_kwargs={"model_cache_dir": "models"},
+    )
+
+    transcript = transcriber.transcribe(Path("work/demo.wav"))
+
+    assert transcript == Transcript(text="SenseVoice 识别出的文字稿", language="Chinese")
+    assert received_kwargs == {
+        "model": "iic/SenseVoiceSmall",
+        "trust_remote_code": True,
+        "model_cache_dir": "models",
+        "vad_model": "fsmn-vad",
+        "vad_kwargs": {"max_single_segment_time": 30000},
+    }
+
+
 def test_qwen_asr_transcriber_reports_missing_dependency() -> None:
     def missing_factory(**kwargs: object) -> object:
         raise ModuleNotFoundError("No module named 'qwen_asr'")
@@ -127,6 +189,22 @@ def test_qwen_asr_transcriber_reports_missing_dependency() -> None:
         transcriber.transcribe(Path("work/demo.wav"))
 
     assert error.value.code == "ASR_DEPENDENCY_MISSING"
+
+
+def test_sensevoice_transcriber_reports_missing_transitive_dependency() -> None:
+    def missing_factory(**kwargs: object) -> object:
+        raise ModuleNotFoundError("No module named 'torchaudio'")
+
+    transcriber = SenseVoiceTranscriber(model_factory=missing_factory)
+
+    with pytest.raises(ASRDependencyError) as error:
+        transcriber.transcribe(Path("work/demo.wav"))
+
+    assert error.value.code == "ASR_DEPENDENCY_MISSING"
+    assert str(error.value) == (
+        "Missing ASR runtime dependency: torchaudio. "
+        "Install project dependencies with `uv sync` before running SenseVoice ASR."
+    )
 
 
 def test_qwen_asr_transcriber_rejects_empty_text() -> None:

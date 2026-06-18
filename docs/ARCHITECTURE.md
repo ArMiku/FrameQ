@@ -13,12 +13,12 @@ FrameQ 是一个桌面客户端：用户输入抖音视频 URL 后，本地 work
 | 模块 | 责任 | 状态 |
 |------|------|------|
 | `app/` | Tauri + React + TypeScript 桌面 UI、状态展示、历史面板、设置面板、导出入口 | 已初始化；web build、Tauri release build 和安装器打包已验证 |
-| `worker/` | Python 下载、ffprobe 校验、ffmpeg 音频提取、ASR、结果写盘；由 `uv` 管理本项目 `.venv` | 已初始化 schema、CLI facade、下载/媒体校验/音频提取、ASR adapter、transcript writers；真实 ASR 已在 sample WAV 上验证，仍需显式 `FRAMEQ_ALLOW_REAL_ASR=1` |
-| `worker/insightflow/` | 从参考实现复制并裁剪后的话题点生成模块 | 已初始化 splitter、prompt、JSON parser、generator |
+| `worker/` | Python 下载、ffprobe 校验、ffmpeg 音频提取、ASR、结果写盘；由 `uv` 管理本项目 `.venv` | 已初始化 schema、CLI facade、下载/媒体校验/音频提取、ASR adapter、transcript writers；支持 Qwen3-ASR 与 SenseVoice 模型选择，真实 ASR 仍需显式 `FRAMEQ_ALLOW_REAL_ASR=1` |
+| `worker/insightflow/` | 从参考实现复制并裁剪后的话题点生成模块 | 已初始化 splitter、prompt、JSON parser、generator；先用 LLM 做话题分段规划，再逐话题生成问题；planner 失败时 fallback 到直接生成 |
 | `models/` | 本地模型权重缓存，不提交仓库；可用 `FRAMEQ_MODEL_DIR` 覆盖 | 已由真实 Qwen3-ASR 探针创建 |
 | `outputs/` 或 `FRAMEQ_OUTPUT_DIR` | 用户可直接使用的最终视频、文字稿和话题点文件 | 运行时生成；输出目录可由设置面板保存到 `.env` |
 | `work/` | 音频、中间文件、调试日志、`history.json` 历史任务索引和临时产物 | 运行时生成 |
-| `.env` | 本机运行配置和密钥，不提交仓库；`.env.example` 提供占位模板 | 已支持 InsightFlow LLM、输出目录和 ASR 运行期开关；LLM/输出目录配置可由桌面 UI 写入 |
+| `.env` | 本机运行配置和密钥，不提交仓库；`.env.example` 提供占位模板 | 已支持 InsightFlow LLM、输出目录、ASR 模型选择和 ASR 运行期开关；LLM/输出目录/ASR 模型配置可由桌面 UI 写入 |
 
 ## 模块关系
 
@@ -28,7 +28,7 @@ Desktop UI
   -> Python Worker
       -> yt-dlp
       -> ffprobe / ffmpeg
-      -> Qwen3-ASR
+      -> Qwen3-ASR or SenseVoice
       -> embedded InsightFlow module
   -> Result JSON
   -> Desktop UI
@@ -48,11 +48,11 @@ Desktop UI
 - `worker/frameq_worker/models.py`：worker request/result/error schema。
 - `worker/frameq_worker/cli.py`：worker CLI/facade 入口，默认在真实 ASR 未启用时返回结构化 `ASR_MODEL_NOT_READY`。
 - `worker/frameq_worker/media.py`：yt-dlp、ffprobe 和 ffmpeg 音频提取服务。
-- `worker/frameq_worker/asr.py`：Qwen ASR adapter、模型缓存目录解析和 transcript `.txt/.md` 写出。
+- `worker/frameq_worker/asr.py`：ASR model registry、Qwen / SenseVoice adapter、模型缓存目录解析和 transcript `.txt/.md` 写出。
 - `worker/frameq_worker/config.py`：项目根 `.env` 加载和环境变量合并。
-- `worker/frameq_worker/llm.py`：OpenAI-compatible InsightFlow LLM client，由 `FRAMEQ_LLM_*` 配置创建。
+- `worker/frameq_worker/llm.py`：OpenAI-compatible InsightFlow LLM client，由 `FRAMEQ_LLM_*` 配置创建；话题点生成默认使用 `temperature=0.7`。
 - `worker/frameq_worker/pipeline.py`：worker 分阶段 pipeline 与 `ProcessResult` 映射。
-- `worker/frameq_worker/insightflow/`：内置 InsightFlow 话题点生成模块，运行期不依赖外部参考仓库。
+- `worker/frameq_worker/insightflow/`：内置 InsightFlow 话题点生成模块，运行期不依赖外部参考仓库；对完整 ASR 文字稿优先执行 topic planner，再按 planner 的标题、摘要、原文片段和 `question_count` 生成启发问题，最终去重并限制总数。
 
 ## 架构不变量
 

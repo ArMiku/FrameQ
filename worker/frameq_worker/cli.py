@@ -5,13 +5,18 @@ import json
 import os
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from frameq_worker.asr import (
+    DEFAULT_ASR_MODEL,
+    ASRError,
     Transcriber,
-    build_qwen_asr_transcriber,
+    asr_model_display_name,
+    build_asr_transcriber,
+    resolve_asr_model_name,
     resolve_model_cache_dir,
 )
 from frameq_worker.config import load_project_env
@@ -22,6 +27,7 @@ from frameq_worker.media import (
     CommandRunner,
     download_video,
     extract_audio,
+    extract_douyin_video_id,
     probe_media_file,
     run_command,
 )
@@ -38,6 +44,7 @@ VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 PROGRESS_EVENT_PREFIX = "FRAMEQ_PROGRESS "
 OUTPUT_DIR_ENV = "FRAMEQ_OUTPUT_DIR"
 HISTORY_FILE_NAME = "history.json"
+ASR_MODEL_ENV = "FRAMEQ_ASR_MODEL"
 ProgressCallback = Callable[[dict[str, object]], None]
 
 
@@ -74,6 +81,21 @@ def run_worker_once(
         ).to_dict()
 
     runtime_env = load_project_env(root, environ)
+    try:
+        request = replace(
+            request,
+            model=resolve_configured_asr_model(request.model, runtime_env),
+        )
+    except ASRError as exc:
+        return ProcessResult(
+            status=JobStage.FAILED,
+            error=WorkerError(
+                code=exc.code,
+                message=str(exc),
+                stage=JobStage.VIDEO_TRANSCRIBING,
+            ),
+        ).to_dict()
+
     configured_insight_client = insight_client or build_insight_client_from_env(runtime_env)
     result = run_worker_pipeline(
         request=request,
@@ -114,7 +136,7 @@ def parse_process_request(payload: object) -> ProcessRequest:
         url=url.strip(),
         language=str(payload.get("language", "Chinese")),
         output_formats=tuple(output_formats),
-        model=str(payload.get("model", "Qwen/Qwen3-ASR-0.6B")),
+        model=str(payload.get("model", DEFAULT_ASR_MODEL)),
         generate_insights=bool(payload.get("generate_insights", True)),
         insightflow_mode=str(payload.get("insightflow_mode", "embedded")),
     )
@@ -242,6 +264,7 @@ def run_worker_pipeline(
 ) -> ProcessResult:
     output_dir = resolve_output_dir(project_root, environ)
     work_dir = project_root / "work"
+    video_id = extract_douyin_video_id(request.url)
 
     emit_progress(
         progress_callback,
@@ -264,7 +287,9 @@ def run_worker_pipeline(
         "正在校验视频和音频流。",
         34,
     )
-    video_path = find_latest_video(output_dir)
+    video_path = find_video_by_stem(output_dir, video_id) if video_id else None
+    if video_path is None:
+        video_path = find_latest_video(output_dir)
     if video_path is None:
         return failed_result(
             code="VIDEO_DOWNLOAD_OUTPUT_MISSING",
@@ -297,15 +322,23 @@ def run_worker_pipeline(
         48,
     )
     audio_path = work_dir / f"{video_path.stem}.wav"
-    try:
-        extract_audio(video_path, audio_path, runner=command_runner)
-    except CommandExecutionError as exc:
-        return failed_result(
-            code="AUDIO_EXTRACTION_FAILED",
-            message=str(exc),
-            stage=JobStage.VIDEO_EXTRACTING,
-            video_path=video_path,
+    if can_reuse_audio(audio_path, command_runner):
+        emit_progress(
+            progress_callback,
+            JobStage.VIDEO_EXTRACTING,
+            "已复用本地音频，跳过音频提取。",
+            50,
         )
+    else:
+        try:
+            extract_audio(video_path, audio_path, runner=command_runner)
+        except CommandExecutionError as exc:
+            return failed_result(
+                code="AUDIO_EXTRACTION_FAILED",
+                message=str(exc),
+                stage=JobStage.VIDEO_EXTRACTING,
+                video_path=video_path,
+            )
 
     if transcriber is None and not allow_real_asr:
         return failed_result(
@@ -320,12 +353,12 @@ def run_worker_pipeline(
         emit_progress(
             progress_callback,
             JobStage.VIDEO_TRANSCRIBING,
-            "正在准备 Qwen3-ASR-0.6B 模型缓存。",
+            f"正在准备 {asr_model_display_name(request.model)} 模型缓存。",
             58,
         )
         model_cache_dir = resolve_model_cache_dir(project_root=project_root, environ=environ)
         try:
-            transcriber = build_qwen_asr_transcriber(
+            transcriber = build_asr_transcriber(
                 model_name=request.model,
                 cache_dir=model_cache_dir,
             )
@@ -409,6 +442,15 @@ def resolve_output_dir(project_root: Path, environ: dict[str, str] | None = None
     return project_root / output_dir
 
 
+def resolve_configured_asr_model(
+    request_model: str,
+    environ: dict[str, str] | None = None,
+) -> str:
+    env = environ if environ is not None else {}
+    configured_model = env.get(ASR_MODEL_ENV, "").strip()
+    return resolve_asr_model_name(configured_model or request_model)
+
+
 def append_history_item(
     project_root: Path,
     request: ProcessRequest,
@@ -486,6 +528,33 @@ def find_latest_video(output_dir: Path) -> Path | None:
         return None
 
     return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def find_video_by_stem(output_dir: Path, stem: str | None) -> Path | None:
+    if stem is None or not output_dir.exists():
+        return None
+
+    candidates = [
+        path
+        for path in output_dir.iterdir()
+        if path.is_file() and path.stem == stem and path.suffix.lower() in VIDEO_SUFFIXES
+    ]
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def can_reuse_audio(audio_path: Path, runner: CommandRunner) -> bool:
+    if not audio_path.exists():
+        return False
+
+    try:
+        audio_info = probe_media_file(audio_path, runner=runner)
+    except CommandExecutionError:
+        return False
+
+    return audio_info.is_valid_audio
 
 
 def failed_result(

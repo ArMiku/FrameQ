@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import frameq_worker.media as media
 from frameq_worker.media import (
     CommandResult,
     build_audio_extract_command,
@@ -112,6 +113,27 @@ def test_parse_ffprobe_json_marks_missing_audio_as_invalid() -> None:
     assert info.has_video is True
     assert info.has_audio is False
     assert info.is_valid is False
+
+
+def test_extract_douyin_video_id_from_standard_video_url() -> None:
+    assert (
+        media.extract_douyin_video_id(
+            "https://www.douyin.com/video/7646789377271647540?previous_page=app_code_link"
+        )
+        == "7646789377271647540"
+    )
+
+
+def test_audio_only_ffprobe_result_can_be_reused_for_asr_input() -> None:
+    payload = {
+        "streams": [{"index": 0, "codec_type": "audio", "codec_name": "pcm_s16le"}],
+        "format": {"duration": "10.0", "size": "320000"},
+    }
+
+    info = parse_ffprobe_json(json.dumps(payload))
+
+    assert info.has_audio is True
+    assert info.is_valid_audio is True
 
 
 def test_download_video_creates_output_dir_and_runs_ytdlp_command(tmp_path: Path) -> None:

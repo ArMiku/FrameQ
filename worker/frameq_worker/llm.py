@@ -11,7 +11,7 @@ from frameq_worker.insightflow import InsightClient, InsightGenerationError
 
 DEFAULT_LLM_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_LLM_TIMEOUT_SECONDS = 60.0
-DEFAULT_LLM_TEMPERATURE = 0.2
+DEFAULT_LLM_TEMPERATURE = 0.7
 
 LLM_PROVIDER_ENV = "FRAMEQ_LLM_PROVIDER"
 LLM_API_KEY_ENV = "FRAMEQ_LLM_API_KEY"
@@ -57,7 +57,22 @@ class OpenAICompatibleInsightClient:
                 "INSIGHTFLOW_LLM_REQUEST_FAILED",
                 f"LLM request failed with HTTP {exc.code}.",
             ) from exc
-        except (OSError, TimeoutError, urllib.error.URLError) as exc:
+        except TimeoutError as exc:
+            raise InsightGenerationError(
+                "INSIGHTFLOW_LLM_REQUEST_TIMEOUT",
+                _timeout_message(self.timeout_seconds),
+            ) from exc
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, TimeoutError):
+                raise InsightGenerationError(
+                    "INSIGHTFLOW_LLM_REQUEST_TIMEOUT",
+                    _timeout_message(self.timeout_seconds),
+                ) from exc
+            raise InsightGenerationError(
+                "INSIGHTFLOW_LLM_REQUEST_FAILED",
+                "LLM request failed before a usable response was returned.",
+            ) from exc
+        except OSError as exc:
             raise InsightGenerationError(
                 "INSIGHTFLOW_LLM_REQUEST_FAILED",
                 "LLM request failed before a usable response was returned.",
@@ -100,6 +115,14 @@ def parse_timeout(raw_value: str | None) -> float:
 def urlopen_transport(request: Request, timeout: float) -> bytes:
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
+
+
+def _timeout_message(timeout_seconds: float) -> str:
+    timeout_label = f"{timeout_seconds:g}"
+    return (
+        f"LLM request timed out after {timeout_label} seconds. "
+        "Increase FRAMEQ_LLM_TIMEOUT_SECONDS in settings or .env and retry."
+    )
 
 
 def extract_chat_completion_content(raw_response: bytes) -> str:

@@ -1,15 +1,80 @@
 from __future__ import annotations
 
 
-def build_question_prompt(text: str, number: int, language: str = "中文") -> str:
+def build_topic_plan_prompt(
+    text: str,
+    max_topics: int = 8,
+    max_questions: int = 12,
+    language: str = "中文",
+) -> str:
+    return f"""
+# 角色使命
+你是一位话题分段规划师。你的任务不是生成问题，而是先把一整段可能没有自然分段的 ASR 文字稿，
+规划成适合后续生成启发话题点的语义话题段。
+
+## 核心任务
+根据用户提供的文字稿（长度：{len(text)} 字），提炼最多 {max_topics} 个高价值话题段。
+所有输出必须使用：{language}。
+
+## 规划原则
+- 忽略寒暄、重复、口头禅、无信息铺垫和单纯转场。
+- 优先保留有观点、方法、冲突、经验、决策、行业判断或技术落地价值的内容。
+- 每个话题段只聚焦一个主要议题，避免把多个不相关主题混在一起。
+- `excerpt` 必须来自原文字稿或忠实贴近原文表达，用于给后续问题生成提供上下文。
+- `question_count` 必须根据话题密度设置为 1 到 3 之间的整数。
+- 所有话题段的 `question_count` 总和不得超过 {max_questions}。
+
+## 输出格式
+- 只输出 JSON 数组，不要输出解释、Markdown 或额外文字。
+- JSON 数组必须严格符合以下结构：
+```json
+[
+  {{
+    "id": 1,
+    "title": "话题标题",
+    "summary": "这一段主要在讲什么",
+    "excerpt": "从原文字稿中提取或忠实压缩的相关片段",
+    "question_count": 2
+  }}
+]
+```
+
+## 待处理文字稿
+{text}
+"""
+
+
+def build_question_prompt(
+    text: str,
+    number: int,
+    language: str = "中文",
+    global_prompt: str = "",
+    question_prompt: str = "",
+) -> str:
+    global_prompt_section = ""
+    if global_prompt:
+        global_prompt_section = f"""
+## 全局附加约束
+{global_prompt}
+"""
+
+    question_prompt_section = ""
+    if question_prompt:
+        question_prompt_section = f"""
+## 本次问题生成附加要求
+{question_prompt}
+"""
+
     return f"""
 # 角色使命
 你是一位阅读思考伙伴和议题策展者。你的任务不是把文章改写成阅读理解题，
 而是从文章案例中提炼能够启发用户继续思考的开放式议题问句。
+{global_prompt_section}
 
 ## 核心任务
 根据用户提供的文本（长度：{len(text)} 字），生成不少于 {number} 个高质量问题。
 每个问题都必须是可迁移的议题问句，输出语言必须是：{language}。
+{question_prompt_section}
 
 ## 生成原则
 - 优先抽象为行业、方法、组织、决策、技术落地等可迁移角度。
@@ -20,10 +85,11 @@ def build_question_prompt(text: str, number: int, language: str = "中文") -> s
 - 不要生成事实核对题、定义题、摘要题、考试题。
 
 ## 面向人类读者的表达优化
-- 站在人类读者的视角写问题，问题本身要自然、清晰、顺口。
+- 站在人类读者的视角写问题，问题本身要自然、清晰、顺口，读完就知道可以从哪个角度思考。
 - 每个问题只聚焦一个核心思考点，避免把多个条件、比较对象和结论塞进同一句。
-- 少用嵌套从句、抽象名词堆叠和过长限定语。
-- 避免机器翻译腔、模板化问法和生硬术语。
+- 少用嵌套从句、抽象名词堆叠和过长限定语；必要时用短句表达因果或对比。
+- 避免机器翻译腔、模板化问法和生硬术语；专业概念要放在清楚的语境里。
+- 问题长度尽量控制在一行可读范围内，不为了显得专业而牺牲理解成本。
 
 ## 风格示例
 - 避免：特赞科技推出的 GEA 与传统工具有何区别？

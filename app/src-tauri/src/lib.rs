@@ -16,9 +16,12 @@ const LLM_API_KEY_ENV: &str = "FRAMEQ_LLM_API_KEY";
 const LLM_MODEL_ENV: &str = "FRAMEQ_LLM_MODEL";
 const LLM_TIMEOUT_ENV: &str = "FRAMEQ_LLM_TIMEOUT_SECONDS";
 const OUTPUT_DIR_ENV: &str = "FRAMEQ_OUTPUT_DIR";
+const ASR_MODEL_ENV: &str = "FRAMEQ_ASR_MODEL";
 const HISTORY_FILE_NAME: &str = "history.json";
 const DEFAULT_LLM_PROVIDER: &str = "openai_compatible";
 const DEFAULT_LLM_TIMEOUT_SECONDS: &str = "60";
+const DEFAULT_ASR_MODEL: &str = "iic/SenseVoiceSmall";
+const SUPPORTED_ASR_MODELS: &[&str] = &[DEFAULT_ASR_MODEL, "Qwen/Qwen3-ASR-0.6B"];
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ProcessVideoRequest {
@@ -67,6 +70,8 @@ struct LlmConfigInput {
     timeout_seconds: String,
     #[serde(default)]
     output_dir: String,
+    #[serde(default)]
+    asr_model: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,6 +81,8 @@ struct LlmConfigView {
     model: String,
     timeout_seconds: String,
     output_dir: String,
+    asr_model: String,
+    supported_asr_models: Vec<String>,
     has_api_key: bool,
 }
 
@@ -168,14 +175,37 @@ async fn process_video(
 fn process_video_blocking(
     window: Window,
     process_state: Arc<WorkerProcessState>,
-    request: ProcessVideoRequest,
+    mut request: ProcessVideoRequest,
 ) -> Result<serde_json::Value, String> {
     let project_root = find_project_root()
         .ok_or_else(|| "Could not find FrameQ project root for worker execution.".to_string())?;
+    if let Err(error) =
+        apply_configured_asr_model_to_request(&project_root.join(DOTENV_FILE_NAME), &mut request)
+    {
+        return Ok(serde_json::json!(ProcessVideoResult {
+            status: "failed".to_string(),
+            text: String::new(),
+            insights: vec![],
+            transcript_path: None,
+            insights_path: None,
+            error: Some(WorkerError {
+                code: "ASR_MODEL_UNSUPPORTED".to_string(),
+                message: error,
+                stage: "video_transcribing".to_string(),
+            }),
+        }));
+    }
     let request_json = serde_json::to_string(&request).map_err(|error| error.to_string())?;
     let worker_path = project_root.join("worker");
     let mut child = Command::new("uv")
-        .args(["run", "python", "-m", "frameq_worker", "--request-json", &request_json])
+        .args([
+            "run",
+            "python",
+            "-m",
+            "frameq_worker",
+            "--request-json",
+            &request_json,
+        ])
         .env("PYTHONPATH", worker_path)
         .env("PYTHONUTF8", "1")
         .env("PYTHONIOENCODING", "utf-8")
@@ -265,7 +295,7 @@ fn process_video_blocking(
         }));
     }
 
-    serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+    parse_worker_stdout(&output.stdout)
 }
 
 #[tauri::command]
@@ -360,7 +390,36 @@ fn retry_insights_blocking(
         }));
     }
 
-    serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+    parse_worker_stdout(&output.stdout)
+}
+
+fn parse_worker_stdout(stdout: &[u8]) -> Result<serde_json::Value, String> {
+    let text = String::from_utf8_lossy(stdout);
+    let mut last_error = None;
+
+    for raw_line in text.lines().rev() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(value) if value.get("status").is_some() => return Ok(value),
+            Ok(_) => continue,
+            Err(error) => last_error = Some(error.to_string()),
+        }
+    }
+
+    let preview = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(3)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let detail = last_error.unwrap_or_else(|| "stdout did not contain JSON".to_string());
+    Err(format!(
+        "Worker stdout did not contain a structured JSON result: {detail}. stdout preview: {preview}"
+    ))
 }
 
 #[tauri::command]
@@ -425,6 +484,8 @@ fn load_llm_config_from_file(path: &Path) -> Result<LlmConfigView, String> {
             .cloned()
             .unwrap_or_else(|| DEFAULT_LLM_TIMEOUT_SECONDS.to_string()),
         output_dir: values.get(OUTPUT_DIR_ENV).cloned().unwrap_or_default(),
+        asr_model: resolve_asr_model_value(values.get(ASR_MODEL_ENV).cloned())?,
+        supported_asr_models: supported_asr_models(),
         has_api_key: values
             .get(LLM_API_KEY_ENV)
             .is_some_and(|value| !value.trim().is_empty()),
@@ -437,12 +498,15 @@ fn save_llm_config_to_file(path: &Path, config: LlmConfigInput) -> Result<LlmCon
     let model = sanitize_optional_env_value(config.model, "LLM model")?;
     let timeout_seconds = sanitize_optional_env_value(config.timeout_seconds, LLM_TIMEOUT_ENV)?;
     let output_dir = sanitize_optional_env_value(config.output_dir, OUTPUT_DIR_ENV)?;
+    let asr_model = resolve_asr_model_value(Some(config.asr_model))?;
     let new_api_key = sanitize_optional_env_value(config.api_key, LLM_API_KEY_ENV)?;
-    let should_save_llm =
-        !base_url.is_empty() || !model.is_empty() || !new_api_key.is_empty();
+    let should_save_llm = !base_url.is_empty() || !model.is_empty() || !new_api_key.is_empty();
 
     if !should_save_llm {
-        write_dotenv_updates(path, &[(OUTPUT_DIR_ENV, output_dir)])?;
+        write_dotenv_updates(
+            path,
+            &[(OUTPUT_DIR_ENV, output_dir), (ASR_MODEL_ENV, asr_model)],
+        )?;
         return load_llm_config_from_file(path);
     }
 
@@ -483,6 +547,7 @@ fn save_llm_config_to_file(path: &Path, config: LlmConfigInput) -> Result<LlmCon
         (LLM_MODEL_ENV, model),
         (LLM_TIMEOUT_ENV, timeout_seconds),
         (OUTPUT_DIR_ENV, output_dir),
+        (ASR_MODEL_ENV, asr_model),
     ];
     write_dotenv_updates(path, &updates)?;
     load_llm_config_from_file(path)
@@ -507,7 +572,44 @@ fn load_history_from_project(project_root: &Path) -> Result<Vec<HistoryItemView>
         .collect())
 }
 
-fn history_item_from_value(project_root: &Path, item: &serde_json::Value) -> Option<HistoryItemView> {
+fn apply_configured_asr_model_to_request(
+    dotenv_path: &Path,
+    request: &mut ProcessVideoRequest,
+) -> Result<(), String> {
+    let values = parse_dotenv_values(dotenv_path)?;
+    let configured_model = values.get(ASR_MODEL_ENV).cloned();
+    if configured_model.as_deref().unwrap_or("").trim().is_empty() {
+        request.model = resolve_asr_model_value(Some(request.model.clone()))?;
+    } else {
+        request.model = resolve_asr_model_value(configured_model)?;
+    }
+    Ok(())
+}
+
+fn supported_asr_models() -> Vec<String> {
+    SUPPORTED_ASR_MODELS
+        .iter()
+        .map(|model| (*model).to_string())
+        .collect()
+}
+
+fn resolve_asr_model_value(value: Option<String>) -> Result<String, String> {
+    let model = value.unwrap_or_default().trim().to_string();
+    if model.is_empty() {
+        return Ok(DEFAULT_ASR_MODEL.to_string());
+    }
+
+    if SUPPORTED_ASR_MODELS.contains(&model.as_str()) {
+        Ok(model)
+    } else {
+        Err(format!("Unsupported ASR model: {model}"))
+    }
+}
+
+fn history_item_from_value(
+    project_root: &Path,
+    item: &serde_json::Value,
+) -> Option<HistoryItemView> {
     let transcript_path = optional_string(item, "transcript_path");
     let insights_path = optional_string(item, "insights_path");
     let text = transcript_path
@@ -566,7 +668,9 @@ fn optional_string(value: &serde_json::Value, key: &str) -> Option<String> {
 
 fn read_text_file_if_exists(project_root: &Path, raw_path: &str) -> Option<String> {
     let path = resolve_history_path(project_root, raw_path);
-    fs::read_to_string(path).ok().map(|text| text.trim().to_string())
+    fs::read_to_string(path)
+        .ok()
+        .map(|text| text.trim().to_string())
 }
 
 fn read_insights_file_if_exists(project_root: &Path, raw_path: &str) -> Vec<String> {
@@ -577,16 +681,21 @@ fn read_insights_file_if_exists(project_root: &Path, raw_path: &str) -> Vec<Stri
     let Ok(payload) = serde_json::from_str::<serde_json::Value>(&content) else {
         return vec![];
     };
-    let Some(insights) = payload.get("insights").and_then(serde_json::Value::as_array) else {
+    let Some(insights) = payload
+        .get("insights")
+        .and_then(serde_json::Value::as_array)
+    else {
         return vec![];
     };
 
     insights
         .iter()
         .filter_map(|item| {
-            item.as_str()
-                .map(str::to_string)
-                .or_else(|| item.get("text").and_then(serde_json::Value::as_str).map(str::to_string))
+            item.as_str().map(str::to_string).or_else(|| {
+                item.get("text")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            })
         })
         .collect()
 }
@@ -780,8 +889,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_history_from_project, load_llm_config_from_file, run_blocking_worker_command,
-        save_llm_config_to_file, LlmConfigInput, WorkerProcessState,
+        apply_configured_asr_model_to_request, load_history_from_project,
+        load_llm_config_from_file, parse_worker_stdout, run_blocking_worker_command,
+        save_llm_config_to_file, LlmConfigInput, ProcessVideoRequest, WorkerProcessState,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -824,14 +934,27 @@ mod tests {
     fn blocking_worker_command_runs_on_background_thread() {
         let caller_thread = std::thread::current().id();
 
-        let ran_on_background_thread = tauri::async_runtime::block_on(
-            run_blocking_worker_command(move || {
+        let ran_on_background_thread =
+            tauri::async_runtime::block_on(run_blocking_worker_command(move || {
                 Ok(std::thread::current().id() != caller_thread)
-            }),
-        )
-        .expect("blocking command should complete");
+            }))
+            .expect("blocking command should complete");
 
         assert!(ran_on_background_thread);
+    }
+
+    #[test]
+    fn parse_worker_stdout_uses_last_json_result_when_stdout_contains_logs() {
+        let stdout = br#"[funasr] loading model cache
+Some dependency logged to stdout
+{"status":"completed","text":"ok","insights":["topic"],"transcript_path":"outputs/demo.txt","insights_path":"outputs/demo_insights.json","error":null}
+"#;
+
+        let parsed = parse_worker_stdout(stdout).expect("parse worker result");
+
+        assert_eq!(parsed["status"], "completed");
+        assert_eq!(parsed["text"], "ok");
+        assert_eq!(parsed["insights"][0], "topic");
     }
 
     #[test]
@@ -846,6 +969,7 @@ mod tests {
                 "FRAMEQ_LLM_MODEL=demo-model",
                 "FRAMEQ_LLM_TIMEOUT_SECONDS=42",
                 "FRAMEQ_OUTPUT_DIR=D:/FrameQ/results",
+                "FRAMEQ_ASR_MODEL=iic/SenseVoiceSmall",
             ]
             .join("\n"),
         )
@@ -858,6 +982,14 @@ mod tests {
         assert_eq!(config.model, "demo-model");
         assert_eq!(config.timeout_seconds, "42");
         assert_eq!(config.output_dir, "D:/FrameQ/results");
+        assert_eq!(config.asr_model, "iic/SenseVoiceSmall");
+        assert_eq!(
+            config.supported_asr_models,
+            vec![
+                "iic/SenseVoiceSmall".to_string(),
+                "Qwen/Qwen3-ASR-0.6B".to_string(),
+            ]
+        );
         assert!(config.has_api_key);
     }
 
@@ -883,6 +1015,7 @@ mod tests {
                 model: "new-model".to_string(),
                 timeout_seconds: "35".to_string(),
                 output_dir: "D:/FrameQ/custom-results".to_string(),
+                asr_model: "Qwen/Qwen3-ASR-0.6B".to_string(),
             },
         )
         .expect("save config");
@@ -895,6 +1028,7 @@ mod tests {
         assert!(saved.contains("FRAMEQ_LLM_MODEL=new-model"));
         assert!(saved.contains("FRAMEQ_LLM_TIMEOUT_SECONDS=35"));
         assert!(saved.contains("FRAMEQ_OUTPUT_DIR=D:/FrameQ/custom-results"));
+        assert!(saved.contains("FRAMEQ_ASR_MODEL=Qwen/Qwen3-ASR-0.6B"));
         assert!(saved.contains("OTHER_SETTING=keep-me"));
     }
 
@@ -910,11 +1044,15 @@ mod tests {
                 model: "demo-model".to_string(),
                 timeout_seconds: "30".to_string(),
                 output_dir: "".to_string(),
+                asr_model: "Qwen/Qwen3-ASR-0.6B".to_string(),
             },
         )
         .expect_err("missing key should fail");
 
-        assert_eq!(error, "LLM API key is required unless one is already saved.");
+        assert_eq!(
+            error,
+            "LLM API key is required unless one is already saved."
+        );
     }
 
     #[test]
@@ -929,15 +1067,36 @@ mod tests {
                 model: "".to_string(),
                 timeout_seconds: "".to_string(),
                 output_dir: "D:/FrameQ/results-only".to_string(),
+                asr_model: "iic/SenseVoiceSmall".to_string(),
             },
         )
         .expect("save output directory");
         let saved = fs::read_to_string(&env_path).expect("read saved env");
 
         assert_eq!(config.output_dir, "D:/FrameQ/results-only");
+        assert_eq!(config.asr_model, "iic/SenseVoiceSmall");
         assert!(!config.has_api_key);
         assert!(saved.contains("FRAMEQ_OUTPUT_DIR=D:/FrameQ/results-only"));
+        assert!(saved.contains("FRAMEQ_ASR_MODEL=iic/SenseVoiceSmall"));
         assert!(!saved.contains("FRAMEQ_LLM_API_KEY"));
+    }
+
+    #[test]
+    fn apply_configured_asr_model_overrides_worker_request_model() {
+        let env_path = temp_env_path("apply_configured_asr_model");
+        fs::write(&env_path, "FRAMEQ_ASR_MODEL=Qwen/Qwen3-ASR-0.6B").expect("write test env");
+        let mut request = ProcessVideoRequest {
+            url: "https://www.douyin.com/video/7646789377271647540".to_string(),
+            language: "Chinese".to_string(),
+            output_formats: vec!["txt".to_string(), "md".to_string()],
+            model: "Qwen/Qwen3-ASR-0.6B".to_string(),
+            generate_insights: true,
+            insightflow_mode: "embedded".to_string(),
+        };
+
+        apply_configured_asr_model_to_request(&env_path, &mut request).expect("apply asr model");
+
+        assert_eq!(request.model, "Qwen/Qwen3-ASR-0.6B");
     }
 
     #[test]

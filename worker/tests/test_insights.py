@@ -8,21 +8,28 @@ from frameq_worker.insightflow import (
     generate_insights_from_markdown,
     write_insight_files,
 )
+from frameq_worker.insightflow import prompt as prompt_module
+from frameq_worker.insightflow.prompt import build_question_prompt
 
 
 class FakeInsightClient:
-    def __init__(self) -> None:
+    def __init__(self, responses: list[str] | None = None) -> None:
         self.prompts: list[str] = []
+        self.responses = responses or [
+            json.dumps(
+                [
+                    "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
+                    "为什么流程编排可能比单点模型能力更关键？",
+                ],
+                ensure_ascii=False,
+            )
+        ]
 
     def generate(self, prompt: str) -> str:
         self.prompts.append(prompt)
-        return json.dumps(
-            [
-                "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
-                "为什么流程编排可能比单点模型能力更关键？",
-            ],
-            ensure_ascii=False,
-        )
+        if len(self.prompts) <= len(self.responses):
+            return self.responses[len(self.prompts) - 1]
+        return self.responses[-1]
 
 
 def test_markdown_splitter_preserves_heading_context() -> None:
@@ -37,7 +44,29 @@ def test_markdown_splitter_preserves_heading_context() -> None:
 
 def test_generate_insights_from_markdown_writes_json_and_markdown(tmp_path: Path) -> None:
     transcript = "# 视频文字稿\n\n这里是企业 AI 落地与流程编排相关的完整文字稿。"
-    client = FakeInsightClient()
+    client = FakeInsightClient(
+        responses=[
+            json.dumps(
+                [
+                    {
+                        "id": 1,
+                        "title": "企业 AI 落地",
+                        "summary": "讨论企业 AI 落地与流程编排的关系。",
+                        "excerpt": "这里是企业 AI 落地与流程编排相关的完整文字稿。",
+                        "question_count": 2,
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                [
+                    "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
+                    "为什么流程编排可能比单点模型能力更关键？",
+                ],
+                ensure_ascii=False,
+            ),
+        ]
+    )
 
     artifacts = generate_insights_from_markdown(
         markdown=transcript,
@@ -70,7 +99,181 @@ def test_generate_insights_from_markdown_writes_json_and_markdown(tmp_path: Path
         ],
     }
     assert "启发话题点" in artifacts.md_path.read_text(encoding="utf-8")
-    assert "阅读思考伙伴和议题策展者" in client.prompts[0]
+    assert "话题分段规划师" in client.prompts[0]
+    assert "阅读思考伙伴和议题策展者" in client.prompts[1]
+    assert "读完就知道可以从哪个角度思考" in client.prompts[1]
+    assert "问题长度尽量控制在一行可读范围内" in client.prompts[1]
+
+
+def test_build_topic_plan_prompt_requests_structured_topic_plan() -> None:
+    assert hasattr(prompt_module, "build_topic_plan_prompt")
+    prompt = prompt_module.build_topic_plan_prompt("这是一段没有分段的 ASR 文字稿。")
+
+    assert "话题分段规划师" in prompt
+    assert "忽略寒暄、重复、口头禅" in prompt
+    assert '"title"' in prompt
+    assert '"summary"' in prompt
+    assert '"excerpt"' in prompt
+    assert '"question_count"' in prompt
+
+
+def test_generate_insights_uses_topic_planner_before_question_generation(
+    tmp_path: Path,
+) -> None:
+    client = FakeInsightClient(
+        responses=[
+            json.dumps(
+                [
+                    {
+                        "id": 1,
+                        "title": "组织流程",
+                        "summary": "企业 AI 落地需要流程编排。",
+                        "excerpt": "企业 AI 落地时，流程编排比单点能力更关键。",
+                        "question_count": 2,
+                    },
+                    {
+                        "id": 2,
+                        "title": "上下文能力",
+                        "summary": "上下文能力影响 Agent 可用性。",
+                        "excerpt": "上下文能力决定 Agent 能否理解任务背景。",
+                        "question_count": 1,
+                    },
+                ],
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                [
+                    "为什么流程编排可能比单点模型能力更关键？",
+                    "企业应该如何判断 AI 是否真正进入业务流程？",
+                ],
+                ensure_ascii=False,
+            ),
+            json.dumps(["上下文能力为什么会影响 Agent 的可用性？"], ensure_ascii=False),
+        ]
+    )
+
+    artifacts = generate_insights_from_markdown(
+        markdown=(
+            "企业 AI 落地时，流程编排比单点能力更关键。"
+            "上下文能力决定 Agent 能否理解任务背景。"
+        ),
+        output_dir=tmp_path / "outputs",
+        output_stem="demo",
+        client=client,
+    )
+
+    assert len(client.prompts) == 3
+    assert "话题分段规划师" in client.prompts[0]
+    assert "组织流程" in client.prompts[1]
+    assert "生成不少于 2 个高质量问题" in client.prompts[1]
+    assert "上下文能力" in client.prompts[2]
+    assert [insight.chunk_id for insight in artifacts.insights] == [1, 1, 2]
+    assert [insight.text for insight in artifacts.insights] == [
+        "为什么流程编排可能比单点模型能力更关键？",
+        "企业应该如何判断 AI 是否真正进入业务流程？",
+        "上下文能力为什么会影响 Agent 的可用性？",
+    ]
+
+
+def test_build_question_prompt_accepts_additional_constraints() -> None:
+    prompt = build_question_prompt(
+        "这里是一段待处理文本。",
+        number=1,
+        global_prompt="只关注商业决策。",
+        question_prompt="避免技术细节题。",
+    )
+
+    assert "## 全局附加约束" in prompt
+    assert "只关注商业决策。" in prompt
+    assert "## 本次问题生成附加要求" in prompt
+    assert "避免技术细节题。" in prompt
+
+
+def test_planner_fallback_uses_one_question_per_thousand_chars(
+    tmp_path: Path,
+) -> None:
+    class SingleLargeChunkSplitter:
+        def split(self, markdown: str):
+            from frameq_worker.insightflow import MarkdownChunk
+
+            return [
+                MarkdownChunk(id=1, summary="large", content="内容" * 1300),
+            ]
+
+    client = FakeInsightClient(
+        responses=[
+            "not json",
+            json.dumps(["为什么流程编排可能比单点模型能力更关键？"], ensure_ascii=False),
+        ]
+    )
+
+    generate_insights_from_markdown(
+        markdown="ignored",
+        output_dir=tmp_path / "outputs",
+        output_stem="demo",
+        client=client,
+        splitter=SingleLargeChunkSplitter(),
+    )
+
+    assert "话题分段规划师" in client.prompts[0]
+    assert "生成不少于 2 个高质量问题" in client.prompts[1]
+
+
+def test_topic_planner_failure_falls_back_to_direct_generation(tmp_path: Path) -> None:
+    client = FakeInsightClient(
+        responses=[
+            "planner failed",
+            json.dumps(["为什么重试应该保留已有文字稿？"], ensure_ascii=False),
+        ]
+    )
+
+    artifacts = generate_insights_from_markdown(
+        markdown="# 视频文字稿\n\n这是一段用于重试的话题文字稿。",
+        output_dir=tmp_path / "outputs",
+        output_stem="demo",
+        client=client,
+    )
+
+    assert len(client.prompts) == 2
+    assert "话题分段规划师" in client.prompts[0]
+    assert "阅读思考伙伴和议题策展者" in client.prompts[1]
+    assert [insight.text for insight in artifacts.insights] == [
+        "为什么重试应该保留已有文字稿？"
+    ]
+
+
+def test_topic_planner_caps_total_question_count(tmp_path: Path) -> None:
+    topic_plan = [
+        {
+            "id": index,
+            "title": f"话题 {index}",
+            "summary": f"第 {index} 个话题摘要。",
+            "excerpt": f"第 {index} 个话题原文片段。",
+            "question_count": 3,
+        }
+        for index in range(1, 7)
+    ]
+    question_responses = [
+        json.dumps(
+            [f"话题 {topic_index} 的问题 {question_index}？" for question_index in range(1, 4)],
+            ensure_ascii=False,
+        )
+        for topic_index in range(1, 7)
+    ]
+    client = FakeInsightClient(
+        responses=[json.dumps(topic_plan, ensure_ascii=False), *question_responses]
+    )
+
+    artifacts = generate_insights_from_markdown(
+        markdown="这是一段用于测试总量上限的文字稿。",
+        output_dir=tmp_path / "outputs",
+        output_stem="demo",
+        client=client,
+    )
+
+    assert len(artifacts.insights) == 12
+    assert len(client.prompts) == 5
+    assert "话题 4" in client.prompts[-1]
 
 
 def test_write_insight_files_rejects_empty_insights(tmp_path: Path) -> None:
