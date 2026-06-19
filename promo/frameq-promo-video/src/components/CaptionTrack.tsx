@@ -22,9 +22,33 @@ type CaptionTrackProps = {
   keywords: string[];
 };
 
-const containsKeyTerm = (text: string, group: CaptionGroup | undefined, keywords: string[]) => {
-  const terms = [group?.highlight, ...keywords].filter((term): term is string => Boolean(term));
-  return terms.some((term) => text.includes(term));
+const findMatchingTerm = (
+  text: string,
+  group: CaptionGroup | undefined,
+  keywords: string[],
+) => {
+  const terms = [group?.highlight, ...keywords]
+    .filter(
+      (term): term is string =>
+        typeof term === "string" && term.length > 0 && text.includes(term),
+    )
+    .sort((left, right) => right.length - left.length);
+
+  return terms[0] ?? null;
+};
+
+const getCurrentCaption = (captions: Caption[], currentMs: number) => {
+  const activeCaption = captions.find(
+    (caption) => caption.startMs <= currentMs && caption.endMs > currentMs,
+  );
+
+  if (activeCaption) {
+    return activeCaption;
+  }
+
+  return captions
+    .filter((caption) => caption.endMs <= currentMs && currentMs - caption.endMs <= 250)
+    .sort((left, right) => right.endMs - left.endMs)[0] ?? null;
 };
 
 export const CaptionTrack: React.FC<CaptionTrackProps> = ({ captionWords, groups, keywords }) => {
@@ -36,20 +60,13 @@ export const CaptionTrack: React.FC<CaptionTrackProps> = ({ captionWords, groups
     (group) => frame >= group.startFrame && frame < group.endFrame,
   );
 
-  const visibleWords = captionWords.filter((caption) => {
-    if (!activeGroup) {
-      return caption.startMs <= currentMs && caption.endMs > currentMs;
-    }
+  const currentCaption = getCurrentCaption(captionWords, currentMs);
 
-    const groupStartMs = (activeGroup.startFrame / fps) * 1000;
-    const groupEndMs = (activeGroup.endFrame / fps) * 1000;
-    return caption.endMs > groupStartMs && caption.startMs < groupEndMs;
-  });
-
-  if (!activeGroup || visibleWords.length === 0) {
+  if (!activeGroup || !currentCaption) {
     return null;
   }
 
+  const matchingTerm = findMatchingTerm(currentCaption.text, activeGroup, keywords);
   const groupLocalFrame = frame - activeGroup.startFrame;
   const entrance = interpolate(groupLocalFrame, [0, 12], [18, 0], {
     extrapolateLeft: "clamp",
@@ -90,24 +107,33 @@ export const CaptionTrack: React.FC<CaptionTrackProps> = ({ captionWords, groups
           whiteSpace: "pre-wrap",
         }}
       >
-        {visibleWords.map((caption) => {
-          const isActive = caption.startMs <= currentMs && caption.endMs > currentMs;
-          const isKeyTerm = containsKeyTerm(caption.text, activeGroup, keywords);
-
-          return (
+        {matchingTerm
+          ? currentCaption.text.split(matchingTerm).map((textPart, index, parts) => (
+              <span key={`${currentCaption.startMs}-${index}`}>
+                {textPart}
+                {index < parts.length - 1 ? (
+                  <span
+                    style={{
+                      color: tokens.colors.accentWarm,
+                      backgroundColor: "rgba(250, 204, 21, 0.16)",
+                      borderRadius: tokens.layout.radius,
+                      padding: "0 8px 3px",
+                    }}
+                  >
+                    {matchingTerm}
+                  </span>
+                ) : null}
+              </span>
+            ))
+          : (
             <span
-              key={`${caption.startMs}-${caption.endMs}-${caption.text}`}
               style={{
-                color: isActive || isKeyTerm ? tokens.colors.accentWarm : tokens.colors.ink,
-                backgroundColor: isActive ? "rgba(250, 204, 21, 0.16)" : "transparent",
-                borderRadius: isActive ? tokens.layout.radius : 0,
-                padding: isActive ? "0 8px 3px" : 0,
+                color: tokens.colors.ink,
               }}
             >
-              {caption.text}
+              {currentCaption.text}
             </span>
-          );
-        })}
+          )}
       </div>
     </AbsoluteFill>
   );
