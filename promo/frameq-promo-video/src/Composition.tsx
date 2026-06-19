@@ -1,3 +1,3 @@
-export const MyComposition = () => {
+export const FrameQPromo = () => {
   return null;
 };

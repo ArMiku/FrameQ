@@ -22,6 +22,7 @@
     "react-dom": "latest"
   },
   "devDependencies": {
+    "@remotion/eslint-config-flat": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "typescript": "latest"
