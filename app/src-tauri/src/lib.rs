@@ -332,24 +332,29 @@ fn asr_model_available(paths: &RuntimePaths) -> bool {
 
 fn model_marker_exists(model_dir: &Path) -> bool {
     let marker = model_dir.join(MODEL_VERSION_FILE_NAME);
-    let sensevoice_model = model_dir
-        .join("models")
-        .join("iic")
-        .join("SenseVoiceSmall")
-        .join("model.pt");
-    let vad_model = model_dir
-        .join("models")
-        .join("iic")
-        .join("speech_fsmn_vad_zh-cn-16k-common-pytorch")
-        .join("model.pt");
     marker.is_file()
-        && sensevoice_model.is_file()
-        && vad_model.is_file()
+        && required_model_files_exist(model_dir)
         && fs::read_to_string(marker)
             .map(|content| {
                 content.contains(DEFAULT_ASR_MODEL) && content.contains(SENSEVOICE_VAD_MODEL)
             })
             .unwrap_or(false)
+}
+
+fn required_model_files_exist(model_dir: &Path) -> bool {
+    [model_dir.to_path_buf(), model_dir.join("models")]
+        .iter()
+        .any(|model_root| {
+            let sensevoice_model = model_root
+                .join("iic")
+                .join("SenseVoiceSmall")
+                .join("model.pt");
+            let vad_model = model_root
+                .join("iic")
+                .join("speech_fsmn_vad_zh-cn-16k-common-pytorch")
+                .join("model.pt");
+            sensevoice_model.is_file() && vad_model.is_file()
+        })
 }
 
 fn build_worker_command_spec(
@@ -1620,6 +1625,32 @@ Some dependency logged to stdout
     }
 
     #[test]
+    fn asr_model_availability_accepts_modelscope_snapshot_layout() {
+        let root = temp_dir("asr_model_availability_accepts_modelscope_snapshot_layout");
+        let paths = RuntimePaths {
+            resource_dir: root.join("resources"),
+            user_data_dir: root.join("app-data"),
+        };
+        let model_root = paths.user_data_dir.join("models");
+        fs::write(
+            create_parent(model_root.join("MODEL_VERSION.txt")),
+            "model=iic/SenseVoiceSmall\nvad=iic/speech_fsmn_vad_zh-cn-16k-common-pytorch\n",
+        )
+        .expect("write model marker");
+
+        let sensevoice_dir = model_root.join("iic").join("SenseVoiceSmall");
+        let vad_dir = model_root
+            .join("iic")
+            .join("speech_fsmn_vad_zh-cn-16k-common-pytorch");
+        fs::create_dir_all(&sensevoice_dir).expect("create sensevoice dir");
+        fs::create_dir_all(&vad_dir).expect("create vad dir");
+        fs::write(sensevoice_dir.join("model.pt"), "sensevoice").expect("write sensevoice model");
+        fs::write(vad_dir.join("model.pt"), "vad").expect("write vad model");
+
+        assert!(asr_model_available(&paths));
+    }
+
+    #[test]
     fn asr_model_availability_ignores_resource_model_marker() {
         let root = temp_dir("asr_model_availability_ignores_resource_model_marker");
         let paths = RuntimePaths {
@@ -1875,6 +1906,13 @@ Some dependency logged to stdout
 
     fn temp_env_path(test_name: &str) -> PathBuf {
         temp_dir(test_name).join(".env")
+    }
+
+    fn create_parent(path: PathBuf) -> PathBuf {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dir");
+        }
+        path
     }
 
     fn temp_dir(test_name: &str) -> PathBuf {

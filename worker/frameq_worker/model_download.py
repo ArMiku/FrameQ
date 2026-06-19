@@ -33,15 +33,7 @@ class ModelDownloadError(RuntimeError):
 
 def validate_asr_model_cache(cache_dir: Path) -> bool:
     marker = cache_dir / MODEL_VERSION_FILE_NAME
-    sensevoice_model = cache_dir / "models" / "iic" / "SenseVoiceSmall" / "model.pt"
-    vad_model = (
-        cache_dir
-        / "models"
-        / "iic"
-        / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
-        / "model.pt"
-    )
-    if not marker.is_file() or not sensevoice_model.is_file() or not vad_model.is_file():
+    if not marker.is_file() or not _has_required_model_files(cache_dir):
         return False
 
     try:
@@ -49,6 +41,15 @@ def validate_asr_model_cache(cache_dir: Path) -> bool:
     except OSError:
         return False
     return SENSEVOICE_MODEL_ID in marker_text and VAD_MODEL_ID in marker_text
+
+
+def _has_required_model_files(cache_dir: Path) -> bool:
+    for model_root in (cache_dir, cache_dir / "models"):
+        sensevoice_model = model_root / "iic" / "SenseVoiceSmall" / "model.pt"
+        vad_model = model_root / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch" / "model.pt"
+        if sensevoice_model.is_file() and vad_model.is_file():
+            return True
+    return False
 
 
 def download_asr_model_cache(

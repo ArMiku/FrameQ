@@ -31,6 +31,19 @@ def create_valid_cache(root: Path) -> None:
     )
 
 
+def create_valid_modelscope_cache(root: Path) -> None:
+    sensevoice_dir = root / "iic" / "SenseVoiceSmall"
+    vad_dir = root / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
+    sensevoice_dir.mkdir(parents=True)
+    vad_dir.mkdir(parents=True)
+    (sensevoice_dir / "model.pt").write_bytes(b"sensevoice")
+    (vad_dir / "model.pt").write_bytes(b"vad")
+    (root / "MODEL_VERSION.txt").write_text(
+        "model=iic/SenseVoiceSmall\nvad=iic/speech_fsmn_vad_zh-cn-16k-common-pytorch\n",
+        encoding="utf-8",
+    )
+
+
 def test_validate_asr_model_cache_requires_marker_and_model_files(tmp_path: Path) -> None:
     assert not validate_asr_model_cache(tmp_path)
 
@@ -38,6 +51,12 @@ def test_validate_asr_model_cache_requires_marker_and_model_files(tmp_path: Path
     assert not validate_asr_model_cache(tmp_path)
 
     create_valid_cache(tmp_path)
+    assert validate_asr_model_cache(tmp_path)
+
+
+def test_validate_asr_model_cache_accepts_modelscope_snapshot_layout(tmp_path: Path) -> None:
+    create_valid_modelscope_cache(tmp_path)
+
     assert validate_asr_model_cache(tmp_path)
 
 
