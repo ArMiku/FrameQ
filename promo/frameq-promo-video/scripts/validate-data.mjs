@@ -16,6 +16,11 @@ const expected = {
   durationInFrames: 1350,
 };
 
+const isObject = (value) =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isNonEmptyString = (value) => typeof value === "string" && value.trim().length > 0;
+
 for (const [key, value] of Object.entries(expected)) {
   if (data.composition?.[key] !== value) {
     throw new Error(`composition.${key} must be ${value}`);
@@ -30,7 +35,22 @@ if (!Array.isArray(data.captions) || data.captions.length !== 5) {
   throw new Error("Expected exactly 5 caption groups");
 }
 
-for (const scene of data.scenes) {
+for (const [index, scene] of data.scenes.entries()) {
+  if (!isObject(scene)) {
+    throw new Error(`Scene ${index} must be an object`);
+  }
+  if (!isNonEmptyString(scene.id)) {
+    throw new Error(`Scene ${index}.id must be a non-empty string`);
+  }
+  if (!isNonEmptyString(scene.label)) {
+    throw new Error(`Scene ${scene.id}.label must be a non-empty string`);
+  }
+  if (!Number.isInteger(scene.startFrame) || !Number.isFinite(scene.startFrame)) {
+    throw new Error(`Scene ${scene.id}.startFrame must be a finite integer`);
+  }
+  if (!Number.isInteger(scene.endFrame) || !Number.isFinite(scene.endFrame)) {
+    throw new Error(`Scene ${scene.id}.endFrame must be a finite integer`);
+  }
   if (scene.startFrame < 0 || scene.endFrame > expected.durationInFrames) {
     throw new Error(`Scene ${scene.id} is outside composition bounds`);
   }
@@ -53,6 +73,48 @@ if (data.scenes[0].startFrame !== 0) {
 
 if (data.scenes[data.scenes.length - 1].endFrame !== expected.durationInFrames) {
   throw new Error("Last scene must end at frame 1350");
+}
+
+for (const [index, caption] of data.captions.entries()) {
+  if (!isObject(caption)) {
+    throw new Error(`Caption ${index} must be an object`);
+  }
+  if (!isNonEmptyString(caption.text)) {
+    throw new Error(`Caption ${index}.text must be a non-empty string`);
+  }
+  if (!isNonEmptyString(caption.highlight)) {
+    throw new Error(`Caption ${index}.highlight must be a non-empty string`);
+  }
+  if (!Number.isInteger(caption.startFrame) || !Number.isFinite(caption.startFrame)) {
+    throw new Error(`Caption ${index}.startFrame must be a finite integer`);
+  }
+  if (!Number.isInteger(caption.endFrame) || !Number.isFinite(caption.endFrame)) {
+    throw new Error(`Caption ${index}.endFrame must be a finite integer`);
+  }
+  if (caption.startFrame < 0 || caption.endFrame > expected.durationInFrames) {
+    throw new Error(`Caption ${index} is outside composition bounds`);
+  }
+  if (caption.endFrame <= caption.startFrame) {
+    throw new Error(`Caption ${index} has invalid frame range`);
+  }
+
+  const scene = data.scenes[index];
+  if (caption.startFrame !== scene.startFrame || caption.endFrame !== scene.endFrame) {
+    throw new Error(`Caption ${index} must match scene ${scene.id} frame range`);
+  }
+  if (!caption.text.includes(caption.highlight)) {
+    throw new Error(`Caption ${index}.text must include its highlight`);
+  }
+}
+
+if (!Array.isArray(data.keywords)) {
+  throw new Error("keywords must be an array");
+}
+
+for (const [index, keyword] of data.keywords.entries()) {
+  if (!isNonEmptyString(keyword)) {
+    throw new Error(`keywords[${index}] must be a non-empty string`);
+  }
 }
 
 const requiredKeywords = ["本地优先", "文字稿", "启发话题点", "轻量分发"];
