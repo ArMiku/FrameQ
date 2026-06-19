@@ -1,0 +1,29 @@
+{
+  "name": "frameq-promo-video",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "remotion studio src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "validate:data": "node scripts/validate-data.mjs",
+    "voiceover": "powershell -ExecutionPolicy Bypass -File scripts/generate-voiceover.ps1",
+    "still:hook": "remotion still src/index.ts FrameQPromo --frame=30 --scale=0.25 out/still-hook.png",
+    "still:workflow": "remotion still src/index.ts FrameQPromo --frame=300 --scale=0.25 out/still-workflow.png",
+    "still:local": "remotion still src/index.ts FrameQPromo --frame=600 --scale=0.25 out/still-local.png",
+    "still:topics": "remotion still src/index.ts FrameQPromo --frame=990 --scale=0.25 out/still-topics.png",
+    "still:cta": "remotion still src/index.ts FrameQPromo --frame=1260 --scale=0.25 out/still-cta.png",
+    "render": "remotion render src/index.ts FrameQPromo out/frameq-promo.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "latest",
+    "remotion": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest"
+  }
+}

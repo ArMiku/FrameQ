@@ -41,3 +41,6 @@ __pycache__/
 .workbuddy/
 .superpowers/
 .worktrees/
+
+promo/**/out/
+promo/**/public/voiceover.wav
