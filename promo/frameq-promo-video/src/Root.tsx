@@ -1,4 +1,3 @@
-import "./index.css";
 import { Composition } from "remotion";
 import { FrameQPromo } from "./FrameQPromo";
 import promoData from "./promoData.json";
