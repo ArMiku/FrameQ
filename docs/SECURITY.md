@@ -1,5 +1,15 @@
 # Security and Compliance
 
+## Account and Billing Service
+
+- The account service stores only email accounts, OTP metadata, session token hashes, orders, entitlements, and webhook audit records.
+- Desktop session tokens are opaque random values. The server stores SHA-256 hashes only; the desktop client stores the raw token in app-local data under `auth/session.json`.
+- Email OTP codes expire after 10 minutes, allow at most 5 attempts, and must be rate-limited by email and IP.
+- Login deep-link tickets expire after 5 minutes, are single-use, and must be bound to a desktop-generated `state` value.
+- WeChat merchant credentials, APIv3 key, certificate private key, and SMTP credentials must only be configured through the server environment. They must not be bundled into the desktop installer.
+- WeChat payment callbacks must verify signatures, decrypt encrypted resources, and apply entitlement updates idempotently.
+- The service must not accept uploads or API fields containing video, audio, transcript, insight, cookie, or LLM API key data.
+
 <!-- 由 vibe-coding-launcher 生成。 -->
 
 ## Scope

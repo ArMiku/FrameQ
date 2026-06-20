@@ -1,5 +1,13 @@
 # FrameQ Architecture
 
+## 2026-06-21 Account and Billing Boundary
+
+- `server/` is a small TypeScript Fastify service for email OTP login, desktop session exchange, WeChat Native orders, payment webhooks, and entitlement status.
+- The service stores account and billing state in a private SQLite database at `server/data/frameq.sqlite` with WAL mode enabled. It is designed for a single writer service instance.
+- Desktop authentication uses `frameq://auth/callback` deep links. The browser receives a short-lived ticket, and the desktop client exchanges that ticket for an opaque session token.
+- The account service never receives video files, audio files, transcripts, generated insights, LLM API keys, cookies, model caches, or local history contents.
+- The existing local worker pipeline remains the only place where video extraction, ASR, and InsightFlow execution happen.
+
 <!-- 由 vibe-coding-launcher 生成。当前描述的是 MVP 目标架构；代码落地后必须同步更新。 -->
 
 ## 概述

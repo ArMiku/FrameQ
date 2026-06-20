@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id
+  email        String        @unique
+  createdAt    DateTime
+  updatedAt    DateTime
+  sessions     Session[]
+  orders       Order[]
+  entitlements Entitlement[]
+}
+
+model EmailOtp {
+  id         String    @id
+  email      String
+  state      String
+  codeHash   String
+  ip         String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime
+
+  @@index([email, state])
+}
+
+model DesktopLoginTicket {
+  id         String    @id
+  ticketHash String    @unique
+  state      String
+  userId     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime
+
+  @@index([state])
+}
+
+model Session {
+  id        String    @id
+  userId    String
+  tokenHash String    @unique
+  createdAt DateTime
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Order {
+  id              String    @id
+  userId          String
+  outTradeNo      String    @unique
+  amountFen       Int
+  status          String
+  codeUrl         String
+  expiresAt       DateTime
+  createdAt       DateTime
+  paidAt          DateTime?
+  transactionId   String?
+  providerPayload String
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Entitlement {
+  id        String   @id
+  userId    String
+  status    String
+  expiresAt DateTime
+  updatedAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId])
+}
+
+model WebhookEvent {
+  id         String   @id
+  provider   String
+  eventId    String
+  outTradeNo String
+  payload    String
+  createdAt  DateTime
+
+  @@unique([provider, eventId])
+}
+

@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, Window};
+use url::Url;
+use uuid::Uuid;
 
 const PROGRESS_EVENT_NAME: &str = "worker-progress";
 const PROGRESS_EVENT_PREFIX: &str = "FRAMEQ_PROGRESS ";
@@ -30,7 +32,10 @@ const ASR_MODEL_DOWNLOAD_SHA256_ENV: &str = "FRAMEQ_ASR_MODEL_DOWNLOAD_SHA256";
 const MODELSCOPE_ENDPOINT_ENV: &str = "FRAMEQ_MODELSCOPE_ENDPOINT";
 const SENSEVOICE_REVISION_ENV: &str = "FRAMEQ_SENSEVOICE_REVISION";
 const HISTORY_FILE_NAME: &str = "history.json";
+const ACCOUNT_SESSION_FILE_NAME: &str = "session.json";
+const ACCOUNT_PENDING_STATE_FILE_NAME: &str = "pending_auth_state.txt";
 const MODEL_VERSION_FILE_NAME: &str = "MODEL_VERSION.txt";
+const DEFAULT_SERVER_BASE_URL: &str = "http://127.0.0.1:8787";
 const DEFAULT_LLM_PROVIDER: &str = "openai_compatible";
 const DEFAULT_LLM_TIMEOUT_SECONDS: &str = "60";
 const DEFAULT_ASR_MODEL: &str = "iic/SenseVoiceSmall";
@@ -139,6 +144,94 @@ struct FirstRunStatusView {
 #[derive(Debug, Serialize)]
 struct AsrModelDownloadResult {
     started: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AuthCallback {
+    ticket: String,
+    state: String,
+}
+
+#[derive(Debug, Serialize)]
+struct BeginAuthFlowResult {
+    auth_url: String,
+    state: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct AccountSessionFile {
+    session_token: String,
+    email: String,
+    expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AccountStatusView {
+    authenticated: bool,
+    email: Option<String>,
+    entitlement_status: String,
+    entitlement_expires_at: Option<String>,
+    last_verified_at: Option<String>,
+    can_process: bool,
+    server_error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServerAccountStatus {
+    authenticated: bool,
+    email: String,
+    entitlement_status: String,
+    entitlement_expires_at: Option<String>,
+    last_verified_at: String,
+    can_process: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct SessionExchangeResponse {
+    session_token: String,
+    email: String,
+    expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CompleteAuthFlowResult {
+    authenticated: bool,
+    email: String,
+    can_process: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct WechatCheckoutView {
+    order_id: String,
+    amount_fen: i32,
+    currency: String,
+    code_url: String,
+    expires_at: String,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServerWechatCheckout {
+    order_id: String,
+    amount_fen: i32,
+    currency: String,
+    code_url: String,
+    expires_at: String,
+    status: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CheckoutStatusView {
+    order_id: String,
+    status: String,
+    entitlement_expires_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServerCheckoutStatus {
+    order_id: String,
+    status: String,
+    entitlement_expires_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -324,6 +417,18 @@ fn ensure_runtime_dirs(paths: &RuntimePaths) -> Result<(), String> {
 
 fn asr_model_dir(paths: &RuntimePaths) -> PathBuf {
     paths.user_data_dir.join("models")
+}
+
+fn account_auth_dir(paths: &RuntimePaths) -> PathBuf {
+    paths.user_data_dir.join("auth")
+}
+
+fn account_session_path(paths: &RuntimePaths) -> PathBuf {
+    account_auth_dir(paths).join(ACCOUNT_SESSION_FILE_NAME)
+}
+
+fn account_pending_state_path(paths: &RuntimePaths) -> PathBuf {
+    account_auth_dir(paths).join(ACCOUNT_PENDING_STATE_FILE_NAME)
 }
 
 fn asr_model_available(paths: &RuntimePaths) -> bool {
@@ -958,6 +1063,136 @@ fn cancel_asr_model_download(
 }
 
 #[tauri::command]
+fn begin_auth_flow(app: AppHandle) -> Result<BeginAuthFlowResult, String> {
+    let paths = resolve_runtime_paths(&app)?;
+    ensure_runtime_dirs(&paths)?;
+    fs::create_dir_all(account_auth_dir(&paths)).map_err(|error| error.to_string())?;
+    let state = generate_auth_state();
+    fs::write(account_pending_state_path(&paths), &state).map_err(|error| error.to_string())?;
+    Ok(BeginAuthFlowResult {
+        auth_url: build_auth_login_url(&server_base_url(), &state)?,
+        state,
+    })
+}
+
+#[tauri::command]
+async fn complete_auth_flow(app: AppHandle, callback_url: String) -> Result<CompleteAuthFlowResult, String> {
+    let paths = resolve_runtime_paths(&app)?;
+    ensure_runtime_dirs(&paths)?;
+    let pending_state = fs::read_to_string(account_pending_state_path(&paths))
+        .map_err(|_| "No pending login state was found.".to_string())?;
+    let callback = parse_auth_callback_url(&callback_url, pending_state.trim())?;
+    let exchange = exchange_auth_ticket(&server_base_url(), &callback).await?;
+    fs::create_dir_all(account_auth_dir(&paths)).map_err(|error| error.to_string())?;
+    write_account_session(&account_session_path(&paths), &exchange)?;
+    let _ = fs::remove_file(account_pending_state_path(&paths));
+    let status = get_account_status_from_server(&server_base_url(), &exchange.session_token).await?;
+    Ok(CompleteAuthFlowResult {
+        authenticated: true,
+        email: exchange.email,
+        can_process: status.can_process,
+    })
+}
+
+#[tauri::command]
+async fn get_account_status(app: AppHandle) -> Result<AccountStatusView, String> {
+    let paths = resolve_runtime_paths(&app)?;
+    ensure_runtime_dirs(&paths)?;
+    let Some(session) = read_account_session(&account_session_path(&paths))? else {
+        return Ok(guest_account_status());
+    };
+    match get_account_status_from_server(&server_base_url(), &session.session_token).await {
+        Ok(status) => Ok(AccountStatusView {
+            authenticated: status.authenticated,
+            email: Some(status.email),
+            entitlement_status: status.entitlement_status,
+            entitlement_expires_at: status.entitlement_expires_at,
+            last_verified_at: Some(status.last_verified_at),
+            can_process: status.can_process,
+            server_error: None,
+        }),
+        Err(error) => Ok(AccountStatusView {
+            authenticated: true,
+            email: Some(session.email),
+            entitlement_status: "unknown".to_string(),
+            entitlement_expires_at: None,
+            last_verified_at: None,
+            can_process: false,
+            server_error: Some(error),
+        }),
+    }
+}
+
+#[tauri::command]
+async fn logout_account(app: AppHandle) -> Result<(), String> {
+    let paths = resolve_runtime_paths(&app)?;
+    if let Some(session) = read_account_session(&account_session_path(&paths))? {
+        let _ = reqwest::Client::new()
+            .post(format!("{}/api/desktop/logout", server_base_url()))
+            .bearer_auth(session.session_token)
+            .send()
+            .await;
+    }
+    let _ = fs::remove_file(account_session_path(&paths));
+    Ok(())
+}
+
+#[tauri::command]
+async fn create_wechat_checkout(app: AppHandle) -> Result<WechatCheckoutView, String> {
+    let paths = resolve_runtime_paths(&app)?;
+    let session = require_account_session(&paths)?;
+    let response = reqwest::Client::new()
+        .post(format!("{}/api/desktop/billing/wechat-native", server_base_url()))
+        .bearer_auth(session.session_token)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Checkout failed with status {}.", response.status()));
+    }
+    let checkout = response
+        .json::<ServerWechatCheckout>()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(WechatCheckoutView {
+        order_id: checkout.order_id,
+        amount_fen: checkout.amount_fen,
+        currency: checkout.currency,
+        code_url: checkout.code_url,
+        expires_at: checkout.expires_at,
+        status: checkout.status,
+    })
+}
+
+#[tauri::command]
+async fn get_checkout_status(app: AppHandle, order_id: String) -> Result<CheckoutStatusView, String> {
+    let paths = resolve_runtime_paths(&app)?;
+    let session = require_account_session(&paths)?;
+    let response = reqwest::Client::new()
+        .get(format!(
+            "{}/api/desktop/billing/orders/{}",
+            server_base_url(),
+            percent_encode(&order_id)
+        ))
+        .bearer_auth(session.session_token)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Order status failed with status {}.", response.status()));
+    }
+    let status = response
+        .json::<ServerCheckoutStatus>()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(CheckoutStatusView {
+        order_id: status.order_id,
+        status: status.status,
+        entitlement_expires_at: status.entitlement_expires_at,
+    })
+}
+
+#[tauri::command]
 fn start_window_drag(window: Window) -> Result<(), String> {
     window.start_dragging().map_err(|error| error.to_string())
 }
@@ -1021,6 +1256,163 @@ fn load_llm_config_from_file(path: &Path) -> Result<LlmConfigView, String> {
 
 fn env_path(paths: &RuntimePaths) -> PathBuf {
     paths.user_data_dir.join(DOTENV_FILE_NAME)
+}
+
+fn server_base_url() -> String {
+    std::env::var("FRAMEQ_SERVER_BASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_SERVER_BASE_URL.to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
+
+fn generate_auth_state() -> String {
+    format!("state-{}", Uuid::new_v4().simple())
+}
+
+fn build_auth_login_url(server_base_url: &str, state: &str) -> Result<String, String> {
+    validate_auth_state(state)?;
+    let base = server_base_url.trim_end_matches('/');
+    if !base.starts_with("http://") && !base.starts_with("https://") {
+        return Err("FrameQ server URL must start with http:// or https://.".to_string());
+    }
+    Ok(format!(
+        "{}/login?desktop=1&state={}&redirect_uri={}",
+        base,
+        percent_encode(state),
+        percent_encode("frameq://auth/callback")
+    ))
+}
+
+fn parse_auth_callback_url(callback_url: &str, expected_state: &str) -> Result<AuthCallback, String> {
+    validate_auth_state(expected_state)?;
+    let url = Url::parse(callback_url).map_err(|_| "Auth callback URL is invalid.".to_string())?;
+    if url.scheme() != "frameq" || url.host_str() != Some("auth") || url.path() != "/callback" {
+        return Err("Auth callback URL target is invalid.".to_string());
+    }
+    let mut ticket: Option<String> = None;
+    let mut state: Option<String> = None;
+    for (key, value) in url.query_pairs() {
+        match key.as_ref() {
+            "ticket" => ticket = Some(value.to_string()),
+            "state" => state = Some(value.to_string()),
+            _ => {}
+        }
+    }
+    let Some(ticket) = ticket else {
+        return Err("Auth callback is missing a login ticket.".to_string());
+    };
+    let Some(state) = state else {
+        return Err("Auth callback is missing state.".to_string());
+    };
+    if state != expected_state {
+        return Err("Auth callback state does not match this device.".to_string());
+    }
+    if !ticket.starts_with("flt_") || ticket.len() > 256 {
+        return Err("Auth callback ticket is invalid.".to_string());
+    }
+    Ok(AuthCallback { ticket, state })
+}
+
+fn validate_auth_state(state: &str) -> Result<(), String> {
+    if state.len() < 8
+        || state.len() > 160
+        || !state
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '~' | '-'))
+    {
+        return Err("Auth state is invalid.".to_string());
+    }
+    Ok(())
+}
+
+fn percent_encode(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+async fn exchange_auth_ticket(
+    server_base_url: &str,
+    callback: &AuthCallback,
+) -> Result<SessionExchangeResponse, String> {
+    let response = reqwest::Client::new()
+        .post(format!("{}/api/desktop/sessions/exchange", server_base_url.trim_end_matches('/')))
+        .json(&serde_json::json!({
+            "ticket": callback.ticket,
+            "state": callback.state,
+        }))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Login exchange failed with status {}.", response.status()));
+    }
+    response
+        .json::<SessionExchangeResponse>()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn get_account_status_from_server(
+    server_base_url: &str,
+    session_token: &str,
+) -> Result<ServerAccountStatus, String> {
+    let response = reqwest::Client::new()
+        .get(format!("{}/api/desktop/account", server_base_url.trim_end_matches('/')))
+        .bearer_auth(session_token)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Account status failed with status {}.", response.status()));
+    }
+    response
+        .json::<ServerAccountStatus>()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+fn write_account_session(path: &Path, session: &SessionExchangeResponse) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let session_file = AccountSessionFile {
+        session_token: session.session_token.clone(),
+        email: session.email.clone(),
+        expires_at: session.expires_at.clone(),
+    };
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&session_file).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn read_account_session(path: &Path) -> Result<Option<AccountSessionFile>, String> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    serde_json::from_str::<AccountSessionFile>(&content)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn require_account_session(paths: &RuntimePaths) -> Result<AccountSessionFile, String> {
+    read_account_session(&account_session_path(paths))?
+        .ok_or_else(|| "Please log in to FrameQ first.".to_string())
+}
+
+fn guest_account_status() -> AccountStatusView {
+    AccountStatusView {
+        authenticated: false,
+        email: None,
+        entitlement_status: "inactive".to_string(),
+        entitlement_expires_at: None,
+        last_verified_at: None,
+        can_process: false,
+        server_error: None,
+    }
 }
 
 fn save_llm_config_to_file(path: &Path, config: LlmConfigInput) -> Result<LlmConfigView, String> {
@@ -1392,6 +1784,12 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(WorkerProcessState::default()))
         .manage(Arc::new(ModelDownloadProcessState::default()))
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.emit("frameq-deep-link-args", argv);
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -1404,6 +1802,12 @@ pub fn run() {
             check_first_run,
             download_asr_model,
             cancel_asr_model_download,
+            begin_auth_flow,
+            complete_auth_flow,
+            get_account_status,
+            logout_account,
+            create_wechat_checkout,
+            get_checkout_status,
             start_window_drag,
             close_window,
             minimize_window,
@@ -1419,11 +1823,12 @@ pub fn run() {
 mod tests {
     use super::{
         apply_configured_asr_model_to_request, asr_model_available,
-        build_model_download_command_spec, build_worker_command_spec, load_history_from_project,
-        load_llm_config_from_file, normalize_resource_dir, parse_worker_output_or_fallback,
-        parse_worker_stdout, run_blocking_worker_command, save_llm_config_to_file,
-        supported_asr_models, LlmConfigInput, ProcessVideoRequest, ProcessVideoResult,
-        RuntimePaths, WorkerError, WorkerInvocation, WorkerProcessState,
+        build_auth_login_url, build_model_download_command_spec, build_worker_command_spec,
+        load_history_from_project, load_llm_config_from_file, normalize_resource_dir,
+        parse_auth_callback_url, parse_worker_output_or_fallback, parse_worker_stdout,
+        run_blocking_worker_command, save_llm_config_to_file, supported_asr_models,
+        AuthCallback, LlmConfigInput, ProcessVideoRequest, ProcessVideoResult, RuntimePaths,
+        WorkerError, WorkerInvocation, WorkerProcessState,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1622,6 +2027,48 @@ Some dependency logged to stdout
         fs::write(vad_dir.join("model.pt"), "vad").expect("write vad model");
 
         assert!(asr_model_available(&paths));
+    }
+
+    #[test]
+    fn auth_login_url_includes_state_and_redirect_scheme() {
+        let url = build_auth_login_url("https://frameq.example", "state-123456")
+            .expect("build auth url");
+
+        assert_eq!(
+            url,
+            "https://frameq.example/login?desktop=1&state=state-123456&redirect_uri=frameq%3A%2F%2Fauth%2Fcallback"
+        );
+    }
+
+    #[test]
+    fn auth_callback_parser_accepts_matching_state() {
+        let callback = parse_auth_callback_url(
+            "frameq://auth/callback?ticket=flt_abc123&state=state-123456",
+            "state-123456",
+        )
+        .expect("parse auth callback");
+
+        assert_eq!(
+            callback,
+            AuthCallback {
+                ticket: "flt_abc123".to_string(),
+                state: "state-123456".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn auth_callback_parser_rejects_wrong_state_or_path() {
+        assert!(parse_auth_callback_url(
+            "frameq://auth/callback?ticket=flt_abc123&state=other-state",
+            "state-123456",
+        )
+        .is_err());
+        assert!(parse_auth_callback_url(
+            "frameq://billing/callback?ticket=flt_abc123&state=state-123456",
+            "state-123456",
+        )
+        .is_err());
     }
 
     #[test]

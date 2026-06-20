@@ -1,11 +1,13 @@
 import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { listen, type Event } from "@tauri-apps/api/event";
+import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
   AlertTriangle,
   CheckCircle2,
   Circle,
   Clock3,
   Copy,
+  CreditCard,
   Download,
   FileText,
   FolderOpen,
@@ -17,9 +19,11 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  UserRound,
   X,
 } from "lucide-react";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import QRCode from "qrcode";
 import "./App.css";
 import {
   canSubmitUrl,
@@ -53,6 +57,16 @@ import {
 } from "./settingsClient";
 import { getHistory, historyItemToWorkerResult, type HistoryItem } from "./historyClient";
 import { shouldApplyModelDownloadUpdate } from "./modelDownloadState";
+import {
+  beginAuthFlow,
+  completeAuthFlow,
+  createWechatCheckout,
+  getAccountStatus,
+  getCheckoutStatus,
+  logoutAccount,
+  type WechatCheckout,
+} from "./accountClient";
+import { canProcessWithAccount, createGuestAccountStatus, type AccountStatus } from "./accountState";
 import {
   calculateDraggedWindowPosition,
   closeWindow,
@@ -219,6 +233,13 @@ function App() {
     progress: 0,
   });
   const [modelDownloadNotice, setModelDownloadNotice] = useState("");
+  const [account, setAccount] = useState<AccountStatus>(createGuestAccountStatus);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountNotice, setAccountNotice] = useState("");
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [checkout, setCheckout] = useState<WechatCheckout | null>(null);
+  const [checkoutQrDataUrl, setCheckoutQrDataUrl] = useState("");
+  const [checkoutChecking, setCheckoutChecking] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyNotice, setHistoryNotice] = useState("");
@@ -303,6 +324,86 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    void refreshAccountStatus();
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+
+    async function registerDeepLinkListeners() {
+      try {
+        const currentUrls = await getCurrent();
+        if (!cancelled && currentUrls) {
+          for (const url of currentUrls) {
+            void handleAuthCallback(url);
+          }
+        }
+        unlisten = await onOpenUrl((urls) => {
+          for (const url of urls) {
+            void handleAuthCallback(url);
+          }
+        });
+      } catch {
+        // Browser-only tests and Vite preview do not provide the Tauri deep-link plugin.
+      }
+    }
+
+    void registerDeepLinkListeners();
+    return () => {
+      cancelled = true;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+
+  async function refreshAccountStatus() {
+    setAccountLoading(true);
+    try {
+      const status = await getAccountStatus();
+      setAccount(status);
+      setAccountNotice(status.serverError ? `账号状态刷新失败：${status.serverError}` : "");
+    } catch {
+      setAccount({
+        authenticated: true,
+        email: "browser-preview@frameq.local",
+        entitlementStatus: "active",
+        entitlementExpiresAt: null,
+        lastVerifiedAt: null,
+        canProcess: true,
+        serverError: "Browser preview fallback",
+      });
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  async function handleAuthCallback(callbackUrl: string) {
+    if (!callbackUrl.startsWith("frameq://auth/callback")) {
+      return;
+    }
+    setAccountOpen(true);
+    setAccountLoading(true);
+    setAccountNotice("正在完成登录...");
+    try {
+      await completeAuthFlow(callbackUrl);
+      await refreshAccountStatus();
+      setAccountNotice("登录已完成。");
+    } catch (error) {
+      setAccountNotice(`登录失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  function openAccountPanel(notice?: string) {
+    setAccountOpen(true);
+    setAccountNotice(notice ?? "");
+    void refreshAccountStatus();
+  }
 
   function updateAsrModelStatus(status: FirstRunStatus) {
     setAsrModelStatus({
@@ -434,6 +535,10 @@ function App() {
     if (!canSubmit) {
       return;
     }
+    if (!canProcessWithAccount(account)) {
+      openAccountPanel("请先登录并开通 FrameQ 月卡后再开始新任务。");
+      return;
+    }
     const submittedUrl = workflow.url;
     const operationId = operationIdRef.current + 1;
     operationIdRef.current = operationId;
@@ -492,6 +597,10 @@ function App() {
 
   async function retryInsightGeneration() {
     if (!workflow.transcriptPath) {
+      return;
+    }
+    if (!canProcessWithAccount(account)) {
+      openAccountPanel("请先登录并开通 FrameQ 月卡后再重试话题点生成。");
       return;
     }
 
@@ -581,6 +690,85 @@ function App() {
     setSettingsOpen(true);
     await loadSettings();
   }
+
+  async function startLoginFlow() {
+    setAccountLoading(true);
+    setAccountNotice("正在打开登录页面...");
+    try {
+      const auth = await beginAuthFlow();
+      await openUrl(auth.authUrl);
+      setAccountNotice("登录页面已打开。请在浏览器中输入邮箱验证码，完成后会自动回到 FrameQ。");
+    } catch (error) {
+      setAccountNotice(`无法开始登录：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  async function startWechatCheckout() {
+    setAccountLoading(true);
+    setAccountNotice("");
+    setCheckout(null);
+    setCheckoutQrDataUrl("");
+    try {
+      const nextCheckout = await createWechatCheckout();
+      setCheckout(nextCheckout);
+      setCheckoutQrDataUrl(await QRCode.toDataURL(nextCheckout.codeUrl, { margin: 1, width: 224 }));
+      setAccountNotice("请使用微信扫描二维码完成 9.9 元月卡支付。");
+    } catch (error) {
+      setAccountNotice(`创建支付订单失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  async function refreshCheckoutStatus() {
+    if (!checkout) {
+      return;
+    }
+    setCheckoutChecking(true);
+    try {
+      const status = await getCheckoutStatus(checkout.orderId);
+      setCheckout((current) => (current ? { ...current, status: status.status } : current));
+      if (status.status === "paid") {
+        await refreshAccountStatus();
+        setAccountNotice("支付已确认，月卡已生效。");
+      } else {
+        setAccountNotice("订单尚未支付成功，请稍后刷新状态。");
+      }
+    } catch (error) {
+      setAccountNotice(`刷新支付状态失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setCheckoutChecking(false);
+    }
+  }
+
+  async function signOutAccount() {
+    setAccountLoading(true);
+    try {
+      await logoutAccount();
+      setAccount(createGuestAccountStatus());
+      setCheckout(null);
+      setCheckoutQrDataUrl("");
+      setAccountNotice("已退出登录。");
+    } catch (error) {
+      setAccountNotice(`退出登录失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!accountOpen || !checkout || checkout.status !== "pending") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshCheckoutStatus();
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [accountOpen, checkout?.orderId, checkout?.status]);
 
   async function loadSettings(successNotice?: string) {
     setSettingsLoading(true);
@@ -738,6 +926,16 @@ function App() {
           .filter((line) => line.toLocaleLowerCase().includes(searchQuery))
           .join("\n")
       : workflow.text;
+  const accountChipLabel = canProcessWithAccount(account)
+    ? "月卡有效"
+    : account.authenticated
+      ? "续费"
+      : "登录";
+  const accountStatusText = canProcessWithAccount(account)
+    ? `月卡有效${account.entitlementExpiresAt ? `至 ${formatHistoryDate(account.entitlementExpiresAt)}` : ""}`
+    : account.authenticated
+      ? "未开通月卡"
+      : "未登录";
 
   return (
     <main className="app-shell">
@@ -773,6 +971,15 @@ function App() {
           </div>
 
           <div className="topbar-actions toolbar-actions">
+            <button
+              className={`account-chip ${canProcessWithAccount(account) ? "active" : ""}`}
+              type="button"
+              onClick={() => openAccountPanel()}
+              aria-label="账号与月卡"
+            >
+              <UserRound size={15} />
+              <span>{accountChipLabel}</span>
+            </button>
             <button className="icon-button" type="button" onClick={openHistory} aria-label="查看历史">
               <HistoryIcon size={17} />
             </button>
@@ -926,6 +1133,91 @@ function App() {
           ) : null}
         </section>
       </section>
+
+      {accountOpen ? (
+        <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={() => setAccountOpen(false)}>
+          <section
+            className="sheet-panel detail-modal account-modal account-sheet"
+            aria-label="账号与月卡"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modal-header sheet-header">
+              <div>
+                <p className="section-label">Account</p>
+                <h2>账号与月卡</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="关闭账号面板">
+                <X size={18} />
+              </button>
+            </header>
+            <div className="account-content">
+              <p className="settings-warning privacy-callout">
+                <ShieldCheck size={16} />
+                <span>账号服务只验证登录、订单和月卡状态；视频、音频、文字稿、历史记录和 LLM Key 仍保留在本机。</span>
+              </p>
+              <div className={`account-status-card ${canProcessWithAccount(account) ? "active" : "inactive"}`}>
+                <div>
+                  <span className="account-status-label">{accountStatusText}</span>
+                  <strong>{account.email ?? "FrameQ 账号"}</strong>
+                  {account.serverError ? <small>{account.serverError}</small> : null}
+                </div>
+              </div>
+
+              {checkout ? (
+                <div className="checkout-panel">
+                  <div>
+                    <span className="account-status-label">微信扫码支付</span>
+                    <strong>{(checkout.amountFen / 100).toFixed(2)} 元 / 31 天</strong>
+                    <small>订单 {checkout.orderId}</small>
+                    <small>状态：{checkout.status}</small>
+                  </div>
+                  {checkoutQrDataUrl ? (
+                    <img className="checkout-qr" src={checkoutQrDataUrl} alt="微信支付二维码" />
+                  ) : null}
+                </div>
+              ) : null}
+
+              {accountNotice ? <p className="action-notice inline-notice">{accountNotice}</p> : null}
+            </div>
+            <div className="settings-actions sheet-footer">
+              {account.authenticated ? (
+                <button type="button" className="secondary-button" onClick={signOutAccount} disabled={accountLoading}>
+                  <span>退出登录</span>
+                </button>
+              ) : (
+                <button type="button" className="secondary-button" onClick={() => setAccountOpen(false)}>
+                  <span>稍后</span>
+                </button>
+              )}
+              {account.authenticated ? (
+                checkout ? (
+                  <button type="button" className="primary-button" onClick={refreshCheckoutStatus} disabled={checkoutChecking}>
+                    <CreditCard size={16} />
+                    <span>{checkoutChecking ? "刷新中" : "刷新支付状态"}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={startWechatCheckout}
+                    disabled={accountLoading || canProcessWithAccount(account)}
+                  >
+                    <CreditCard size={16} />
+                    <span>{canProcessWithAccount(account) ? "月卡已生效" : "微信支付 9.9 元"}</span>
+                  </button>
+                )
+              ) : (
+                <button type="button" className="primary-button" onClick={startLoginFlow} disabled={accountLoading}>
+                  <UserRound size={16} />
+                  <span>{accountLoading ? "登录中" : "邮箱登录"}</span>
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {modelGuideOpen ? (
         <div

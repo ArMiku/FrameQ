@@ -23,6 +23,11 @@ models/*
 outputs/*
 work/*
 logs/*
+server/data/
+server/backups/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # Local config and secrets
 .env
@@ -41,3 +46,5 @@ __pycache__/
 .workbuddy/
 .superpowers/
 .worktrees/
+
+promo-video/

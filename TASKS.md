@@ -1,5 +1,9 @@
 # Tasks
 
+## Account and Billing
+
+- [x] Add account login and WeChat 9.9 yuan monthly pass (2026-06-21) ✅ TypeScript Fastify service with Prisma SQLite, email OTP login, desktop deep-link session exchange, WeChat Native order/webhook flow, and client-side processing gate; server/app/Rust/docs gates passed.
+
 ## 进行中
 
 ## 待办

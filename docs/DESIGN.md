@@ -1,5 +1,14 @@
 # FrameQ Design Guidelines
 
+## Account and Payment UI
+
+- The toolbar exposes account status as a compact utility control, not as a marketing banner.
+- Login and payment flows use sheet-style panels consistent with settings/history.
+- Account copy must clearly distinguish local processing from server-side account/payment verification.
+- If the user is not entitled, submitting a URL or retrying insights opens the account/payment sheet and does not start worker processing.
+- The payment sheet shows the monthly price, WeChat scan QR code, order expiration, and refresh status action in a stable layout.
+- Successful payment returns the user to the existing processing workflow without changing the local-first worker UI stages.
+
 <!-- 由 vibe-coding-launcher 生成。 -->
 
 ## Product Shape

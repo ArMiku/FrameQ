@@ -26,6 +26,13 @@
       "csp": null
     }
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["frameq"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis", "dmg"],
