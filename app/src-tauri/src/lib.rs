@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, Window};
+use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 use uuid::Uuid;
 
@@ -1791,6 +1792,13 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            #[cfg(any(windows, target_os = "linux"))]
+            if let Err(error) = app.deep_link().register_all() {
+                eprintln!("[frameq] failed to register deep links: {error}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             process_video,
