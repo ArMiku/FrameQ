@@ -97,6 +97,31 @@ describe("desktop account routes", () => {
     });
   });
 
+  test("returns a generic error when email delivery fails", async () => {
+    const app = buildServer({
+      store: new MemoryStore(),
+      sendOtp: async () => {
+        throw new Error("smtp password secret leaked by provider");
+      },
+      createNativePayment: async () => ({
+        codeUrl: "weixin://wxpay/bizpayurl?pr=test",
+        providerPayload: {},
+      }),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/email/start",
+      payload: { email: "user@example.com", state: "state-1001" },
+      remoteAddress: "203.0.113.10",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: "Could not send verification code. Please try again later.",
+    });
+  });
+
   test("rejects WeChat notifications when signature parsing fails", async () => {
     const app = buildServer({
       store: new MemoryStore(),

@@ -36,6 +36,44 @@ describe("email OTP auth", () => {
     expect(otp?.expiresAt.toISOString()).toBe("2026-06-21T08:10:00.000Z");
   });
 
+  test("does not leave a usable OTP or throttle retry when email delivery fails", async () => {
+    let attempts = 0;
+    const auth = new AuthService({
+      store,
+      now: () => now,
+      sendOtp: async () => {
+        attempts += 1;
+        throw new Error("smtp password secret leaked by provider");
+      },
+    });
+
+    await expect(
+      auth.startEmailLogin({
+        email: "user@example.com",
+        ip: "203.0.113.10",
+        state: "state-abc",
+      }),
+    ).rejects.toThrow("Could not send verification code. Please try again later.");
+    await expect(
+      auth.startEmailLogin({
+        email: "user@example.com",
+        ip: "203.0.113.10",
+        state: "state-abc",
+      }),
+    ).rejects.toThrow("Could not send verification code. Please try again later.");
+
+    expect(attempts).toBe(2);
+    expect(store.emailOtps).toHaveLength(2);
+    expect(store.emailOtps.every((otp) => otp.consumedAt?.toISOString() === now.toISOString())).toBe(true);
+    await expect(
+      auth.verifyEmailCode({
+        email: "user@example.com",
+        code: "123456",
+        state: "state-abc",
+      }),
+    ).rejects.toThrow("Verification code is invalid or expired.");
+  });
+
   test("verifies a code, creates a single-use desktop ticket, and exchanges it once", async () => {
     const auth = new AuthService({
       store,
@@ -110,4 +148,3 @@ describe("email OTP auth", () => {
     ).rejects.toThrow("Verification code is invalid or expired.");
   });
 });
-

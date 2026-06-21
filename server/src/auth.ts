@@ -35,7 +35,7 @@ export class AuthService {
     }
 
     const code = otpCode();
-    await this.store.createEmailOtp({
+    const otp = await this.store.createEmailOtp({
       email,
       state: input.state,
       codeHash: sha256(code),
@@ -43,8 +43,13 @@ export class AuthService {
       expiresAt: new Date(now.getTime() + OTP_TTL_MS),
       createdAt: now,
     });
-    this.recentStarts.set(rateKey, now);
-    await this.sendOtp(email, code);
+    try {
+      await this.sendOtp(email, code);
+      this.recentStarts.set(rateKey, now);
+    } catch {
+      await this.store.consumeOtp(otp.id, now).catch(() => undefined);
+      throw new Error("Could not send verification code. Please try again later.");
+    }
   }
 
   async verifyEmailCode(input: {
@@ -129,4 +134,3 @@ export function validateState(state: string): void {
     throw new Error("Login state is invalid.");
   }
 }
-
