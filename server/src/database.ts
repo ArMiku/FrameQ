@@ -17,8 +17,13 @@ export function resolveDatabaseUrl(): string {
 export async function createPrismaClient(): Promise<PrismaClient> {
   process.env.DATABASE_URL = resolveDatabaseUrl();
   const prisma = new PrismaClient();
-  await prisma.$connect();
-  await prisma.$executeRawUnsafe("PRAGMA journal_mode=WAL");
-  await prisma.$executeRawUnsafe("PRAGMA busy_timeout=5000");
-  return prisma;
+  try {
+    await prisma.$connect();
+    await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL");
+    await prisma.$queryRawUnsafe("PRAGMA busy_timeout=5000");
+    return prisma;
+  } catch (error) {
+    await prisma.$disconnect().catch(() => undefined);
+    throw error;
+  }
 }

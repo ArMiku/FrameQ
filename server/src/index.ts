@@ -1,3 +1,4 @@
+import "./env.js";
 import { createPrismaClient } from "./database.js";
 import { createOtpSender } from "./email.js";
 import { PrismaStore } from "./prismaStore.js";
