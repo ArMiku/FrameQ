@@ -22,7 +22,7 @@ Internet
 - Ubuntu 22.04/24.04 LTS 或同类 Linux。
 - Node.js 22 LTS。
 - Nginx 1.22+。
-- 一个解析到服务器的 HTTPS 域名，例如 `frameq.example.com`。
+- 一个解析到服务器的 HTTPS 域名：`8xf.pro`。
 - 可用 SMTP 账号，用于桌面端和管理员邮箱验证码。
 - 可选：WeChat Pay Native 商户配置。
 
@@ -89,7 +89,7 @@ WECHAT_APP_ID=
 WECHAT_MCH_ID=
 WECHAT_MCH_SERIAL_NO=
 WECHAT_MCH_PRIVATE_KEY=
-WECHAT_NOTIFY_URL=https://frameq.example.com/api/wechat/notify
+WECHAT_NOTIFY_URL=https://8xf.pro/api/wechat/notify
 WECHAT_API_V3_KEY=
 WECHAT_PLATFORM_CERT_PEM=
 WECHAT_DEV_INSECURE_NOTIFY=0
@@ -139,7 +139,7 @@ sudo systemctl reload nginx
 如果使用 Certbot，可先启用 HTTP server block，再执行：
 
 ```bash
-sudo certbot --nginx -d frameq.example.com
+sudo certbot --nginx -d 8xf.pro
 ```
 
 Nginx 只暴露 80/443。FrameQ server 只监听 `127.0.0.1:8787`，不要把 8787 端口开放到公网。
@@ -147,8 +147,8 @@ Nginx 只暴露 80/443。FrameQ server 只监听 `127.0.0.1:8787`，不要把 87
 ## 7. 上线检查
 
 ```bash
-curl -I https://frameq.example.com/login
-curl -I https://frameq.example.com/admin/login
+curl -I https://8xf.pro/login
+curl -I https://8xf.pro/admin/login
 ```
 
 手动验证：
@@ -159,7 +159,7 @@ curl -I https://frameq.example.com/admin/login
 - 管理员登录后可以生成激活码。
 - 桌面端可以完成邮箱登录并兑换激活码。
 - 如果配置了 LLM，桌面端生成话题点时会扣减一次额度。
-- 如果启用微信支付，微信平台 notify URL 指向 `https://frameq.example.com/api/wechat/notify`。
+- 如果启用微信支付，微信平台 notify URL 指向 `https://8xf.pro/api/wechat/notify`。
 
 ## 8. 备份与恢复
 
