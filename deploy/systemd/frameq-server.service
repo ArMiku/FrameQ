@@ -1,0 +1,25 @@
+[Unit]
+Description=FrameQ account and activation server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=frameq
+Group=frameq
+WorkingDirectory=/opt/frameq/FrameQ/server
+Environment=NODE_ENV=production
+ExecStart=/opt/frameq/FrameQ/server/node_modules/.bin/tsx src/index.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/frameq/FrameQ/server/data /opt/frameq/FrameQ/server/backups /opt/frameq/FrameQ/server/logs
+
+[Install]
+WantedBy=multi-user.target
