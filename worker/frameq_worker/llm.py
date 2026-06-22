@@ -57,10 +57,7 @@ class OpenAICompatibleInsightClient:
                 self.timeout_seconds,
             )
         except urllib.error.HTTPError as exc:
-            raise InsightGenerationError(
-                "INSIGHTFLOW_LLM_REQUEST_FAILED",
-                f"LLM request failed with HTTP {exc.code}.",
-            ) from exc
+            raise _llm_request_http_error(exc) from exc
         except TimeoutError as exc:
             raise InsightGenerationError(
                 "INSIGHTFLOW_LLM_REQUEST_TIMEOUT",
@@ -226,6 +223,23 @@ def _managed_checkout_http_error(error: urllib.error.HTTPError) -> InsightGenera
     )
 
 
+def _llm_request_http_error(error: urllib.error.HTTPError) -> InsightGenerationError:
+    detail = _extract_http_error_detail(error)
+    if _looks_like_content_safety_block(detail):
+        return InsightGenerationError(
+            "INSIGHTFLOW_LLM_CONTENT_BLOCKED",
+            _with_provider_detail(
+                "LLM provider blocked the request with its content safety policy.",
+                detail,
+            ),
+        )
+
+    return InsightGenerationError(
+        "INSIGHTFLOW_LLM_REQUEST_FAILED",
+        _with_provider_detail(f"LLM request failed with HTTP {error.code}.", detail),
+    )
+
+
 def _extract_error_code(error: urllib.error.HTTPError) -> str:
     try:
         payload = json.loads(error.read().decode("utf-8"))
@@ -233,6 +247,79 @@ def _extract_error_code(error: urllib.error.HTTPError) -> str:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return ""
     return code if isinstance(code, str) else ""
+
+
+def _extract_http_error_detail(error: urllib.error.HTTPError) -> str:
+    try:
+        raw_body = error.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+    raw_body = raw_body.strip()
+    if not raw_body:
+        return ""
+
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError:
+        return _compact_error_detail(raw_body)
+
+    extracted = _extract_error_detail_from_json(payload)
+    return _compact_error_detail(extracted or raw_body)
+
+
+def _extract_error_detail_from_json(payload: object) -> str:
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            parts = [
+                str(error.get(key)).strip()
+                for key in ("code", "type", "message")
+                if error.get(key)
+            ]
+            return ": ".join(parts)
+        if isinstance(error, str):
+            return error
+
+        parts = [
+            str(payload.get(key)).strip()
+            for key in ("code", "type", "message")
+            if payload.get(key)
+        ]
+        return ": ".join(parts)
+
+    if isinstance(payload, str):
+        return payload
+    return ""
+
+
+def _compact_error_detail(detail: str) -> str:
+    compacted = " ".join(detail.split())
+    if len(compacted) <= 300:
+        return compacted
+    return f"{compacted[:297]}..."
+
+
+def _looks_like_content_safety_block(detail: str) -> bool:
+    normalized = detail.lower()
+    content_markers = (
+        "content_policy",
+        "content policy",
+        "content_filter",
+        "content filter",
+        "content safety",
+        "safety filter",
+        "sensitive",
+        "risk control",
+    )
+    return any(marker in normalized for marker in content_markers)
+
+
+def _with_provider_detail(message: str, detail: str) -> str:
+    if not detail:
+        return message
+    suffix = "" if detail.endswith((".", "!", "?")) else "."
+    return f"{message} Provider detail: {detail}{suffix}"
 
 
 def parse_timeout(raw_value: str | None) -> float:

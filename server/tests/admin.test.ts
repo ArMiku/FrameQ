@@ -34,6 +34,8 @@ describe("admin activation code routes", () => {
     expect(response.body).toContain("admin-form");
     expect(response.body).toContain("管理员登录");
     expect(response.body).toContain("获取验证码");
+    expect(response.body).toContain('type="email"');
+    expect(response.body).not.toContain('placeholder="lantianye@163.com"');
   });
 
   test("allows only the configured admin email to start OTP login", async () => {
@@ -180,6 +182,11 @@ describe("admin activation code routes", () => {
     expect(response.body).toContain("llm-quota-table");
     expect(response.body).toContain(`data-user-id="${user.id}"`);
     expect(response.body).toContain('value="15"');
+    expect(response.body).toContain("生成月卡激活码");
+    expect(response.body).toContain("兑换后获得 31 天月卡权益");
+    expect(response.body).toContain("激活码有效期");
+    expect(response.body).not.toContain("生成 31 天月卡码");
+    expect(response.body).not.toContain("兑换有效期");
   });
 
   test("logs out admin sessions and clears admin cookies", async () => {

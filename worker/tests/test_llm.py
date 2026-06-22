@@ -1,4 +1,6 @@
 import json
+from io import BytesIO
+from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
@@ -88,6 +90,41 @@ def test_openai_compatible_client_reports_timeout_with_actionable_message() -> N
     assert str(exc_info.value) == (
         "LLM request timed out after 12 seconds. "
         "Increase FRAMEQ_LLM_TIMEOUT_SECONDS in settings or .env and retry."
+    )
+
+
+def test_openai_compatible_client_classifies_provider_content_filter_errors() -> None:
+    def blocked_transport(request: Request, timeout: float) -> bytes:
+        raise HTTPError(
+            url=request.full_url,
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=BytesIO(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "content_policy_violation",
+                            "message": "The transcript was rejected by the content safety filter.",
+                        }
+                    }
+                ).encode("utf-8")
+            ),
+        )
+
+    client = OpenAICompatibleInsightClient(
+        api_key="secret-key",
+        model="demo-model",
+        transport=blocked_transport,
+    )
+
+    with pytest.raises(InsightGenerationError) as exc_info:
+        client.generate("请根据文字稿生成话题点")
+
+    assert exc_info.value.code == "INSIGHTFLOW_LLM_CONTENT_BLOCKED"
+    assert str(exc_info.value) == (
+        "LLM provider blocked the request with its content safety policy. "
+        "Provider detail: content_policy_violation: The transcript was rejected by the content safety filter."
     )
 
 

@@ -8,6 +8,7 @@ import {
   getExportPath,
   getProgressSteps,
   getResultCards,
+  getVisibleWorkflowError,
   isProcessingStage,
   mergeProgressEvent,
   startProcessing,
@@ -16,10 +17,19 @@ import {
 } from "./workflow";
 
 describe("workflow state model", () => {
-  test("allows only a single douyin video url to be submitted", () => {
+  test("allows supported Douyin and Xiaohongshu video urls to be submitted", () => {
     expect(canSubmitUrl("")).toBe(false);
     expect(canSubmitUrl("https://example.com/video/1")).toBe(false);
+    expect(canSubmitUrl("https://notdouyin.com/video/7524373044106677544")).toBe(false);
+    expect(canSubmitUrl("https://evil-douyin.com/video/7524373044106677544")).toBe(false);
     expect(canSubmitUrl("https://www.douyin.com/video/7524373044106677544")).toBe(true);
+    expect(canSubmitUrl("https://v.douyin.com/LllWTdm3-Dg/")).toBe(true);
+    expect(canSubmitUrl("https://v.douyin.com/")).toBe(false);
+    expect(canSubmitUrl("http://xhslink.com/o/jQzXcxNapU")).toBe(true);
+    expect(canSubmitUrl("https://xhslink.com/o/jQzXcxNapU")).toBe(true);
+    expect(canSubmitUrl("http://xhslink.com/o/")).toBe(false);
+    expect(canSubmitUrl("https://evil-xhslink.com/o/jQzXcxNapU")).toBe(false);
+    expect(canSubmitUrl("https://xhslink.com.evil/o/jQzXcxNapU")).toBe(false);
   });
 
   test("starts processing by hiding input and entering video extraction", () => {
@@ -144,6 +154,30 @@ describe("workflow state model", () => {
     ]);
   });
 
+  test("partial insight failure exposes a visible workflow error", () => {
+    const state = summarizeWorkerResult({
+      status: "partial_completed",
+      video_path: "outputs/demo.mp4",
+      audio_path: "work/demo.wav",
+      text: "已经完成的文字稿",
+      insights: [],
+      transcript_path: "outputs/demo_transcript.txt",
+      insights_path: null,
+      error: {
+        code: "INSIGHTFLOW_LLM_REQUEST_FAILED",
+        message: "LLM request failed with HTTP 400.",
+        stage: "insights_generating",
+      },
+    });
+
+    expect(getVisibleWorkflowError(state)).toEqual({
+      code: "INSIGHTFLOW_LLM_REQUEST_FAILED",
+      message: "LLM request failed with HTTP 400.",
+      stage: "insights_generating",
+    });
+    expect(getVisibleWorkflowError(createInitialWorkflow())).toBeNull();
+  });
+
   test("cancel controls are only shown for active processing stages", () => {
     expect(isProcessingStage("video_extracting")).toBe(true);
     expect(isProcessingStage("video_transcribing")).toBe(true);
@@ -182,6 +216,85 @@ describe("workflow state model", () => {
         stage: "video_transcribing",
       }),
     ).toBe("SenseVoice Small 尚未下载。请先在首启引导或设置中下载 ASR 模型，然后重新转写。");
+  });
+
+  test("formats video download failures with actionable recovery guidance", () => {
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "ERROR: Unsupported URL: https://www.douyin.com/",
+        stage: "video_extracting",
+      }),
+    ).toBe(
+      "链接可能已过期或无效，请重新复制视频分享链接后再试。原始错误：ERROR: Unsupported URL: https://www.douyin.com/",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "ERROR: Sign in to confirm you are not a bot. Use --cookies or solve captcha.",
+        stage: "video_extracting",
+      }),
+    ).toBe(
+      "平台要求登录或验证，当前无法直接下载，请换公开视频链接或稍后重试。原始错误：ERROR: Sign in to confirm you are not a bot. Use --cookies or solve captcha.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "ERROR: network connection timeout",
+        stage: "video_extracting",
+      }),
+    ).toBe("网络连接失败，请检查网络后重试。原始错误：ERROR: network connection timeout");
+
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "ERROR: extractor failed",
+        stage: "video_extracting",
+      }),
+    ).toBe("视频下载失败，请确认链接可公开访问后重试。原始错误：ERROR: extractor failed");
+  });
+
+  test("formats insight generation failures with actionable recovery guidance", () => {
+    expect(
+      formatWorkerError({
+        code: "INSIGHTFLOW_LLM_REQUEST_FAILED",
+        message: "LLM request failed with HTTP 400.",
+        stage: "insights_generating",
+      }),
+    ).toBe(
+      "云端 LLM 请求失败，请检查管理员配置的服务地址、API key、模型权限或服务状态后重试。原始错误：LLM request failed with HTTP 400.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "INSIGHTFLOW_LLM_QUOTA_UNAVAILABLE",
+        message: "No insight-generation uses are available for this account.",
+        stage: "insights_generating",
+      }),
+    ).toBe("话题点额度不足，请续费或请管理员调整额度后重试。");
+
+    expect(
+      formatWorkerError({
+        code: "INSIGHTFLOW_LLM_CONTENT_BLOCKED",
+        message:
+          "LLM provider blocked the request with its content safety policy. Provider detail: content_policy_violation.",
+        stage: "insights_generating",
+      }),
+    ).toBe(
+      "文字稿可能触发了云端 LLM 的内容安全策略，当前服务拒绝生成话题点。请确认视频内容可被该模型处理，或请管理员更换模型/供应商后重试。原始错误：LLM provider blocked the request with its content safety policy. Provider detail: content_policy_violation.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "INSIGHTFLOW_EMPTY_RESULT",
+        message: "InsightFlow returned no insights.",
+        stage: "insights_generating",
+      }),
+    ).toBe(
+      "云端 LLM 没有返回可用的话题点，请稍后重试或更换模型配置。原始错误：InsightFlow returned no insights.",
+    );
   });
 
   test("formats detail text for clipboard copying", () => {

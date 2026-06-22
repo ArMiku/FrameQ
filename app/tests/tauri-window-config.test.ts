@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 type TauriWindowConfig = {
@@ -28,6 +28,10 @@ const capabilityPath = resolve(import.meta.dirname, "../src-tauri/capabilities/d
 const cargoManifestPath = resolve(import.meta.dirname, "../src-tauri/Cargo.toml");
 const installerScriptPath = resolve(import.meta.dirname, "../../scripts/build-installer.ps1");
 const workerManifestPath = resolve(import.meta.dirname, "../../pyproject.toml");
+const bundledWorkerCliPath = resolve(
+  import.meta.dirname,
+  "../src-tauri/resources/worker/frameq_worker/cli.py",
+);
 
 describe("Tauri desktop window configuration", () => {
   test("uses the custom macOS-style app chrome instead of the native titlebar", () => {
@@ -120,6 +124,19 @@ describe("Tauri desktop window configuration", () => {
     expect(projectDependencies).toContain("torch>=2.10.0");
     expect(manifest).toContain("[project.optional-dependencies]");
     expect(manifest).toContain('qwen = ["qwen-asr>=0.0.6"]');
+  });
+
+  test("local bundled worker syncs history after insight retry when present", () => {
+    if (!existsSync(bundledWorkerCliPath)) {
+      return;
+    }
+
+    const workerCli = readFileSync(bundledWorkerCliPath, "utf8");
+    const updateHistoryReferences =
+      workerCli.match(/update_history_item_after_insight_retry\(/g)?.length ?? 0;
+
+    expect(workerCli).toContain("def update_history_item_after_insight_retry");
+    expect(updateHistoryReferences).toBeGreaterThan(1);
   });
 
   test("installer script prunes non-runtime Python artifacts before bundling", () => {

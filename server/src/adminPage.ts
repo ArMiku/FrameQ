@@ -25,7 +25,7 @@ export function renderAdminLoginPage(): string {
           <label class="field">
             <span>管理员邮箱</span>
             <div class="inline-action-field">
-              <input id="email" name="email" type="email" autocomplete="email" placeholder="lantianye@163.com" required />
+              <input id="email" name="email" type="email" autocomplete="email" required />
               <button id="send-code" class="secondary-button" type="button">获取验证码</button>
             </div>
           </label>
@@ -192,12 +192,12 @@ export function renderAdminPage(input: {
       <section class="admin-panel create-panel">
         <div>
           <p class="eyebrow">Activation code</p>
-          <h2>生成 31 天月卡码</h2>
-          <p class="muted">完整激活码只在这里显示一次。复制后发给用户，数据库只保存哈希和短前缀。</p>
+          <h2>生成月卡激活码</h2>
+          <p class="muted">兑换后获得 31 天月卡权益。完整激活码只在这里显示一次，复制后发给用户，数据库只保存哈希和短前缀。</p>
         </div>
         <div class="create-controls">
           <label class="field compact">
-            <span>兑换有效期</span>
+            <span>激活码有效期</span>
             <div class="unit-input">
               <input id="redeem-window-days" type="number" min="1" max="365" value="30" />
               <span>天</span>

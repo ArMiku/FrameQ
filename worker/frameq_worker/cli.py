@@ -293,6 +293,7 @@ def run_worker_pipeline(
     output_dir = resolve_output_dir(project_root, environ)
     work_dir = resolve_work_dir(project_root, environ)
     video_id = extract_douyin_video_id(request.url)
+    media_files_before_download = snapshot_video_files(output_dir)
 
     emit_progress(
         progress_callback,
@@ -316,6 +317,8 @@ def run_worker_pipeline(
         34,
     )
     video_path = find_video_by_stem(output_dir, video_id) if video_id else None
+    if video_path is None:
+        video_path = find_new_or_updated_video(output_dir, media_files_before_download)
     if video_path is None:
         video_path = find_latest_video(output_dir)
     if video_path is None:
@@ -628,6 +631,40 @@ def find_latest_video(output_dir: Path) -> Path | None:
         return None
 
     return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def snapshot_video_files(output_dir: Path) -> dict[str, tuple[int, int]]:
+    if not output_dir.exists():
+        return {}
+
+    snapshot: dict[str, tuple[int, int]] = {}
+    for path in output_dir.iterdir():
+        if not path.is_file() or path.suffix.lower() not in VIDEO_SUFFIXES:
+            continue
+        stat = path.stat()
+        snapshot[path.as_posix()] = (stat.st_mtime_ns, stat.st_size)
+    return snapshot
+
+
+def find_new_or_updated_video(
+    output_dir: Path,
+    previous_snapshot: dict[str, tuple[int, int]],
+) -> Path | None:
+    if not output_dir.exists():
+        return None
+
+    candidates: list[Path] = []
+    for path in output_dir.iterdir():
+        if not path.is_file() or path.suffix.lower() not in VIDEO_SUFFIXES:
+            continue
+        stat = path.stat()
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if previous_snapshot.get(path.as_posix()) != signature:
+            candidates.append(path)
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda path: path.stat().st_mtime_ns)
 
 
 def find_video_by_stem(output_dir: Path, stem: str | None) -> Path | None:

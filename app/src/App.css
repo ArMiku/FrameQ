@@ -1,6 +1,6 @@
 :root {
   color: #1d1d1f;
-  background: #e9eaed;
+  background: #eef0f4;
   font-family:
     -apple-system,
     BlinkMacSystemFont,
@@ -17,16 +17,18 @@
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 
-  --bg-app: #e9eaed;
-  --bg-window: #f7f7f9;
-  --surface: #ffffff;
-  --surface-subtle: #f2f3f5;
-  --surface-strong: #fbfbfd;
+  --bg-app: #eef0f4;
+  --bg-window: #f6f7fa;
+  --surface: rgba(255, 255, 255, 0.84);
+  --surface-subtle: rgba(242, 244, 248, 0.78);
+  --surface-strong: rgba(255, 255, 255, 0.8);
+  --surface-raised: rgba(255, 255, 255, 0.94);
   --text: #1d1d1f;
   --text-muted: #6e6e73;
   --text-soft: #8b8f98;
-  --border: rgba(0, 0, 0, 0.12);
-  --border-strong: rgba(0, 0, 0, 0.18);
+  --border: rgba(60, 60, 67, 0.14);
+  --border-strong: rgba(60, 60, 67, 0.24);
+  --hairline: rgba(255, 255, 255, 0.72);
   --primary: #0a84ff;
   --primary-pressed: #0067d9;
   --success: #23864b;
@@ -35,7 +37,13 @@
   --focus: rgba(10, 132, 255, 0.26);
   --shadow-window: 0 24px 60px rgba(28, 31, 38, 0.16);
   --shadow-sheet: 0 28px 80px rgba(28, 31, 38, 0.28);
-  --shadow-control: 0 1px 1px rgba(0, 0, 0, 0.05);
+  --shadow-panel: 0 1px 0 var(--hairline) inset, 0 16px 40px rgba(31, 35, 42, 0.08),
+    0 2px 8px rgba(31, 35, 42, 0.04);
+  --shadow-panel-quiet: 0 1px 0 rgba(255, 255, 255, 0.66) inset,
+    0 8px 22px rgba(31, 35, 42, 0.055);
+  --shadow-control: 0 1px 0 rgba(255, 255, 255, 0.76) inset, 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-control-hover: 0 1px 0 rgba(255, 255, 255, 0.86) inset,
+    0 4px 12px rgba(31, 35, 42, 0.08);
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 14px;
@@ -80,7 +88,8 @@ select:focus-visible {
 }
 
 .app-shell {
-  background: var(--bg-window);
+  background:
+    linear-gradient(180deg, #f5f6f9 0%, var(--bg-app) 44%, #e6e9ef 100%);
   display: grid;
   min-height: 100vh;
   padding: 0;
@@ -88,7 +97,9 @@ select:focus-visible {
 }
 
 .desktop-window {
-  background: var(--bg-window);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(246, 247, 250, 0.94) 86%),
+    var(--bg-window);
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -104,14 +115,18 @@ select:focus-visible {
 .app-toolbar,
 .topbar {
   align-items: center;
-  background: rgba(248, 248, 250, 0.86);
-  border-bottom: 1px solid var(--border);
+  background: rgba(246, 247, 250, 0.76);
+  border-bottom: 1px solid rgba(60, 60, 67, 0.13);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.68) inset,
+    0 1px 2px rgba(31, 35, 42, 0.04);
   display: grid;
   gap: 14px;
   grid-template-columns: auto minmax(190px, 1fr) auto;
   min-height: var(--toolbar-height);
   padding: 0 16px;
-  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(24px) saturate(1.35);
+  backdrop-filter: blur(24px) saturate(1.35);
 }
 
 .traffic-lights {
@@ -174,7 +189,7 @@ select:focus-visible {
 
 .app-mark {
   align-items: center;
-  background: linear-gradient(145deg, #ffffff, #e7eef7);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(226, 235, 248, 0.9));
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-control);
@@ -252,7 +267,7 @@ h3 {
 .account-chip,
 .secondary-button,
 .tool-actions button {
-  background: #f4f5f7;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(239, 241, 245, 0.9));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-control);
@@ -286,8 +301,9 @@ h3 {
 .account-chip:hover,
 .secondary-button:hover,
 .tool-actions button:hover {
-  background: #ffffff;
+  background: linear-gradient(180deg, #ffffff, #f5f7fa);
   border-color: var(--border-strong);
+  box-shadow: var(--shadow-control-hover);
 }
 
 .icon-button:active,
@@ -299,10 +315,13 @@ h3 {
 }
 
 .primary-button {
-  background: var(--primary);
+  background: linear-gradient(180deg, #1a8cff 0%, #0572e6 100%);
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-sm);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 8px 18px rgba(10, 132, 255, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.08);
   color: #ffffff;
   font-weight: 690;
   min-height: 40px;
@@ -314,11 +333,11 @@ h3 {
 }
 
 .primary-button:hover {
-  background: #147fff;
+  background: linear-gradient(180deg, #2b95ff 0%, #0b78ed 100%);
 }
 
 .primary-button:active {
-  background: var(--primary-pressed);
+  background: linear-gradient(180deg, #0572e6 0%, var(--primary-pressed) 100%);
 }
 
 .danger-soft {
@@ -369,10 +388,12 @@ h3 {
 .input-pane,
 .process-pane,
 .result-area {
-  background: var(--surface-strong);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 249, 252, 0.78));
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-panel);
+  -webkit-backdrop-filter: blur(22px) saturate(1.18);
+  backdrop-filter: blur(22px) saturate(1.18);
 }
 
 .command-panel,
@@ -381,6 +402,13 @@ h3 {
   display: grid;
   gap: 16px;
   padding: 18px;
+}
+
+.workspace.waiting-layout .command-panel {
+  box-shadow:
+    0 1px 0 var(--hairline) inset,
+    0 22px 56px rgba(31, 35, 42, 0.11),
+    0 4px 14px rgba(31, 35, 42, 0.05);
 }
 
 .panel-heading,
@@ -410,9 +438,10 @@ h3 {
 .settings-form input,
 .settings-form select,
 .search-box input {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
   color: var(--text);
   min-width: 0;
   outline: none;
@@ -445,16 +474,17 @@ h3 {
 }
 
 .worker-message {
-  background: var(--surface-subtle);
+  background: linear-gradient(180deg, rgba(247, 248, 251, 0.92), rgba(239, 242, 247, 0.82));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 11px 12px;
 }
 
 .progress-summary {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -522,7 +552,7 @@ h3 {
 
 .step {
   align-items: center;
-  background: #ffffff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 248, 251, 0.82));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
@@ -567,22 +597,22 @@ h3 {
 
 .result-workspace,
 .result-area {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  grid-template-rows: auto minmax(0, 1fr);
   min-height: 360px;
   padding: 18px;
 }
 
 .workspace.active-layout .result-workspace,
 .workspace.active-layout .result-area {
-  grid-template-rows: auto auto;
   min-height: 0;
 }
 
 .result-grid {
   align-items: start;
   display: grid;
+  flex: 0 0 auto;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -594,10 +624,10 @@ h3 {
 .result-card,
 .result-tile {
   align-items: start;
-  background: #ffffff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(250, 251, 253, 0.88));
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-control);
+  box-shadow: var(--shadow-panel-quiet);
   color: var(--text);
   display: grid;
   gap: 8px;
@@ -646,7 +676,11 @@ h3 {
 
 .result-card:hover {
   border-color: rgba(10, 132, 255, 0.38);
-  box-shadow: 0 8px 20px rgba(10, 132, 255, 0.08);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.76) inset,
+    0 14px 30px rgba(31, 35, 42, 0.1),
+    0 0 0 1px rgba(10, 132, 255, 0.05);
+  transform: translateY(-1px);
 }
 
 .result-card:active {
@@ -658,7 +692,7 @@ h3 {
 }
 
 .result-card.pending {
-  background: #fffdf7;
+  background: linear-gradient(180deg, rgba(255, 253, 247, 0.96), rgba(255, 249, 237, 0.88));
   border-color: rgba(182, 126, 32, 0.28);
 }
 
@@ -669,9 +703,10 @@ h3 {
 .result-icon,
 .placeholder-icon {
   align-items: center;
-  background: var(--surface-subtle);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(237, 240, 246, 0.78));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-control);
   color: var(--primary);
   display: inline-flex;
   height: 36px;
@@ -710,8 +745,9 @@ h3 {
 .result-placeholder {
   align-self: stretch;
   background:
-    linear-gradient(#f7f8fa 1px, transparent 1px),
-    linear-gradient(90deg, #f7f8fa 1px, transparent 1px);
+    linear-gradient(rgba(247, 248, 250, 0.88) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(247, 248, 250, 0.88) 1px, transparent 1px),
+    rgba(255, 255, 255, 0.62);
   background-size: 28px 28px;
   border: 1px dashed rgba(0, 0, 0, 0.15);
   border-radius: var(--radius-md);
@@ -728,17 +764,26 @@ h3 {
 
 .error-result {
   align-items: flex-start;
-  background: #fff4f2;
+  background: linear-gradient(180deg, rgba(255, 246, 244, 0.96), rgba(255, 240, 237, 0.88));
   border: 1px solid rgba(199, 53, 44, 0.22);
   border-radius: var(--radius-md);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.68) inset;
   color: #8d261f;
   min-height: auto;
+  min-width: 0;
   padding: 16px;
 }
 
 .error-result div {
   display: grid;
   gap: 4px;
+  min-width: 0;
+}
+
+.error-result strong,
+.error-result span,
+.error-result small {
+  overflow-wrap: anywhere;
 }
 
 .error-result span,
@@ -760,10 +805,12 @@ h3 {
 
 .detail-modal,
 .sheet-panel {
-  background: var(--surface-strong);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 248, 251, 0.84));
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 12px;
   box-shadow: var(--shadow-sheet);
+  -webkit-backdrop-filter: blur(28px) saturate(1.22);
+  backdrop-filter: blur(28px) saturate(1.22);
   display: flex;
   flex-direction: column;
   max-height: min(720px, 88vh);
@@ -805,6 +852,7 @@ h3 {
 
 .modal-header,
 .sheet-header {
+  background: rgba(247, 248, 251, 0.72);
   border-bottom: 1px solid var(--border);
   justify-content: space-between;
 }
@@ -842,9 +890,10 @@ h3 {
 
 .search-box {
   align-items: center;
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-control);
   color: var(--text-soft);
   display: flex;
   gap: 8px;
@@ -891,9 +940,10 @@ h3 {
 }
 
 .confirm-summary > div {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
   display: grid;
   gap: 5px;
   min-height: 112px;
@@ -939,9 +989,10 @@ h3 {
 
 .history-item {
   align-items: stretch;
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
   color: var(--text);
   display: grid;
   gap: 9px;
@@ -1040,9 +1091,10 @@ h3 {
 
 .account-status-card,
 .activation-panel {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -1059,9 +1111,10 @@ h3 {
 }
 
 .account-quota-grid > div {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
   display: grid;
   gap: 5px;
   min-width: 0;
@@ -1122,9 +1175,10 @@ h3 {
 
 .model-status-card,
 .model-settings-row {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
   display: grid;
   gap: 10px;
   padding: 14px;
@@ -1211,9 +1265,10 @@ h3 {
 }
 
 .sheet-form-section {
-  background: #ffffff;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -1246,8 +1301,10 @@ h3 {
 
 .settings-actions,
 .sheet-footer {
-  background: rgba(247, 247, 249, 0.94);
+  background: rgba(247, 248, 251, 0.82);
   border-top: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(18px) saturate(1.16);
+  backdrop-filter: blur(18px) saturate(1.16);
   display: flex;
   flex: 0 0 auto;
   gap: 10px;

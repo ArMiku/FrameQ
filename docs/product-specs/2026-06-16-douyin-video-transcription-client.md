@@ -108,3 +108,28 @@
 - Settings should appear as a macOS-style sheet with grouped fields, local privacy callout, scrollable body, and sticky actions.
 - History should preserve the existing behavior while using a denser desktop list treatment that remains scrollable inside the panel.
 - The visual system should use restrained neutral surfaces, subtle borders, low shadows, system typography, visible focus states, and semantic status colors.
+
+## 2026-06-22 Douyin Short Link Support
+
+- The URL input should accept canonical Douyin video URLs such as `https://www.douyin.com/video/<id>` and share short links such as `https://v.douyin.com/<code>/`.
+- The client should reject empty `v.douyin.com/` links, non-Douyin hosts, and lookalike hosts before starting local processing.
+- Download failures from `yt-dlp` should be shown as actionable user guidance for expired or invalid links, login/CAPTCHA requirements, network failures, and other public-access failures, while retaining a short original error summary for troubleshooting.
+- FrameQ does not bypass platform access controls, login gates, or CAPTCHA challenges; users should retry with a public, authorized video link.
+
+## 2026-06-23 Xiaohongshu Short Link Support
+
+- The URL input should accept Xiaohongshu share short links in the form `http://xhslink.com/o/<code>` or `https://xhslink.com/o/<code>`.
+- The client should reject empty `xhslink.com/o/` links, non-Xiaohongshu hosts, and lookalike hosts before starting local processing.
+- Worker download should still pass the original URL to `yt-dlp`; after download it should select the media file created or updated by the current run when no platform-specific video ID is available.
+- FrameQ does not bypass Xiaohongshu platform access controls, login gates, risk checks, or CAPTCHA challenges; users should retry with a public, authorized video link.
+
+## 2026-06-22 Insight Failure Reason Visibility
+
+- When insight generation fails after transcript completion, the result workspace should keep video, audio, and transcript entries visible while also showing the structured insight failure code, stage, and actionable recovery copy.
+- The client should translate common `INSIGHTFLOW_*`, checkout, quota, timeout, empty-result, and worker-process failures into user-facing Chinese guidance, preserving a short original error summary when useful for troubleshooting.
+- If an OpenAI-compatible provider rejects the transcript because of content safety or risk-control policy, FrameQ should classify it as `INSIGHTFLOW_LLM_CONTENT_BLOCKED` and explain that the cloud LLM refused the request rather than hiding it behind a generic request failure.
+
+## 2026-06-23 Insight Retry History Sync
+
+- When insight generation fails and a later retry succeeds, the matching local history item should update from the failed or pending insight state to `completed`, clear the previous error, store the generated `insights_path`, and refresh `insights_count`.
+- Local bundled worker resources used by Tauri dev/build should keep this retry-history sync behavior in step with the source worker.

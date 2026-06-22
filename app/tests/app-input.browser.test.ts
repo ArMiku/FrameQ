@@ -136,6 +136,7 @@ describe("App browser input interactions", () => {
             showsLocalFirstCopy: document.querySelector('.command-panel')?.textContent.includes('本地优先') ?? false,
             visibleUrlLabels: document.querySelectorAll('.command-panel .field-label').length,
             videoUrlAriaLabel: document.querySelector('#video-url')?.getAttribute('aria-label') ?? '',
+            videoUrlPlaceholder: document.querySelector('#video-url')?.getAttribute('placeholder') ?? '',
             hasCommandPanel: Boolean(document.querySelector('.command-panel')),
             hasResultWorkspace: Boolean(document.querySelector('.result-workspace')),
             hasQuietPlaceholder: Boolean(document.querySelector('.result-placeholder')),
@@ -159,6 +160,7 @@ describe("App browser input interactions", () => {
         showsLocalFirstCopy: false,
         visibleUrlLabels: 0,
         videoUrlAriaLabel: "视频 URL",
+        videoUrlPlaceholder: "粘贴抖音或小红书视频链接",
         hasCommandPanel: true,
         hasResultWorkspace: false,
         hasQuietPlaceholder: false,
@@ -366,6 +368,168 @@ describe("App browser input interactions", () => {
       page.close();
     }
   });
+
+  test("returns to the paste-link screen after signing out from a completed task", async () => {
+    const target = await requestJson<CdpTarget>(
+      cdpPort,
+      `/json/new?${encodeURIComponent(appUrl)}`,
+      "PUT",
+    );
+    const page = await connectToCdp(target.webSocketDebuggerUrl);
+
+    try {
+      await page.send("Page.enable");
+      await page.send("Runtime.enable");
+      await page.send("Page.addScriptToEvaluateOnNewDocument", {
+        source: `
+          (() => {
+            let callbackId = 1;
+            const callbacks = {};
+            window.__FRAMEQ_TEST_COMMANDS__ = [];
+            window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+              unregisterListener: () => {}
+            };
+            window.__TAURI_INTERNALS__ = {
+              callbacks,
+              transformCallback: (callback) => {
+                const id = callbackId++;
+                callbacks[id] = callback;
+                return id;
+              },
+              unregisterCallback: (id) => {
+                delete callbacks[id];
+              },
+              invoke: async (command, args) => {
+                window.__FRAMEQ_TEST_COMMANDS__.push({ command, args });
+                if (command === "check_first_run") {
+                  return {
+                    user_data_dir: "C:/FrameQ",
+                    default_output_dir: "C:/FrameQ/outputs",
+                    asr_model: "iic/SenseVoiceSmall",
+                    asr_model_dir: "C:/FrameQ/models/SenseVoiceSmall",
+                    asr_model_available: true,
+                    asr_model_source: "modelscope"
+                  };
+                }
+                if (command === "get_account_status") {
+                  return {
+                    authenticated: true,
+                    email: "tester@frameq.local",
+                    entitlement_status: "active",
+                    entitlement_expires_at: null,
+                    llm_quota_limit: 20,
+                    llm_quota_used: 0,
+                    llm_quota_remaining: 20,
+                    llm_quota_resets_at: null,
+                    llm_configured: true,
+                    last_verified_at: null,
+                    can_process: true,
+                    server_error: null
+                  };
+                }
+                if (command === "plugin:deep-link|get_current") {
+                  return [];
+                }
+                if (command === "plugin:event|listen") {
+                  return 1;
+                }
+                if (command === "plugin:event|unlisten") {
+                  return null;
+                }
+                if (command === "process_video") {
+                  return {
+                    status: "completed",
+                    video_path: "C:/FrameQ/outputs/demo.mp4",
+                    audio_path: "C:/FrameQ/work/demo.wav",
+                    text: "完成后的文字稿",
+                    insights: [],
+                    transcript_path: "C:/FrameQ/outputs/demo_transcript.txt",
+                    insights_path: null,
+                    error: null
+                  };
+                }
+                if (command === "logout_account") {
+                  return null;
+                }
+                if (command === "cancel_process") {
+                  return { cancelled: true, error: null };
+                }
+                throw new Error("Unexpected command: " + command);
+              },
+              convertFileSrc: (filePath) => filePath
+            };
+          })();
+        `,
+      });
+      await page.send("Emulation.setDeviceMetricsOverride", {
+        width: 1180,
+        height: 760,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      const loaded = page.waitForEvent("Page.loadEventFired");
+      await page.send("Page.navigate", { url: appUrl });
+      await loaded;
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('.command-panel')) && !document.querySelector('.result-workspace')",
+      );
+
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('#video-url').focus()",
+      });
+      await page.send("Input.insertText", { text: pastedUrl });
+      await waitForRuntimeCondition(page, "!document.querySelector('.primary-button').disabled");
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('.primary-button').click()",
+      });
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('.result-workspace')) && !document.querySelector('.command-panel')",
+      );
+
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('.account-chip').click()",
+      });
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('.account-sheet .sheet-footer .secondary-button')) && !document.querySelector('.account-sheet .sheet-footer .secondary-button').disabled",
+      );
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('.account-sheet .sheet-footer .secondary-button').click()",
+      });
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('.command-panel')) && !document.querySelector('.result-workspace') && !document.querySelector('.account-sheet')",
+      );
+
+      const afterSignOut = await page.send<{ result: { value: Record<string, unknown> } }>(
+        "Runtime.evaluate",
+        {
+          expression: `({
+            hasCommandPanel: Boolean(document.querySelector('.command-panel')),
+            hasResultWorkspace: Boolean(document.querySelector('.result-workspace')),
+            hasAccountSheet: Boolean(document.querySelector('.account-sheet')),
+            accountChipActive: Boolean(document.querySelector('.account-chip.active')),
+            videoUrlValue: document.querySelector('#video-url')?.value ?? null,
+            commands: window.__FRAMEQ_TEST_COMMANDS__.map((entry) => entry.command)
+          })`,
+          returnByValue: true,
+        },
+      );
+
+      expect(afterSignOut.result.value).toMatchObject({
+        hasCommandPanel: true,
+        hasResultWorkspace: false,
+        hasAccountSheet: false,
+        accountChipActive: false,
+        videoUrlValue: "",
+      });
+      expect(afterSignOut.result.value.commands).toContain("logout_account");
+    } finally {
+      page.close();
+    }
+  }, 10_000);
 });
 
 describe("App desktop sheet structure", () => {

@@ -111,6 +111,49 @@ class ExistingMediaRunner:
         raise AssertionError(f"Unexpected command: {command}")
 
 
+class XiaohongshuMediaRunner:
+    def __init__(self, downloaded_stem: str) -> None:
+        self.commands: list[list[str]] = []
+        self.downloaded_stem = downloaded_stem
+
+    def __call__(self, command: list[str]) -> CommandResult:
+        self.commands.append(command)
+        if command[0] == "yt-dlp":
+            output_template = Path(command[3])
+            downloaded_video = output_template.parent / f"{self.downloaded_stem}.mp4"
+            downloaded_video.write_bytes(b"xhs video")
+            os.utime(downloaded_video, (2, 2))
+            return CommandResult(command=command, returncode=0, stdout="", stderr="")
+
+        if command[0] == "ffprobe":
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "streams": [
+                            {
+                                "index": 0,
+                                "codec_type": "video",
+                                "codec_name": "h264",
+                                "width": 1080,
+                                "height": 1920,
+                            },
+                            {"index": 1, "codec_type": "audio", "codec_name": "aac"},
+                        ],
+                        "format": {"duration": "12.0", "size": "2400"},
+                    }
+                ),
+                stderr="",
+            )
+
+        if command[0] == "ffmpeg":
+            Path(command[-1]).write_bytes(b"fake wav")
+            return CommandResult(command=command, returncode=0, stdout="", stderr="")
+
+        raise AssertionError(f"Unexpected command: {command}")
+
+
 class FakeTranscriber:
     def transcribe(self, audio_path: Path, language: str = "Chinese") -> Transcript:
         return Transcript(text="这是一段用于桌面联调的文字稿。", language=language)
@@ -232,6 +275,70 @@ def test_retry_insights_once_updates_existing_partial_history_item(
                         "error": {
                             "code": "INSIGHTFLOW_LLM_REQUEST_FAILED",
                             "message": "LLM request failed.",
+                            "stage": "insights_generating",
+                        },
+                        "text_preview": "ready transcript",
+                        "insights_count": 0,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = retry_insights_once(
+        json.dumps(
+            {
+                "transcript_path": transcript_txt.as_posix(),
+                "text": "ready transcript",
+            }
+        ),
+        project_root=tmp_path,
+        insight_client=FakeInsightClient(),
+    )
+
+    assert result["status"] == "completed"
+    saved_history = json.loads(history_path.read_text(encoding="utf-8"))
+    saved_item = saved_history["items"][0]
+    assert saved_item["id"] == "history-1"
+    assert saved_item["status"] == "completed"
+    assert saved_item["transcript_path"] == transcript_txt.as_posix()
+    assert saved_item["insights_path"] == (output_dir / "demo_insights.json").as_posix()
+    assert saved_item["error"] is None
+    assert saved_item["insights_count"] == 1
+
+
+def test_retry_insights_once_updates_transcript_only_history_item(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "outputs"
+    work_dir = tmp_path / "work"
+    transcript_txt = output_dir / "demo_transcript.txt"
+    transcript_md = transcript_txt.with_suffix(".md")
+    history_path = work_dir / "history.json"
+    output_dir.mkdir()
+    work_dir.mkdir()
+    transcript_txt.write_text("ready transcript", encoding="utf-8")
+    transcript_md.write_text("# Transcript\n\nready transcript", encoding="utf-8")
+    history_path.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "id": "history-1",
+                        "created_at": "2026-06-22T14:44:29Z",
+                        "url": "https://v.douyin.com/LllWTdm3-Dg/",
+                        "status": "completed",
+                        "output_dir": output_dir.as_posix(),
+                        "video_path": (output_dir / "demo.mp4").as_posix(),
+                        "audio_path": (work_dir / "demo.wav").as_posix(),
+                        "transcript_path": transcript_txt.as_posix(),
+                        "insights_path": None,
+                        "error": {
+                            "code": "INSIGHTFLOW_LLM_REQUEST_TIMEOUT",
+                            "message": "LLM request timed out.",
                             "stage": "insights_generating",
                         },
                         "text_preview": "ready transcript",
@@ -474,6 +581,36 @@ def test_run_worker_once_selects_video_by_url_id_and_reuses_valid_audio(
         "message": "已复用本地音频，跳过音频提取。",
         "progress": 50,
     } in events
+
+
+def test_run_worker_once_selects_xiaohongshu_downloaded_video_over_existing_newer_file(
+    tmp_path: Path,
+) -> None:
+    downloaded_stem = "6a35face0000000008033914"
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    stale_video = output_dir / "old-unrelated.mp4"
+    stale_video.write_bytes(b"old video")
+    os.utime(stale_video, (10, 10))
+    runner = XiaohongshuMediaRunner(downloaded_stem)
+
+    result = run_worker_once(
+        json.dumps(
+            {
+                "url": "http://xhslink.com/o/jQzXcxNapU",
+                "generate_insights": False,
+            }
+        ),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=FakeTranscriber(),
+    )
+
+    downloaded_video = output_dir / f"{downloaded_stem}.mp4"
+    assert result["status"] == "completed"
+    assert result["video_path"] == downloaded_video.as_posix()
+    assert result["audio_path"] == (tmp_path / "work" / f"{downloaded_stem}.wav").as_posix()
+    assert runner.commands[0][-1] == "http://xhslink.com/o/jQzXcxNapU"
 
 
 def test_run_worker_once_uses_configured_output_dir_for_user_artifacts(

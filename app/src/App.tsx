@@ -35,6 +35,7 @@ import {
   getExportPath,
   getProgressSteps,
   getResultCards,
+  getVisibleWorkflowError,
   isProcessingStage,
   mergeProgressEvent,
   startProcessing,
@@ -307,6 +308,7 @@ function App() {
   const canSubmit = canSubmitUrl(workflow.url);
   const progressSteps = useMemo(() => getProgressSteps(workflow), [workflow]);
   const resultCards = useMemo(() => getResultCards(workflow), [workflow]);
+  const visibleWorkflowError = getVisibleWorkflowError(workflow);
   const modelDownloadActive = ["started", "downloading", "extracting"].includes(
     modelDownloadProgress.status,
   );
@@ -819,9 +821,14 @@ function App() {
     setAccountLoading(true);
     try {
       await logoutAccount();
+      if (isProcessingStage(workflow.stage)) {
+        void cancelProcess();
+      }
+      resetWorkflow();
       setAccount(createGuestAccountStatus());
       setActivationCodeDraft("");
-      setAccountNotice("已退出登录。");
+      setAccountNotice("");
+      setAccountOpen(false);
     } catch (error) {
       setAccountNotice(`退出登录失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -1077,7 +1084,7 @@ function App() {
                       const url = event.currentTarget.value;
                       setWorkflow((current) => ({ ...current, url }));
                     }}
-                    placeholder="https://www.douyin.com/video/7524373044106677544"
+                    placeholder="粘贴抖音或小红书视频链接"
                   />
                   <button className="primary-button" type="submit" disabled={!canSubmit}>
                     <Play size={17} />
@@ -1144,16 +1151,20 @@ function App() {
                 </div>
               </div>
 
-              {workflow.stage === "failed" && workflow.error ? (
+              {visibleWorkflowError ? (
                 <div className="error-result">
                   <AlertTriangle size={20} />
                   <div>
-                    <strong>{workflow.error.code}</strong>
-                    <span>{formatWorkerError(workflow.error)}</span>
-                    <small>失败阶段：{stageCopy[workflow.error.stage]?.title ?? workflow.error.stage}</small>
+                    <strong>{visibleWorkflowError.code}</strong>
+                    <span>{formatWorkerError(visibleWorkflowError)}</span>
+                    <small>
+                      失败阶段：{stageCopy[visibleWorkflowError.stage]?.title ?? visibleWorkflowError.stage}
+                    </small>
                   </div>
                 </div>
-              ) : resultCards.length > 0 ? (
+              ) : null}
+
+              {resultCards.length > 0 ? (
                 <div className="result-grid">
                   {resultCards.map((card) => (
                     <button
@@ -1171,7 +1182,7 @@ function App() {
                     </button>
                   ))}
                 </div>
-              ) : (
+              ) : !visibleWorkflowError ? (
                 <div className="result-placeholder empty-result">
                   <div className="placeholder-icon">
                     <FileText size={20} />
@@ -1185,7 +1196,7 @@ function App() {
                     </span>
                   </div>
                 </div>
-              )}
+              ) : null}
               {actionNotice ? <p className="action-notice result-action-notice">{actionNotice}</p> : null}
             </section>
           ) : null}
