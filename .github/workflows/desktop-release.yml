@@ -1,0 +1,79 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update, for example v0.1.0"
+        required: true
+        type: string
+      release_draft:
+        description: "Create or update the release as a draft"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  windows-updater-artifacts:
+    name: Windows updater artifacts
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      RELEASE_DRAFT: ${{ github.event_name == 'push' || inputs.release_draft }}
+      FRAMEQ_PYTHON_STANDALONE_URL: ${{ secrets.FRAMEQ_PYTHON_STANDALONE_URL }}
+      FRAMEQ_FFMPEG_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFMPEG_ARCHIVE_URL }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix app
+
+      - name: Prepare bundled runtime resources
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1 `
+            -Target windows-x64 `
+            -SkipTauriBuild
+
+      - name: Build and upload signed updater artifacts
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tauriScript: npm run tauri
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "FrameQ ${{ env.RELEASE_TAG }}"
+          releaseBody: "FrameQ desktop installer and Tauri updater artifacts."
+          releaseDraft: ${{ env.RELEASE_DRAFT }}
+          prerelease: false
+          releaseCommitish: ${{ github.sha }}
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: --bundles nsis --target x86_64-pc-windows-msvc

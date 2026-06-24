@@ -135,6 +135,21 @@ function Copy-DirectoryContents {
     Copy-Item -Path (Join-Path $Source "*") -Destination $Destination -Recurse -Force
 }
 
+function Copy-WorkerRuntime {
+    param(
+        [string]$RepoRoot,
+        [string]$Destination
+    )
+
+    Reset-Directory $Destination
+    Ensure-GitKeep $Destination
+    Copy-DirectoryContents (Join-Path (Join-Path $RepoRoot "worker") "frameq_worker") (Join-Path $Destination "frameq_worker")
+
+    Get-ChildItem -LiteralPath $Destination -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+        Sort-Object { $_.FullName.Length } -Descending |
+        Remove-Item -Recurse -Force
+}
+
 function Ensure-GitKeep {
     param([string]$Path)
 
@@ -265,7 +280,7 @@ if (!$SkipDownloads) {
     Copy-FfmpegFromArchive $ffmpegArchive $binRoot $Target
 }
 
-Copy-DirectoryContents (Join-Path $repoRoot "worker") $workerRoot
+Copy-WorkerRuntime $repoRoot $workerRoot
 Copy-Item -LiteralPath (Join-Path $repoRoot "pyproject.toml") -Destination (Join-Path $resourcesRoot "pyproject.toml") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot ".env.example") -Destination (Join-Path $resourcesRoot ".env.template") -Force
 

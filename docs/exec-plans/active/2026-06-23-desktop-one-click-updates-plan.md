@@ -2,12 +2,12 @@
 
 ## Goal
 
-Implement low-noise one-click updates for the FrameQ desktop app using Tauri updater and a FrameQ server dynamic manifest endpoint, while keeping the Python worker bundled with the app release.
+Implement low-noise one-click updates for the FrameQ desktop app using Tauri updater and GitHub Releases hosted updater metadata/artifacts, while keeping the Python worker bundled with the app release.
 
 ## Decisions
 
 - Use Tauri updater signed artifacts and process relaunch support.
-- Use FrameQ server as the dynamic update source for the stable channel.
+- Use GitHub Releases `latest.json` as the stable update source for v1; keep the server dynamic route as a future optional layer.
 - Keep worker updates coupled to app updates; do not introduce app-local executable replacement.
 - Store only update preferences/status metadata in app-local data; never store user content or release signing secrets there.
 - Block installation while worker processing or ASR model download is active.
@@ -15,7 +15,7 @@ Implement low-noise one-click updates for the FrameQ desktop app using Tauri upd
 ## Implementation Tasks
 
 - Add product, architecture, design, security, and task documentation for the update boundary.
-- Add server tests and implement `GET /api/desktop/updates/:target/:arch/:currentVersion`.
+- Add GitHub Releases release automation that uploads Tauri updater artifacts and `latest.json`.
 - Add app state/client tests for update checking, progress, postponed/blocked install, and relaunch readiness.
 - Add Tauri updater/process dependencies, config, capability permissions, and release artifact settings.
 - Add React toolbar/settings UI for checking, installing, progress, errors, and restart.
@@ -24,7 +24,7 @@ Implement low-noise one-click updates for the FrameQ desktop app using Tauri upd
 ## Progress
 
 - [x] Product spec and ExecPlan created.
-- [x] Server update manifest route implemented.
+- [x] GitHub Releases updater endpoint configured.
 - [x] Tauri updater/process config implemented.
 - [x] Desktop update UI implemented.
 - [x] Automated verification completed.
@@ -43,7 +43,7 @@ Implement low-noise one-click updates for the FrameQ desktop app using Tauri upd
 
 - Replace the development updater public key in `tauri.conf.json` with the production updater public key generated outside the repository, and keep the private key/password in release secret storage only.
 - Build signed Windows and macOS update artifacts.
-- Upload artifacts and `.sig` contents to HTTPS release storage.
+- Upload artifacts, signatures, and `latest.json` to GitHub Releases.
 - Verify old-version to new-version update on clean Windows/macOS machines.
 
 ## Validation Results

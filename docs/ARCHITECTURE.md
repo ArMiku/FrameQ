@@ -2,8 +2,8 @@
 
 ## 2026-06-23 Desktop Update Boundary
 
-- Desktop app updates use Tauri updater signed artifacts and a FrameQ server dynamic manifest endpoint.
-- `GET /api/desktop/updates/:target/:arch/:currentVersion?channel=stable` is public read-only and returns `204 No Content` when no newer signed stable artifact is available.
+- Desktop app updates use Tauri updater signed artifacts and GitHub Releases as the static updater metadata/artifact host.
+- The desktop updater endpoint is `https://github.com/jiabai/FrameQ/releases/latest/download/latest.json`; release automation uploads `latest.json`, the NSIS installer, and signed updater bundles to the published GitHub Release.
 - Python worker code upgrades together with the desktop application bundle; v1 does not support independent worker hot updates from app-local data.
 - App-local data `updates.json` stores only update preferences such as `lastCheckedAt`, `postponedUntil`, and `skippedVersion`.
 - App-local `models/`, `outputs/`, `work/history.json`, `auth/session.json`, and `.env` are preserved across app updates.

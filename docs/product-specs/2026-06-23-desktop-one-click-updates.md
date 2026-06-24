@@ -6,7 +6,7 @@ FrameQ already ships as a lightweight desktop installer with bundled runtime res
 
 ## Goals
 
-- The desktop client checks FrameQ server for app updates without requiring login.
+- The desktop client checks GitHub Releases for app updates without requiring login.
 - When a newer stable release exists, the toolbar and settings sheet show a low-noise update reminder.
 - The user can download, install, and restart into the new release from the desktop app.
 - Python worker code is upgraded together with the desktop application bundle; v1 does not support independent worker hot updates.
@@ -24,9 +24,9 @@ FrameQ already ships as a lightweight desktop installer with bundled runtime res
 ## Distribution Requirements
 
 - Updates use Tauri updater signed artifacts.
-- FrameQ server exposes a public read-only dynamic update endpoint for stable releases.
+- GitHub Releases hosts the public static `latest.json` updater metadata for published stable releases.
 - Release metadata contains version, publication date, platform-specific artifact URL, signature, and release notes.
-- Large installer/update artifacts are served from HTTPS release storage or CDN; SQLite does not store package binaries.
+- Large installer/update artifacts are served from GitHub Release assets; SQLite does not store package binaries.
 - ASR model weights, LLM keys, cloud LLM models, and user-private settings must not be bundled into update artifacts beyond the existing lightweight runtime resources.
 
 ## Non-goals
@@ -38,8 +38,8 @@ FrameQ already ships as a lightweight desktop installer with bundled runtime res
 
 ## Acceptance Criteria
 
-- An old installed build can detect a newer stable update from FrameQ server, download it, install it, and relaunch.
-- Current-version clients receive `204 No Content` from the update endpoint.
+- An old installed build can detect a newer published GitHub Release, download it, install it, and relaunch.
+- Current-version clients receive no update from Tauri updater when `latest.json` does not describe a newer version.
 - Invalid release metadata, missing signatures, and platform mismatches are not published to clients.
 - Existing ASR model cache, outputs, history, local settings, and desktop session survive the upgrade.
 - Offline or server-failing checks show a recoverable error only when manually triggered and do not block local transcription.

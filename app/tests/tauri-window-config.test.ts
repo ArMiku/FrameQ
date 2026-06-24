@@ -37,10 +37,18 @@ const configPath = resolve(import.meta.dirname, "../src-tauri/tauri.conf.json");
 const capabilityPath = resolve(import.meta.dirname, "../src-tauri/capabilities/default.json");
 const cargoManifestPath = resolve(import.meta.dirname, "../src-tauri/Cargo.toml");
 const installerScriptPath = resolve(import.meta.dirname, "../../scripts/build-installer.ps1");
+const desktopReleaseWorkflowPath = resolve(
+  import.meta.dirname,
+  "../../.github/workflows/desktop-release.yml",
+);
 const workerManifestPath = resolve(import.meta.dirname, "../../pyproject.toml");
 const bundledWorkerCliPath = resolve(
   import.meta.dirname,
   "../src-tauri/resources/worker/frameq_worker/cli.py",
+);
+const bundledWorkerHistoryPath = resolve(
+  import.meta.dirname,
+  "../src-tauri/resources/worker/frameq_worker/history.py",
 );
 const bundledWorkerModelDownloadPath = resolve(
   import.meta.dirname,
@@ -102,7 +110,7 @@ describe("Tauri desktop window configuration", () => {
     expect(config.plugins?.updater?.pubkey).toEqual(expect.any(String));
     expect(config.plugins?.updater?.pubkey?.length).toBeGreaterThan(80);
     expect(config.plugins?.updater?.endpoints).toEqual([
-      "https://frameq.8xf.pro/api/desktop/updates/{{target}}/{{arch}}/{{current_version}}?channel=stable",
+      "https://github.com/jiabai/FrameQ/releases/latest/download/latest.json",
     ]);
     expect(config.plugins?.updater?.windows?.installMode).toBe("passive");
     expect(config.bundle.resources).not.toContain("resources/models/**/*");
@@ -137,6 +145,8 @@ describe("Tauri desktop window configuration", () => {
     expect(script).not.toContain("resources\\models");
     expect(script).not.toContain("Copy-SenseVoiceModelCache");
     expect(script).not.toContain("Require-DirectoryWithFiles");
+    expect(script).toContain("Copy-WorkerRuntime $repoRoot $workerRoot");
+    expect(script).toContain('Join-Path $RepoRoot "worker") "frameq_worker"');
   });
 
   test("installer script maps macOS targets to explicit Tauri triples", () => {
@@ -146,6 +156,18 @@ describe("Tauri desktop window configuration", () => {
     expect(script).toContain('"macos-arm64" { "aarch64-apple-darwin" }');
     expect(script).toContain('"macos-x64" { "x86_64-apple-darwin" }');
     expect(script).toContain("npm --prefix $appRoot run tauri -- build --target $tauriTarget");
+  });
+
+  test("desktop release workflow publishes GitHub-hosted updater metadata", () => {
+    expect(existsSync(desktopReleaseWorkflowPath)).toBe(true);
+    const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
+
+    expect(workflow).toContain("tauri-apps/tauri-action@v0");
+    expect(workflow).toContain("includeUpdaterJson: true");
+    expect(workflow).toContain("updaterJsonPreferNsis: true");
+    expect(workflow).toContain("TAURI_SIGNING_PRIVATE_KEY");
+    expect(workflow).toContain("FRAMEQ_PYTHON_STANDALONE_URL");
+    expect(workflow).toContain("FRAMEQ_FFMPEG_ARCHIVE_URL");
   });
 
   test("installer runtime still includes ModelScope for first-run model download", () => {
@@ -166,16 +188,15 @@ describe("Tauri desktop window configuration", () => {
   });
 
   test("local bundled worker syncs history after insight retry when present", () => {
-    if (!existsSync(bundledWorkerCliPath)) {
+    if (!existsSync(bundledWorkerCliPath) || !existsSync(bundledWorkerHistoryPath)) {
       return;
     }
 
     const workerCli = readFileSync(bundledWorkerCliPath, "utf8");
-    const updateHistoryReferences =
-      workerCli.match(/update_history_item_after_insight_retry\(/g)?.length ?? 0;
+    const workerHistory = readFileSync(bundledWorkerHistoryPath, "utf8");
 
-    expect(workerCli).toContain("def update_history_item_after_insight_retry");
-    expect(updateHistoryReferences).toBeGreaterThan(1);
+    expect(workerHistory).toContain("def update_history_item_after_insight_retry");
+    expect(workerCli).toContain("update_history_item_after_insight_retry");
   });
 
   test("local bundled worker uses canonical ASR model cache layout when present", () => {

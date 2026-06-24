@@ -173,6 +173,25 @@ The Python and ffmpeg values may be URLs or local archive paths. Use `-Target wi
 
 The installer does not bundle SenseVoice Small weights. It prunes non-runtime Python debug, cache, test, and header artifacts; keeps `resources/models` out of the bundle; and guides the user through downloading SenseVoice Small into app-local data on first run.
 
+### GitHub Releases updater artifacts
+
+FrameQ desktop uses Tauri signed updater artifacts hosted on GitHub Releases. The bundled updater endpoint is:
+
+```text
+https://github.com/jiabai/FrameQ/releases/latest/download/latest.json
+```
+
+The GitHub Actions workflow `.github/workflows/desktop-release.yml` prepares the bundled runtime resources, builds the Windows NSIS installer, uploads updater artifacts, and uploads `latest.json` for Tauri updater checks. Configure these repository secrets before running it:
+
+```text
+FRAMEQ_PYTHON_STANDALONE_URL
+FRAMEQ_FFMPEG_ARCHIVE_URL
+TAURI_SIGNING_PRIVATE_KEY
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+```
+
+Create or update a release by pushing a `v*` tag or running the workflow manually with a tag such as `v0.1.0`. Draft releases are useful for inspection, but updater clients only resolve `releases/latest/download/latest.json` after the release is published as a non-draft, non-prerelease release.
+
 Release operators can override the default ModelScope download source:
 
 ```powershell
