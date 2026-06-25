@@ -18,7 +18,10 @@ def test_process_result_serializes_paths_text_and_insights() -> None:
         audio_path="work/7524373044106677544.wav",
         transcript_path="outputs/7524373044106677544_transcript.txt",
         insights_path="outputs/7524373044106677544_insights.json",
+        summary_path="outputs/7524373044106677544_summary.md",
+        mindmap_path="outputs/7524373044106677544_mindmap.mmd",
         text="示例文字稿",
+        summary="# 要点总结\n\n- 示例要点",
         insights=["什么能力才是真正的价值分水岭？"],
     )
 
@@ -28,7 +31,10 @@ def test_process_result_serializes_paths_text_and_insights() -> None:
         "audio_path": "work/7524373044106677544.wav",
         "transcript_path": "outputs/7524373044106677544_transcript.txt",
         "insights_path": "outputs/7524373044106677544_insights.json",
+        "summary_path": "outputs/7524373044106677544_summary.md",
+        "mindmap_path": "outputs/7524373044106677544_mindmap.mmd",
         "text": "示例文字稿",
+        "summary": "# 要点总结\n\n- 示例要点",
         "insights": ["什么能力才是真正的价值分水岭？"],
         "error": None,
     }

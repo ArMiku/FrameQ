@@ -70,8 +70,11 @@ struct ProcessVideoResult {
     video_path: Option<String>,
     audio_path: Option<String>,
     text: String,
+    summary: String,
     insights: Vec<String>,
     transcript_path: Option<String>,
+    summary_path: Option<String>,
+    mindmap_path: Option<String>,
     insights_path: Option<String>,
     error: Option<WorkerError>,
 }
@@ -530,8 +533,11 @@ fn process_video_blocking(
             video_path: None,
             audio_path: None,
             text: String::new(),
+            summary: String::new(),
             insights: vec![],
             transcript_path: None,
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "ASR_MODEL_UNSUPPORTED".to_string(),
@@ -555,8 +561,11 @@ fn process_video_blocking(
             video_path: None,
             audio_path: None,
             text: String::new(),
+            summary: String::new(),
             insights: vec![],
             transcript_path: None,
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_ALREADY_RUNNING".to_string(),
@@ -606,8 +615,11 @@ fn process_video_blocking(
             video_path: None,
             audio_path: None,
             text: String::new(),
+            summary: String::new(),
             insights: vec![],
             transcript_path: None,
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_CANCELLED".to_string(),
@@ -624,8 +636,11 @@ fn process_video_blocking(
             video_path: None,
             audio_path: None,
             text: String::new(),
+            summary: String::new(),
             insights: vec![],
             transcript_path: None,
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
@@ -668,8 +683,11 @@ fn retry_insights_blocking(
             video_path: None,
             audio_path: None,
             text: request.text,
+            summary: String::new(),
             insights: vec![],
             transcript_path: Some(request.transcript_path),
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_ALREADY_RUNNING".to_string(),
@@ -696,8 +714,11 @@ fn retry_insights_blocking(
             video_path: None,
             audio_path: None,
             text: request.text,
+            summary: String::new(),
             insights: vec![],
             transcript_path: Some(request.transcript_path),
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_CANCELLED".to_string(),
@@ -714,8 +735,11 @@ fn retry_insights_blocking(
             video_path: None,
             audio_path: None,
             text: request.text,
+            summary: String::new(),
             insights: vec![],
             transcript_path: Some(request.transcript_path),
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
@@ -1237,15 +1261,18 @@ mod tests {
 
     #[test]
     fn parse_worker_stdout_uses_last_json_result_when_stdout_contains_logs() {
-        let stdout = br#"[funasr] loading model cache
+        let stdout = r##"[funasr] loading model cache
 Some dependency logged to stdout
-{"status":"completed","text":"ok","insights":["topic"],"transcript_path":"outputs/demo.txt","insights_path":"outputs/demo_insights.json","error":null}
-"#;
+{"status":"completed","text":"ok","summary":"# 要点总结","insights":["topic"],"transcript_path":"outputs/demo.txt","summary_path":"outputs/demo_summary.md","mindmap_path":"outputs/demo_mindmap.mmd","insights_path":"outputs/demo_insights.json","error":null}
+"##;
 
-        let parsed = parse_worker_stdout(stdout).expect("parse worker result");
+        let parsed = parse_worker_stdout(stdout.as_bytes()).expect("parse worker result");
 
         assert_eq!(parsed["status"], "completed");
         assert_eq!(parsed["text"], "ok");
+        assert_eq!(parsed["summary"], "# 要点总结");
+        assert_eq!(parsed["summary_path"], "outputs/demo_summary.md");
+        assert_eq!(parsed["mindmap_path"], "outputs/demo_mindmap.mmd");
         assert_eq!(parsed["insights"][0], "topic");
     }
 
@@ -1261,8 +1288,11 @@ Some dependency logged to stdout
             video_path: None,
             audio_path: None,
             text: String::new(),
+            summary: String::new(),
             insights: vec![],
             transcript_path: None,
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
@@ -1291,8 +1321,11 @@ Some dependency logged to stdout
             video_path: None,
             audio_path: None,
             text: String::new(),
+            summary: String::new(),
             insights: vec![],
             transcript_path: None,
+            summary_path: None,
+            mindmap_path: None,
             insights_path: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
@@ -1306,8 +1339,12 @@ Some dependency logged to stdout
 
         assert!(parsed.get("video_path").is_some());
         assert!(parsed.get("audio_path").is_some());
+        assert!(parsed.get("summary_path").is_some());
+        assert!(parsed.get("mindmap_path").is_some());
         assert_eq!(parsed["video_path"], serde_json::Value::Null);
         assert_eq!(parsed["audio_path"], serde_json::Value::Null);
+        assert_eq!(parsed["summary_path"], serde_json::Value::Null);
+        assert_eq!(parsed["mindmap_path"], serde_json::Value::Null);
     }
 
     #[test]
@@ -1809,8 +1846,12 @@ Some dependency logged to stdout
         fs::create_dir_all(&output_dir).expect("create output dir");
         fs::create_dir_all(&work_dir).expect("create work dir");
         let transcript_path = output_dir.join("demo_transcript.txt");
+        let summary_path = output_dir.join("demo_summary.md");
+        let mindmap_path = output_dir.join("demo_mindmap.mmd");
         let insights_path = output_dir.join("demo_insights.json");
         fs::write(&transcript_path, "完整文字稿内容").expect("write transcript");
+        fs::write(&summary_path, "# 要点总结\n\n- 历史总结").expect("write summary");
+        fs::write(&mindmap_path, "mindmap\n  root((历史总结))").expect("write mindmap");
         fs::write(
             &insights_path,
             r#"{"file_id":"demo","insights":[{"id":1,"text":"第一个话题点"},{"id":2,"text":"第二个话题点"}]}"#,
@@ -1830,6 +1871,8 @@ Some dependency logged to stdout
       "video_path": "{}",
       "audio_path": "{}",
       "transcript_path": "{}",
+      "summary_path": "{}",
+      "mindmap_path": "{}",
       "insights_path": "{}",
       "error": null,
       "text_preview": "完整文字稿内容",
@@ -1841,6 +1884,8 @@ Some dependency logged to stdout
                 path_string(&output_dir.join("demo.mp4")),
                 path_string(&work_dir.join("demo.wav")),
                 path_string(&transcript_path),
+                path_string(&summary_path),
+                path_string(&mindmap_path),
                 path_string(&insights_path)
             ),
         )
@@ -1852,6 +1897,15 @@ Some dependency logged to stdout
         assert_eq!(history[0].id, "20260617183000-demo");
         assert_eq!(history[0].status, "completed");
         assert_eq!(history[0].text, "完整文字稿内容");
+        assert_eq!(history[0].summary, "# 要点总结\n\n- 历史总结");
+        assert_eq!(
+            history[0].summary_path,
+            Some(path_string(&summary_path))
+        );
+        assert_eq!(
+            history[0].mindmap_path,
+            Some(path_string(&mindmap_path))
+        );
         assert_eq!(history[0].insights, vec!["第一个话题点", "第二个话题点"]);
     }
 

@@ -44,7 +44,7 @@ describe("workflow state model", () => {
     expect(getProgressSteps(state).map((step) => step.label)).toEqual([
       "视频提取中",
       "视频转译中",
-      "话题点生成中",
+      "AI 整理中",
     ]);
   });
 
@@ -54,8 +54,11 @@ describe("workflow state model", () => {
       video_path: "outputs/demo.mp4",
       audio_path: "work/demo.wav",
       text: "完整文字稿",
+      summary: "# 要点总结\n\n## 总览\n这是总结。",
       insights: ["为什么流程编排可能比单点模型能力更关键？"],
       transcript_path: "outputs/demo_transcript.txt",
+      summary_path: "outputs/demo_summary.md",
+      mindmap_path: "outputs/demo_mindmap.mmd",
       insights_path: "outputs/demo_insights.json",
       error: null,
     });
@@ -65,6 +68,7 @@ describe("workflow state model", () => {
       "video",
       "audio",
       "transcript",
+      "summary",
       "insights",
     ]);
   });
@@ -75,8 +79,11 @@ describe("workflow state model", () => {
       video_path: "outputs/demo.mp4",
       audio_path: "work/demo.wav",
       text: "已经完成的文字稿",
+      summary: "",
       insights: [],
       transcript_path: "outputs/demo_transcript.txt",
+      summary_path: null,
+      mindmap_path: null,
       insights_path: null,
       error: null,
     });
@@ -101,6 +108,12 @@ describe("workflow state model", () => {
         action: "open",
       },
       {
+        id: "summary",
+        title: "要点总结",
+        status: "pending",
+        action: "confirm",
+      },
+      {
         id: "insights",
         title: "启发话题点",
         status: "pending",
@@ -115,8 +128,11 @@ describe("workflow state model", () => {
       video_path: "outputs/demo.mp4",
       audio_path: "work/demo.wav",
       text: "已经完成的文字稿",
+      summary: "# 要点总结\n\n## 总览\n已生成总结。",
       insights: [],
       transcript_path: "outputs/demo_transcript.txt",
+      summary_path: "outputs/demo_summary.md",
+      mindmap_path: "outputs/demo_mindmap.mmd",
       insights_path: null,
       error: {
         code: "INSIGHTFLOW_CONFIG_MISSING",
@@ -146,6 +162,12 @@ describe("workflow state model", () => {
         action: "open",
       },
       {
+        id: "summary",
+        title: "要点总结",
+        status: "ready",
+        action: "open",
+      },
+      {
         id: "insights",
         title: "启发话题点",
         status: "failed",
@@ -160,8 +182,11 @@ describe("workflow state model", () => {
       video_path: "outputs/demo.mp4",
       audio_path: "work/demo.wav",
       text: "已经完成的文字稿",
+      summary: "# 要点总结\n\n## 总览\n已生成总结。",
       insights: [],
       transcript_path: "outputs/demo_transcript.txt",
+      summary_path: "outputs/demo_summary.md",
+      mindmap_path: "outputs/demo_mindmap.mmd",
       insights_path: null,
       error: {
         code: "INSIGHTFLOW_LLM_REQUEST_FAILED",
@@ -295,6 +320,26 @@ describe("workflow state model", () => {
     ).toBe(
       "云端 LLM 没有返回可用的话题点，请稍后重试或更换模型配置。原始错误：InsightFlow returned no insights.",
     );
+
+    expect(
+      formatWorkerError({
+        code: "INSIGHTFLOW_EMPTY_SUMMARY",
+        message: "InsightFlow returned an empty summary.",
+        stage: "insights_generating",
+      }),
+    ).toBe(
+      "云端 LLM 没有返回可用的要点总结，请稍后重试或更换模型配置。原始错误：InsightFlow returned an empty summary.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "INSIGHTFLOW_INVALID_MINDMAP",
+        message: "InsightFlow returned an invalid Mermaid mindmap.",
+        stage: "insights_generating",
+      }),
+    ).toBe(
+      "云端 LLM 返回的 Mermaid 思维导图格式不可用，请稍后重试或更换模型配置。原始错误：InsightFlow returned an invalid Mermaid mindmap.",
+    );
   });
 
   test("formats detail text for clipboard copying", () => {
@@ -303,13 +348,17 @@ describe("workflow state model", () => {
       video_path: "outputs/demo.mp4",
       audio_path: "work/demo.wav",
       text: "完整文字稿",
+      summary: "# 要点总结\n\n- 第一个要点",
       insights: ["第一个话题点", "第二个话题点"],
       transcript_path: "outputs/demo_transcript.txt",
+      summary_path: "outputs/demo_summary.md",
+      mindmap_path: "outputs/demo_mindmap.mmd",
       insights_path: "outputs/demo_insights.json",
       error: null,
     });
 
     expect(getDetailText("transcript", state)).toBe("完整文字稿");
+    expect(getDetailText("summary", state)).toBe("# 要点总结\n\n- 第一个要点");
     expect(getDetailText("insights", state)).toBe("1. 第一个话题点\n2. 第二个话题点");
   });
 
@@ -319,8 +368,11 @@ describe("workflow state model", () => {
       video_path: "outputs/demo.mp4",
       audio_path: "work/demo.wav",
       text: "完整文字稿",
+      summary: "# 要点总结",
       insights: ["第一个话题点"],
       transcript_path: "outputs/demo_transcript.txt",
+      summary_path: "outputs/demo_summary.md",
+      mindmap_path: "outputs/demo_mindmap.mmd",
       insights_path: "outputs/demo_insights.md",
       error: null,
     });
@@ -328,8 +380,10 @@ describe("workflow state model", () => {
     expect(getExportPath("video", state)).toBe("outputs/demo.mp4");
     expect(getExportPath("audio", state)).toBe("work/demo.wav");
     expect(getExportPath("transcript", state)).toBe("outputs/demo_transcript.txt");
+    expect(getExportPath("summary", state)).toBe("outputs/demo_summary.md");
     expect(getExportPath("insights", state)).toBe("outputs/demo_insights.md");
     expect(getExportPath("insights", createInitialWorkflow())).toBeNull();
+    expect(getExportPath("summary", createInitialWorkflow())).toBeNull();
   });
 
   test("merges worker progress events into the visible workflow state", () => {
@@ -356,8 +410,11 @@ describe("workflow state model", () => {
       video_path: "outputs/demo.mp4",
       audio_path: "work/demo.wav",
       text: "已经完成的文字稿。",
+      summary: "# 要点总结\n\n## 总览\n旧总结会保留。",
       insights: [],
       transcript_path: "outputs/demo_transcript.txt",
+      summary_path: "outputs/demo_summary.md",
+      mindmap_path: "outputs/demo_mindmap.mmd",
       insights_path: null,
       error: {
         code: "INSIGHTFLOW_CONFIG_MISSING",
@@ -370,13 +427,16 @@ describe("workflow state model", () => {
 
     expect(retrying.stage).toBe("insights_generating");
     expect(retrying.statusMessage).toBe(
-      "正在重新生成启发话题点；如已配置云端 LLM，文字稿会发送到该服务。",
+      "正在生成要点总结和启发话题点；如已配置云端 LLM，文字稿会发送到该服务。",
     );
     expect(retrying.progressPercent).toBe(88);
     expect(retrying.text).toBe("已经完成的文字稿。");
+    expect(retrying.summary).toBe("# 要点总结\n\n## 总览\n旧总结会保留。");
     expect(retrying.videoPath).toBe("outputs/demo.mp4");
     expect(retrying.audioPath).toBe("work/demo.wav");
     expect(retrying.transcriptPath).toBe("outputs/demo_transcript.txt");
+    expect(retrying.summaryPath).toBe("outputs/demo_summary.md");
+    expect(retrying.mindmapPath).toBe("outputs/demo_mindmap.mmd");
     expect(retrying.error).toBeNull();
   });
 

@@ -66,11 +66,13 @@ Desktop UI
       -> yt-dlp
       -> ffprobe / ffmpeg
       -> Qwen3-ASR or SenseVoice
-  -> Result JSON with video/audio/transcript paths
-  -> Desktop UI result workspace
+      -> Result JSON with video/audio/transcript paths
+      -> Desktop UI result workspace
   -> Tauri retry_insights command after user confirmation
   -> Python Worker embedded InsightFlow module
-  -> Result JSON with insights path
+      -> Mermaid mindmap and summary generation
+      -> Insight topic generation
+  -> Result JSON with summary/mindmap/insights paths
   -> Desktop UI result workspace
 ```
 
@@ -93,14 +95,14 @@ Desktop UI
 - `worker/frameq_worker/config.py`：app-local data `.env` 加载、旧本地 LLM dotenv 字段过滤和环境变量合并；项目根 `.env` 不参与 worker runtime。
 - `worker/frameq_worker/llm.py`：OpenAI-compatible InsightFlow LLM client；桌面话题点生成通过 server-managed checkout env 创建 client，默认使用 `temperature=0.7`。
 - `worker/frameq_worker/pipeline.py`：worker 分阶段 pipeline 与 `ProcessResult` 映射。
-- `worker/frameq_worker/insightflow/`：内置 InsightFlow 话题点生成模块，运行期不依赖外部参考仓库；对完整 ASR 文字稿优先执行 topic planner，再按 planner 的标题、摘要、原文片段和 `question_count` 生成启发问题，最终去重并限制总数。
+- `worker/frameq_worker/insightflow/`：内置 InsightFlow 话题点与总结生成模块，运行期不依赖外部参考仓库；对完整 ASR 文字稿优先生成 Mermaid mindmap 和要点总结，同时保留 topic planner 生成启发问题，最终去重并限制总数。
 
 ## 架构不变量
 
 - UI 只编排任务和展示状态，不直接调用 `yt-dlp`、`ffmpeg`、ASR 或 LLM。
 - UI 可以通过 Tauri command 读取/保存 ASR 与输出目录配置；LLM 配置由 server Admin Web 管理，桌面 UI 不回显也不输入 API Key。
 - worker 通过结构化 JSON 返回状态、路径、文本、话题点和错误码。
-- `process_video` 主流程默认只负责视频下载、音频提取和 ASR 文字稿；`retry_insights`/话题点生成流程在用户二次确认后单独运行，并且是唯一需要 server-managed LLM checkout 的本地 worker 调用。
+- `process_video` 主流程默认只负责视频下载、音频提取和 ASR 文字稿；`retry_insights`/AI整理流程在用户二次确认后单独运行，生成要点总结、Mermaid mindmap 和启发话题点，并且是唯一需要 server-managed LLM checkout 的本地 worker 调用。
 - `D:\Github\InsightFlow\src\server` 只允许作为开发参考，禁止成为运行期依赖。
 - 对外分发态的用户可见输出默认写入 app-local data `outputs/`，也可通过 `FRAMEQ_OUTPUT_DIR` 写入自定义目录；中间文件和历史索引写入 app-local data `work/`；模型缓存写入 app-local data `models/`。
 - 历史记录只索引本地结果和状态，不参与 worker 核心处理决策；旧历史路径不随输出目录配置变化而迁移。

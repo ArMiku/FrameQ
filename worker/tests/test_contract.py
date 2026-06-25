@@ -36,3 +36,11 @@ def test_worker_result_keys_match_desktop_contract() -> None:
     result_keys = set(ProcessResult(status=JobStage.COMPLETED).to_dict().keys())
 
     assert result_keys == set(contract["workerResultKeys"])
+
+
+def test_worker_result_contract_includes_summary_and_mindmap_paths() -> None:
+    contract = load_contract()
+
+    assert "summary" in contract["workerResultKeys"]
+    assert "summary_path" in contract["workerResultKeys"]
+    assert "mindmap_path" in contract["workerResultKeys"]

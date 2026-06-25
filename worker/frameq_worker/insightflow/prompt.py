@@ -107,3 +107,65 @@ def build_question_prompt(
 ## 待处理文本
 {text}
 """
+
+
+def build_mindmap_prompt(
+    text: str,
+    language: str = "中文",
+) -> str:
+    return f"""
+# 角色使命
+你是一位逻辑思维导图整理师。你的任务是根据文字稿原文，提炼内容的主线、分支和层级关系，
+输出一份可以直接保存到本地文件的 Mermaid mindmap 文本。
+
+## 核心任务
+根据用户提供的文字稿（长度：{len(text)} 字），整理为逻辑清晰的思维导图。
+所有节点必须使用：{language}。
+
+## 生成原则
+- 优先呈现观点、方法、因果、步骤、冲突、结论和可迁移经验。
+- 删除寒暄、重复、口头禅和无信息转场。
+- 顶层节点应表达整段文字稿的核心主题，二级和三级节点表达主要分支和支撑要点。
+- 节点文字要短，避免整句长段落。
+- 不要补充原文没有的事实、数字、人物或结论。
+
+## 输出格式
+- 只输出 Mermaid mindmap 源码，不要输出解释、Markdown 代码围栏或额外文字。
+- 第一行必须是 `mindmap`。
+- 使用 Mermaid mindmap 语法，例如：
+mindmap
+  root((核心主题))
+    分支一
+      要点一
+    分支二
+      要点二
+
+## 待处理文字稿
+{text}
+"""
+
+
+def build_summary_prompt(
+    transcript_markdown: str,
+    mermaid_mindmap: str,
+    language: str = "中文",
+) -> str:
+    return f"""
+# 角色使命
+你是一位内容总结编辑。你的任务是根据文字稿原文和 Mermaid 思维导图，对文字稿做要点总结。
+
+## 输入材料
+### 文字稿原文
+{transcript_markdown}
+
+### Mermaid 思维导图
+{mermaid_mindmap}
+
+## 输出要求
+- 使用：{language}。
+- 只输出 Markdown 总结正文，不要输出 Mermaid 文本、代码围栏或解释过程。
+- 结构必须包含 `# 要点总结` 标题。
+- 使用分层 Markdown：先写 `## 总览`，再写 2 到 6 个主题小节，每个主题小节下用短要点概括。
+- 总结必须忠实于文字稿原文；Mermaid 只用于帮助组织逻辑，不得引入新事实。
+- 要点要适合 UI 直接展示和复制，避免空泛套话。
+"""

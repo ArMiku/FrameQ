@@ -16,7 +16,7 @@ export type ProgressStep = {
 };
 
 export type ResultCard = {
-  id: "video" | "audio" | "insights" | "transcript";
+  id: "video" | "audio" | "insights" | "summary" | "transcript";
   title: string;
   status: "ready" | "pending" | "failed";
   action: "open" | "locate" | "confirm";
@@ -29,8 +29,11 @@ export type WorkerResult = {
   video_path: string | null;
   audio_path: string | null;
   text: string;
+  summary: string;
   insights: string[];
   transcript_path: string | null;
+  summary_path: string | null;
+  mindmap_path: string | null;
   insights_path: string | null;
   error: WorkerErrorResult | null;
 };
@@ -55,10 +58,13 @@ export type WorkflowState = {
   statusMessage: string;
   progressPercent: number;
   text: string;
+  summary: string;
   insights: string[];
   videoPath: string | null;
   audioPath: string | null;
   transcriptPath: string | null;
+  summaryPath: string | null;
+  mindmapPath: string | null;
   insightsPath: string | null;
   error: WorkerErrorResult | null;
 };
@@ -66,7 +72,7 @@ export type WorkflowState = {
 const PROGRESS_STEP_LABELS: Array<Pick<ProgressStep, "id" | "label">> = [
   { id: "video_extracting", label: "视频提取中" },
   { id: "video_transcribing", label: "视频转译中" },
-  { id: "insights_generating", label: "话题点生成中" },
+  { id: "insights_generating", label: "AI 整理中" },
 ];
 
 export function createInitialWorkflow(): WorkflowState {
@@ -78,10 +84,13 @@ export function createInitialWorkflow(): WorkflowState {
     statusMessage: "",
     progressPercent: 0,
     text: "",
+    summary: "",
     insights: [],
     videoPath: null,
     audioPath: null,
     transcriptPath: null,
+    summaryPath: null,
+    mindmapPath: null,
     insightsPath: null,
     error: null,
   };
@@ -133,10 +142,13 @@ export function startProcessing(state: WorkflowState, url: string): WorkflowStat
     statusMessage: "正在下载视频并准备媒体文件。",
     progressPercent: 12,
     text: "",
+    summary: "",
     insights: [],
     videoPath: null,
     audioPath: null,
     transcriptPath: null,
+    summaryPath: null,
+    mindmapPath: null,
     insightsPath: null,
     error: null,
   };
@@ -147,7 +159,7 @@ export function startInsightRetry(state: WorkflowState): WorkflowState {
     ...state,
     stage: "insights_generating",
     showUrlInput: false,
-    statusMessage: "正在重新生成启发话题点；如已配置云端 LLM，文字稿会发送到该服务。",
+    statusMessage: "正在生成要点总结和启发话题点；如已配置云端 LLM，文字稿会发送到该服务。",
     progressPercent: 88,
     error: null,
   };
@@ -264,14 +276,14 @@ function formatInsightGenerationError(error: WorkerErrorResult): string {
   }
 
   if (error.code === "INSIGHTFLOW_LLM_AUTH_REQUIRED") {
-    return "请先登录 FrameQ 账号，然后重新生成话题点。";
+    return "请先登录 FrameQ 账号，然后重新生成 AI 整理结果。";
   }
 
   if (
     error.code === "INSIGHTFLOW_CONFIG_MISSING" ||
     error.code === "INSIGHTFLOW_LLM_CONFIG_MISSING"
   ) {
-    return "管理员尚未配置云端 LLM，配置完成后可重新生成话题点。";
+    return "管理员尚未配置云端 LLM，配置完成后可重新生成 AI 整理结果。";
   }
 
   if (
@@ -300,12 +312,20 @@ function formatInsightGenerationError(error: WorkerErrorResult): string {
     return appendRaw("云端 LLM 没有返回可用的话题点，请稍后重试或更换模型配置。");
   }
 
+  if (error.code === "INSIGHTFLOW_EMPTY_SUMMARY") {
+    return appendRaw("云端 LLM 没有返回可用的要点总结，请稍后重试或更换模型配置。");
+  }
+
+  if (error.code === "INSIGHTFLOW_INVALID_MINDMAP") {
+    return appendRaw("云端 LLM 返回的 Mermaid 思维导图格式不可用，请稍后重试或更换模型配置。");
+  }
+
   if (error.code === "INSIGHTFLOW_EMPTY_TRANSCRIPT") {
-    return "文字稿为空，暂时无法生成话题点。";
+    return "文字稿为空，暂时无法生成 AI 整理结果。";
   }
 
   if (error.code === "TRANSCRIPT_MARKDOWN_NOT_FOUND") {
-    return "未找到文字稿 Markdown 文件，请重新运行主流程后再生成话题点。";
+    return "未找到文字稿 Markdown 文件，请重新运行主流程后再生成 AI 整理结果。";
   }
 
   if (error.code === "WORKER_PROCESS_FAILED" || error.code === "TAURI_COMMAND_FAILED") {
@@ -331,10 +351,13 @@ export function summarizeWorkerResult(result: WorkerResult): WorkflowState {
     statusMessage: "",
     progressPercent: result.status === "failed" ? 35 : 100,
     text: result.text,
+    summary: result.summary,
     insights: result.insights,
     videoPath: result.video_path,
     audioPath: result.audio_path,
     transcriptPath: result.transcript_path,
+    summaryPath: result.summary_path,
+    mindmapPath: result.mindmap_path,
     insightsPath: result.insights_path,
     error: result.error,
   };
@@ -382,11 +405,26 @@ export function getResultCards(state: WorkflowState): ResultCard[] {
           action: "open",
         }
       : null;
+  const summaryCard: ResultCard =
+    state.summaryPath || state.summary
+      ? {
+          id: "summary",
+          title: "要点总结",
+          status: "ready",
+          action: "open",
+        }
+      : {
+          id: "summary",
+          title: "要点总结",
+          status: state.stage === "partial_completed" ? "failed" : "pending",
+          action: "confirm",
+        };
 
   if (state.stage === "partial_completed") {
     return [
       ...mediaCards,
       ...(transcriptCard ? [transcriptCard] : []),
+      summaryCard,
       {
         id: "insights",
         title: "启发话题点",
@@ -400,6 +438,7 @@ export function getResultCards(state: WorkflowState): ResultCard[] {
     return [
       ...mediaCards,
       ...(transcriptCard ? [transcriptCard] : []),
+      summaryCard,
       state.insights.length > 0
         ? {
             id: "insights",
@@ -428,6 +467,10 @@ export function getDetailText(tab: DetailTab, state: WorkflowState): string {
     return state.text.trim();
   }
 
+  if (tab === "summary") {
+    return state.summary.trim();
+  }
+
   if (tab === "insights") {
     return state.insights.map((insight, index) => `${index + 1}. ${insight}`).join("\n");
   }
@@ -446,6 +489,10 @@ export function getExportPath(tab: DetailTab, state: WorkflowState): string | nu
 
   if (tab === "transcript") {
     return state.transcriptPath;
+  }
+
+  if (tab === "summary") {
+    return state.summaryPath;
   }
 
   return state.insightsPath;

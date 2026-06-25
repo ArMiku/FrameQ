@@ -86,7 +86,7 @@ export function AccountSheet({
               <div>
                 <span className="account-status-label">LLM 配置</span>
                 <strong>{account.llmConfigured ? "已就绪" : "待管理员配置"}</strong>
-                <small>客户端会在生成话题点前自动领取本次配置。</small>
+                <small>客户端会在 AI 整理前自动领取本次配置。</small>
               </div>
             </div>
           ) : null}

@@ -161,6 +161,15 @@ class FakeTranscriber:
 
 class FakeInsightClient:
     def generate(self, prompt: str) -> str:
+        if "Mermaid mindmap" in prompt:
+            return "mindmap\n  root((重试语义))\n    保留文字稿"
+        if "根据文字稿原文和 Mermaid 思维导图" in prompt:
+            return "# 要点总结\n\n## 总览\n重试只重新生成 AI 整理结果，不重新转写。"
+        if "话题分段规划师" in prompt:
+            return (
+                '[{"title":"重试语义","summary":"重试保留已有文字稿",'
+                '"excerpt":"重试应该只重新生成话题点。","question_count":1}]'
+            )
         return '["为什么重试应该只重新生成话题点？"]'
 
 
@@ -253,6 +262,9 @@ def test_retry_insights_once_regenerates_topics_from_existing_transcript(
     assert result["status"] == "completed"
     assert result["text"] == "已经完成的文字稿。"
     assert result["transcript_path"] == transcript_txt.as_posix()
+    assert result["summary"] == "# 要点总结\n\n## 总览\n重试只重新生成 AI 整理结果，不重新转写。\n"
+    assert result["summary_path"] == (tmp_path / "outputs" / "demo_summary.md").as_posix()
+    assert result["mindmap_path"] == (tmp_path / "outputs" / "demo_mindmap.mmd").as_posix()
     assert result["insights"] == ["为什么重试应该只重新生成话题点？"]
     assert result["insights_path"] == (
         tmp_path / "outputs" / "demo_insights.json"
@@ -318,6 +330,8 @@ def test_retry_insights_once_updates_existing_partial_history_item(
     assert saved_item["id"] == "history-1"
     assert saved_item["status"] == "completed"
     assert saved_item["transcript_path"] == transcript_txt.as_posix()
+    assert saved_item["summary_path"] == (output_dir / "demo_summary.md").as_posix()
+    assert saved_item["mindmap_path"] == (output_dir / "demo_mindmap.mmd").as_posix()
     assert saved_item["insights_path"] == (output_dir / "demo_insights.json").as_posix()
     assert saved_item["error"] is None
     assert saved_item["insights_count"] == 1
@@ -382,6 +396,8 @@ def test_retry_insights_once_updates_transcript_only_history_item(
     assert saved_item["id"] == "history-1"
     assert saved_item["status"] == "completed"
     assert saved_item["transcript_path"] == transcript_txt.as_posix()
+    assert saved_item["summary_path"] == (output_dir / "demo_summary.md").as_posix()
+    assert saved_item["mindmap_path"] == (output_dir / "demo_mindmap.mmd").as_posix()
     assert saved_item["insights_path"] == (output_dir / "demo_insights.json").as_posix()
     assert saved_item["error"] is None
     assert saved_item["insights_count"] == 1
@@ -704,6 +720,8 @@ def test_run_worker_once_records_history_with_actual_result_paths(
     assert item["transcript_path"] == (
         custom_output_dir / "demo_transcript.txt"
     ).as_posix()
+    assert item["summary_path"] == (custom_output_dir / "demo_summary.md").as_posix()
+    assert item["mindmap_path"] == (custom_output_dir / "demo_mindmap.mmd").as_posix()
     assert item["insights_path"] == (custom_output_dir / "demo_insights.json").as_posix()
     assert item["error"] is None
     assert item["text_preview"] == "这是一段用于桌面联调的文字稿。"
@@ -909,7 +927,7 @@ def test_run_worker_once_emits_progress_events_for_model_startup(
         },
         {
             "stage": "insights_generating",
-            "message": "正在生成启发话题点。",
+            "message": "正在生成要点总结和启发话题点。",
             "progress": 88,
         },
     ]
@@ -931,7 +949,7 @@ def test_run_worker_once_warns_when_configured_llm_receives_transcript(
 
     assert events[-1] == {
         "stage": "insights_generating",
-        "message": "正在使用配置的 LLM 生成启发话题点，文字稿会发送到该服务。",
+        "message": "正在使用配置的 LLM 生成要点总结和启发话题点，文字稿会发送到该服务。",
         "progress": 88,
     }
 

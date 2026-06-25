@@ -22,11 +22,14 @@ pub(crate) struct HistoryItemView {
     pub(crate) video_path: Option<String>,
     pub(crate) audio_path: Option<String>,
     pub(crate) transcript_path: Option<String>,
+    pub(crate) summary_path: Option<String>,
+    pub(crate) mindmap_path: Option<String>,
     pub(crate) insights_path: Option<String>,
     pub(crate) error: Option<HistoryErrorView>,
     pub(crate) text_preview: String,
     pub(crate) insights_count: usize,
     pub(crate) text: String,
+    pub(crate) summary: String,
     pub(crate) insights: Vec<String>,
 }
 
@@ -70,8 +73,13 @@ fn history_item_from_value(
     item: &serde_json::Value,
 ) -> Option<HistoryItemView> {
     let transcript_path = optional_string(item, "transcript_path");
+    let summary_path = optional_string(item, "summary_path");
     let insights_path = optional_string(item, "insights_path");
     let text = transcript_path
+        .as_deref()
+        .and_then(|path| read_text_file_if_exists(project_root, path))
+        .unwrap_or_default();
+    let summary = summary_path
         .as_deref()
         .and_then(|path| read_text_file_if_exists(project_root, path))
         .unwrap_or_default();
@@ -89,6 +97,8 @@ fn history_item_from_value(
         video_path: optional_string(item, "video_path"),
         audio_path: optional_string(item, "audio_path"),
         transcript_path,
+        summary_path,
+        mindmap_path: optional_string(item, "mindmap_path"),
         insights_path,
         error: history_error_from_value(item.get("error")),
         text_preview: optional_string(item, "text_preview").unwrap_or_default(),
@@ -97,6 +107,7 @@ fn history_item_from_value(
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0) as usize,
         text,
+        summary,
         insights,
     })
 }

@@ -1,4 +1,4 @@
-import { AlertTriangle, FileText, Film, Lightbulb, Volume2 } from "lucide-react";
+import { AlertTriangle, FileText, Film, Lightbulb, ListChecks, Volume2 } from "lucide-react";
 
 import {
   formatWorkerError,
@@ -73,7 +73,7 @@ export function ResultWorkspace({
             <strong>结果生成中</strong>
             <span>
               {workflow.stage === "insights_generating" && workflow.text
-                ? "文字稿已保留，正在重新生成话题点。"
+                ? "文字稿已保留，正在重新生成 AI 整理结果。"
                 : "视频提取完成后将开始转译。"}
             </span>
           </div>
@@ -105,6 +105,18 @@ function getResultMeta(card: ResultCard, workflow: WorkflowState): string {
     return `${workflow.insights.length} 个话题点`;
   }
 
+  if (card.id === "summary") {
+    if (card.status === "pending") {
+      return "待生成，需单独确认";
+    }
+
+    if (card.status === "failed") {
+      return "生成失败，可重新确认";
+    }
+
+    return workflow.summary ? `${workflow.summary.length.toLocaleString("zh-CN")} 字` : "已生成";
+  }
+
   if (!workflow.text) {
     return "等待文字稿";
   }
@@ -133,6 +145,9 @@ function renderResultIcon(card: ResultCard) {
   }
   if (card.id === "insights") {
     return <Lightbulb size={22} />;
+  }
+  if (card.id === "summary") {
+    return <ListChecks size={22} />;
   }
   return <FileText size={22} />;
 }

@@ -171,7 +171,10 @@ def retry_insights_once(
         status=insight_result.status,
         transcript_path=transcript_path.as_posix(),
         insights_path=insight_result.insights_path,
+        summary_path=insight_result.summary_path,
+        mindmap_path=insight_result.mindmap_path,
         text=insight_result.text,
+        summary=insight_result.summary,
         insights=insight_result.insights,
         error=insight_result.error,
     )

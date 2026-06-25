@@ -19,7 +19,10 @@
     "audio_path",
     "transcript_path",
     "insights_path",
+    "summary_path",
+    "mindmap_path",
     "text",
+    "summary",
     "insights",
     "error"
   ]

@@ -40,8 +40,11 @@ describe("desktop/worker contract", () => {
         video_path: null,
         audio_path: null,
         text: "",
+        summary: "",
         insights: [],
         transcript_path: null,
+        summary_path: null,
+        mindmap_path: null,
         insights_path: null,
         error: null,
       };

@@ -6,7 +6,9 @@ from frameq_worker.insightflow import (
     InsightGenerationError,
     MarkdownSplitter,
     generate_insights_from_markdown,
+    generate_summary_from_markdown,
     write_insight_files,
+    write_summary_files,
 )
 from frameq_worker.insightflow import prompt as prompt_module
 from frameq_worker.insightflow.prompt import build_question_prompt
@@ -294,3 +296,60 @@ def test_write_insight_files_serializes_existing_insights(tmp_path: Path) -> Non
 
     assert artifacts.json_path.read_text(encoding="utf-8")
     assert artifacts.md_path.read_text(encoding="utf-8")
+
+
+def test_generate_summary_from_markdown_writes_summary_and_mermaid_mindmap(
+    tmp_path: Path,
+) -> None:
+    client = FakeInsightClient(
+        responses=[
+            "```mermaid\nmindmap\n  root((企业 AI 落地))\n    流程编排\n    上下文能力\n```",
+            (
+                "# 要点总结\n\n## 总览\n企业 AI 落地需要把流程编排和上下文能力结合起来。"
+                "\n\n## 关键要点\n- 流程编排决定 AI 能否进入业务现场。"
+            ),
+        ]
+    )
+
+    artifacts = generate_summary_from_markdown(
+        markdown="# 视频文字稿\n\n企业 AI 落地时，流程编排和上下文能力都很关键。",
+        output_dir=tmp_path / "outputs",
+        output_stem="demo",
+        client=client,
+    )
+
+    assert artifacts.summary.startswith("# 要点总结")
+    assert artifacts.mindmap.startswith("mindmap\n")
+    assert artifacts.summary_path == tmp_path / "outputs" / "demo_summary.md"
+    assert artifacts.mindmap_path == tmp_path / "outputs" / "demo_mindmap.mmd"
+    assert artifacts.summary_path.read_text(encoding="utf-8") == artifacts.summary
+    assert artifacts.mindmap_path.read_text(encoding="utf-8") == artifacts.mindmap
+    assert "逻辑思维导图" in client.prompts[0]
+    assert "Mermaid mindmap" in client.prompts[0]
+    assert "根据文字稿原文和 Mermaid 思维导图" in client.prompts[1]
+
+
+def test_write_summary_files_rejects_empty_outputs(tmp_path: Path) -> None:
+    try:
+        write_summary_files(
+            summary=" ",
+            mindmap="mindmap\n  root((主题))",
+            output_dir=tmp_path / "outputs",
+            output_stem="demo",
+        )
+    except InsightGenerationError as error:
+        assert error.code == "INSIGHTFLOW_EMPTY_SUMMARY"
+    else:
+        raise AssertionError("Expected InsightGenerationError")
+
+    try:
+        write_summary_files(
+            summary="# 要点总结",
+            mindmap="graph TD\n  A-->B",
+            output_dir=tmp_path / "outputs",
+            output_stem="demo",
+        )
+    except InsightGenerationError as error:
+        assert error.code == "INSIGHTFLOW_INVALID_MINDMAP"
+    else:
+        raise AssertionError("Expected InsightGenerationError")

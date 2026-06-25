@@ -20,11 +20,14 @@ describe("history client", () => {
           video_path: "D:\\FrameQ\\outputs\\task-1.mp4",
           audio_path: "D:\\FrameQ\\outputs\\task-1.wav",
           transcript_path: "D:\\FrameQ\\outputs\\task-1_transcript.txt",
+          summary_path: "D:\\FrameQ\\outputs\\task-1_summary.md",
+          mindmap_path: "D:\\FrameQ\\outputs\\task-1_mindmap.mmd",
           insights_path: "D:\\FrameQ\\outputs\\task-1_insights.json",
           error: null,
           text_preview: "这是一段转写预览",
           insights_count: 2,
           text: "这是一段完整文字稿",
+          summary: "# 要点总结\n\n- 历史总结",
           insights: ["第一个话题点", "第二个话题点"],
         },
       ];
@@ -43,11 +46,14 @@ describe("history client", () => {
         videoPath: "D:\\FrameQ\\outputs\\task-1.mp4",
         audioPath: "D:\\FrameQ\\outputs\\task-1.wav",
         transcriptPath: "D:\\FrameQ\\outputs\\task-1_transcript.txt",
+        summaryPath: "D:\\FrameQ\\outputs\\task-1_summary.md",
+        mindmapPath: "D:\\FrameQ\\outputs\\task-1_mindmap.mmd",
         insightsPath: "D:\\FrameQ\\outputs\\task-1_insights.json",
         error: null,
         textPreview: "这是一段转写预览",
         insightsCount: 2,
         text: "这是一段完整文字稿",
+        summary: "# 要点总结\n\n- 历史总结",
         insights: ["第一个话题点", "第二个话题点"],
       },
     ]);
@@ -63,6 +69,8 @@ describe("history client", () => {
       videoPath: null,
       audioPath: null,
       transcriptPath: "D:\\FrameQ\\outputs\\task-2_transcript.txt",
+      summaryPath: "D:\\FrameQ\\outputs\\task-2_summary.md",
+      mindmapPath: "D:\\FrameQ\\outputs\\task-2_mindmap.mmd",
       insightsPath: null,
       error: {
         code: "INSIGHTFLOW_CONFIG_MISSING",
@@ -72,6 +80,7 @@ describe("history client", () => {
       textPreview: "已经完成的文字稿",
       insightsCount: 0,
       text: "已经完成的文字稿",
+      summary: "# 要点总结",
       insights: [],
     });
 
@@ -80,8 +89,11 @@ describe("history client", () => {
       video_path: null,
       audio_path: null,
       text: "已经完成的文字稿",
+      summary: "# 要点总结",
       insights: [],
       transcript_path: "D:\\FrameQ\\outputs\\task-2_transcript.txt",
+      summary_path: "D:\\FrameQ\\outputs\\task-2_summary.md",
+      mindmap_path: "D:\\FrameQ\\outputs\\task-2_mindmap.mmd",
       insights_path: null,
       error: {
         code: "INSIGHTFLOW_CONFIG_MISSING",

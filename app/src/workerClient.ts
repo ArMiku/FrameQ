@@ -96,8 +96,11 @@ export async function retryInsights(
       video_path: null,
       audio_path: null,
       text,
+      summary: "",
       insights: [],
       transcript_path: transcriptPath,
+      summary_path: null,
+      mindmap_path: null,
       insights_path: null,
       error: {
         code: "TAURI_COMMAND_FAILED",
@@ -148,8 +151,11 @@ function failedResult(code: string, message: string, stage: WorkflowStage): Work
     video_path: null,
     audio_path: null,
     text: "",
+    summary: "",
     insights: [],
     transcript_path: null,
+    summary_path: null,
+    mindmap_path: null,
     insights_path: null,
     error: {
       code,

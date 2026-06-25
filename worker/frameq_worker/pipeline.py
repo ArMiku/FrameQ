@@ -17,6 +17,7 @@ from frameq_worker.insightflow import (
     InsightClient,
     InsightGenerationError,
     generate_insights_from_markdown,
+    generate_summary_from_markdown,
 )
 from frameq_worker.media import (
     CommandExecutionError,
@@ -91,30 +92,66 @@ def run_insight_generation_step(
         )
 
     try:
-        artifacts = generate_insights_from_markdown(
-            markdown=transcript_path.read_text(encoding="utf-8"),
-            output_dir=output_dir,
-            output_stem=output_stem,
-            client=client,
-        )
-    except InsightGenerationError as exc:
+        markdown = transcript_path.read_text(encoding="utf-8")
+    except OSError as exc:
         return ProcessResult(
             status=JobStage.PARTIAL_COMPLETED,
             transcript_path=transcript_path.as_posix(),
             text=transcript_text,
             error=WorkerError(
-                code=exc.code,
+                code="TRANSCRIPT_MARKDOWN_NOT_FOUND",
                 message=str(exc),
                 stage=JobStage.INSIGHTS_GENERATING,
             ),
         )
 
+    summary_artifacts = None
+    insight_artifacts = None
+    generation_error: InsightGenerationError | None = None
+
+    try:
+        summary_artifacts = generate_summary_from_markdown(
+            markdown=markdown,
+            output_dir=output_dir,
+            output_stem=output_stem,
+            client=client,
+        )
+    except InsightGenerationError as exc:
+        generation_error = exc
+
+    try:
+        insight_artifacts = generate_insights_from_markdown(
+            markdown=markdown,
+            output_dir=output_dir,
+            output_stem=output_stem,
+            client=client,
+        )
+    except InsightGenerationError as exc:
+        if generation_error is None:
+            generation_error = exc
+
+    status = JobStage.COMPLETED if generation_error is None else JobStage.PARTIAL_COMPLETED
+
     return ProcessResult(
-        status=JobStage.COMPLETED,
+        status=status,
         transcript_path=transcript_path.as_posix(),
-        insights_path=artifacts.json_path.as_posix(),
+        insights_path=insight_artifacts.json_path.as_posix() if insight_artifacts else None,
+        summary_path=summary_artifacts.summary_path.as_posix() if summary_artifacts else None,
+        mindmap_path=summary_artifacts.mindmap_path.as_posix() if summary_artifacts else None,
         text=transcript_text,
-        insights=[insight.text for insight in artifacts.insights],
+        summary=summary_artifacts.summary if summary_artifacts else "",
+        insights=(
+            [insight.text for insight in insight_artifacts.insights]
+            if insight_artifacts
+            else []
+        ),
+        error=WorkerError(
+            code=generation_error.code,
+            message=str(generation_error),
+            stage=JobStage.INSIGHTS_GENERATING,
+        )
+        if generation_error
+        else None,
     )
 
 
@@ -283,9 +320,9 @@ def run_worker_pipeline(
     emit_progress(
         progress_callback,
         JobStage.INSIGHTS_GENERATING,
-        "正在使用配置的 LLM 生成启发话题点，文字稿会发送到该服务。"
+        "正在使用配置的 LLM 生成要点总结和启发话题点，文字稿会发送到该服务。"
         if insight_client is not None
-        else "正在生成启发话题点。",
+        else "正在生成要点总结和启发话题点。",
         88,
     )
     markdown_transcript_path = output_dir / f"{video_path.stem}_transcript.md"
@@ -302,7 +339,10 @@ def run_worker_pipeline(
         audio_path=audio_path.as_posix(),
         transcript_path=transcript_result.transcript_path,
         insights_path=insight_result.insights_path,
+        summary_path=insight_result.summary_path,
+        mindmap_path=insight_result.mindmap_path,
         text=insight_result.text,
+        summary=insight_result.summary,
         insights=insight_result.insights,
         error=insight_result.error,
     )

@@ -51,7 +51,10 @@ class ProcessResult:
     audio_path: str | None = None
     transcript_path: str | None = None
     insights_path: str | None = None
+    summary_path: str | None = None
+    mindmap_path: str | None = None
     text: str = ""
+    summary: str = ""
     insights: list[str] = field(default_factory=list)
     error: WorkerError | None = None
 
@@ -62,7 +65,10 @@ class ProcessResult:
             "audio_path": self.audio_path,
             "transcript_path": self.transcript_path,
             "insights_path": self.insights_path,
+            "summary_path": self.summary_path,
+            "mindmap_path": self.mindmap_path,
             "text": self.text,
+            "summary": self.summary,
             "insights": self.insights,
             "error": self.error.to_dict() if self.error else None,
         }

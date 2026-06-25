@@ -62,6 +62,8 @@ def update_history_item_after_insight_retry(
 
         item["status"] = result.status.value
         item["transcript_path"] = result.transcript_path
+        item["summary_path"] = result.summary_path
+        item["mindmap_path"] = result.mindmap_path
         item["insights_path"] = result.insights_path
         item["error"] = build_history_error(result.error)
         item["text_preview"] = result.text.strip()[:180]
@@ -109,6 +111,8 @@ def build_history_item(
         "video_path": result.video_path,
         "audio_path": result.audio_path,
         "transcript_path": result.transcript_path,
+        "summary_path": result.summary_path,
+        "mindmap_path": result.mindmap_path,
         "insights_path": result.insights_path,
         "error": build_history_error(result.error),
         "text_preview": result.text.strip()[:180],

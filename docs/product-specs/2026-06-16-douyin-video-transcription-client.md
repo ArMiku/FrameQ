@@ -21,7 +21,7 @@
 
 ## 背景
 
-用户希望在桌面客户端中输入抖音视频 URL，先确认启动本地公开视频下载、音频提取和中文 ASR 转写，再在文字稿完成后单独确认生成可继续思考的启发话题点。
+用户希望在桌面客户端中输入抖音视频 URL，先确认启动本地公开视频下载、音频提取和中文 ASR 转写，再在文字稿完成后单独确认生成可继续思考的要点总结和启发话题点。
 
 已有方案验证了基础下载链路：示例视频可保存为 `outputs/7524373044106677544.mp4`，并通过 `ffprobe` 校验为有效媒体文件。
 
@@ -30,10 +30,10 @@
 - 支持粘贴单个抖音视频 URL 并触发处理。
 - 下载并校验公开视频，输出标准 MP4 文件。
 - 提取 16 kHz 单声道 WAV 音频并调用本地 ASR 模型转写中文语音；默认模型为 `iic/SenseVoiceSmall`，并支持选择 Qwen3-ASR。
-- 在文字稿完成后，由用户单独确认调用本项目内置的 InsightFlow 话题点生成模块，输出启发话题点。
+- 在文字稿完成后，由用户单独确认调用本项目内置的 AI 整理能力，输出要点总结、Mermaid 思维导图本地文件和启发话题点。
 - 在桌面 UI 中展示进度、结果总览、详情浮窗、复制和导出入口。
-- 在结果总览中提供视频、音频、完整文字稿和启发话题点 4 个产物入口；视频和音频入口定位本地文件。
-- 支持导出文字稿 `txt` / `md`，以及话题点 `json` / `md`。
+- 在结果总览中提供视频、音频、完整文字稿、要点总结和启发话题点 5 个产物入口；视频和音频入口定位本地文件。
+- 支持导出文字稿 `txt` / `md`、要点总结 `md`，以及话题点 `json` / `md`；Mermaid 思维导图仅保存为本地 `.mmd` 文件，不展示或渲染。
 - 记录已操作任务历史，允许用户从历史中查看任务状态、打开结果详情并定位已生成文件。
 - 允许用户在桌面设置中配置后续任务的结果输出目录。
 
@@ -49,11 +49,12 @@
 
 - 用户粘贴一个自己有权处理的公开视频 URL，获得视频文件和文字稿。
 - 用户阅读完整文字稿，并复制到笔记或文档中继续编辑。
+- 用户打开要点总结，获得基于文字稿原文和 Mermaid 思维导图整理出的层次化 Markdown 摘要。
 - 用户打开启发话题点，获得可用于讨论、选题或复盘的开放式问题。
-- InsightFlow 配置缺失时，用户仍能得到文字稿，并稍后重试话题点生成。
-- 启发话题点使用由管理员在 FrameQ server 端统一配置的 OpenAI-compatible LLM；桌面 UI 不再提供 LLM API Key、base URL、model 或 timeout 输入。
-- 用户完成主流程后，可以先查看或定位视频、音频和文字稿，再通过单独的确认面板启动启发话题点生成。
-- 用户可以打开历史任务列表，查看过去处理过的 URL、完成状态、时间和结果路径，并重新打开文字稿或话题点详情。
+- InsightFlow 配置缺失时，用户仍能得到文字稿，并稍后重试 AI 整理。
+- AI 整理使用由管理员在 FrameQ server 端统一配置的 OpenAI-compatible LLM；桌面 UI 不再提供 LLM API Key、base URL、model 或 timeout 输入。
+- 用户完成主流程后，可以先查看或定位视频、音频和文字稿，再通过单独的确认面板启动要点总结和启发话题点生成。
+- 用户可以打开历史任务列表，查看过去处理过的 URL、完成状态、时间和结果路径，并重新打开文字稿、要点总结或话题点详情。
 - 用户可以在设置中修改结果输出目录；修改后只影响新任务，旧历史仍指向旧文件路径。
 - 用户可以在设置中选择后续任务使用的 ASR 模型：`Qwen/Qwen3-ASR-0.6B` 或 `iic/SenseVoiceSmall`。
 
@@ -83,24 +84,24 @@
 - 下载成功后，`outputs/` 中存在 MP4 文件，`ffprobe` 可识别视频流和音频流。
 - 音频提取后，`work/` 中存在 16 kHz 单声道 WAV。
 - ASR 成功后，`outputs/` 中存在 transcript `.txt` 和 `.md`。
-- 主流程完成后，结果区显示视频、音频、完整文字稿和启发话题点 4 个入口；视频和音频入口在文件管理器中定位对应本地文件。
-- 主流程完成后，启发话题点入口显示待生成状态；点击后打开确认面板，用户再次点击 `确认` 才启动生成。
-- 话题点生成开始时才使用 server-managed LLM checkout 和消耗 1 次话题点额度；主流程不得携带 checkout env 或消耗额度。
+- 主流程完成后，结果区显示视频、音频、完整文字稿、要点总结和启发话题点 5 个入口；视频和音频入口在文件管理器中定位对应本地文件。
+- 主流程完成后，要点总结和启发话题点入口显示待生成状态；点击后打开确认面板，用户再次点击 `确认` 才启动生成。
+- AI 整理开始时才使用 server-managed LLM checkout 和消耗 1 次话题点额度；主流程不得携带 checkout env 或消耗额度。
 - 用户在 UI 设置中保存 ASR 模型后，后续完整处理请求应使用保存后的 ASR 模型；历史记录和 transcript markdown 中应保留任务实际使用的模型名。
-- 话题点成功后，`outputs/` 中存在 insights `.json` 和 `.md`。
+- AI 整理成功后，`outputs/` 中存在 summary `.md`、mindmap `.mmd`、insights `.json` 和 `.md`。
 - 话题点生成应先请求 LLM 规划话题段，并在逐话题生成问题时包含“读完就知道可以从哪个角度思考”“问题长度尽量控制在一行可读范围内”等表达优化约束。
 - planner JSON 无法解析或没有有效话题段时，worker 应自动回退到直接问题生成策略，不因 planner 失败丢失可用文字稿结果。
-- InsightFlow 失败时，UI 展示 `部分完成`，保留文字稿并提供重试入口。
-- 在 `部分完成` 状态点击话题点重试时，仅重新生成话题点，不重新下载视频或重新执行 ASR。
-- 话题点待生成或失败时，点击话题点入口都应进入确认面板；确认后仅运行话题点生成，不重新下载视频、提取音频或重新转写。
+- InsightFlow 失败时，UI 展示 `部分完成`，保留文字稿和已经成功生成的 AI 产物，并提供重试入口。
+- 在 `部分完成` 状态点击要点总结或话题点重试时，仅重新运行 AI 整理，不重新下载视频或重新执行 ASR。
+- 要点总结或话题点待生成/失败时，点击对应入口都应进入确认面板；确认后仅运行要点总结、Mermaid mindmap 和话题点生成，不重新下载视频、提取音频或重新转写。
 - app-local data `.env` 只承载本机 ASR、输出目录和模型下载覆盖；话题点生成不得从 dotenv 读取 LLM key 或 model。
 - 管理员在 server 端保存 LLM base URL、API key、model 和 timeout 后，后续话题点生成应通过 server-managed checkout 使用该配置；主流程不携带 LLM checkout env。
-- 用户在 UI 设置中保存输出目录后，后续完整处理生成的视频、文字稿和话题点文件应写入该目录；中间 WAV 仍写入 `work/`。
-- 设置 UI 必须提示：这里只管理本机 ASR 和输出目录；话题点确认面板必须提示文字稿片段会发送到管理员配置的云端 LLM 服务。
-- 历史入口应展示最近任务列表；每条历史至少包含 URL、状态、时间、输出目录、文字稿路径、话题点路径和错误码或摘要。
+- 用户在 UI 设置中保存输出目录后，后续完整处理生成的视频、文字稿、要点总结、Mermaid mindmap 和话题点文件应写入该目录；中间 WAV 仍写入 `work/`。
+- 设置 UI 必须提示：这里只管理本机 ASR 和输出目录；AI 整理确认面板必须提示文字稿片段会发送到管理员配置的云端 LLM 服务。
+- 历史入口应展示最近任务列表；每条历史至少包含 URL、状态、时间、输出目录、文字稿路径、要点总结路径、Mermaid mindmap 路径、话题点路径和错误码或摘要。
 - 点击历史中的可用结果应打开与当前结果一致的详情浮窗；导出按钮应定位历史项记录的实际文件路径。
 - 处理中点击取消时，桌面端终止当前 worker 进程树，UI 返回输入态并保留已提交 URL；取消后的晚到结果不会覆盖界面。
-- 结果详情浮窗可在 `启发话题点` 和 `完整文字稿` 间切换，并支持复制和导出；视频和音频不进入详情浮窗，只定位本地文件。
+- 结果详情浮窗可在 `要点总结`、`启发话题点` 和 `完整文字稿` 间切换，并支持复制和导出；视频和音频不进入详情浮窗，只定位本地文件，Mermaid 文本不进入详情浮窗。
 
 ## 2026-06-17 Repeat URL Local Media Reuse
 
@@ -150,3 +151,14 @@
 
 - When insight generation fails and a later retry succeeds, the matching local history item should update from the failed or pending insight state to `completed`, clear the previous error, store the generated `insights_path`, and refresh `insights_count`.
 - Local bundled worker resources used by Tauri dev/build should keep this retry-history sync behavior in step with the source worker.
+
+## 2026-06-25 Transcript Summary and Mermaid Mindmap
+
+- After transcript completion, the existing second confirmation starts one AI整理 run that generates both `要点总结` and `启发话题点` using the server-managed LLM checkout.
+- The AI整理 run consumes one existing insight-generation quota use, even though it may make multiple internal LLM prompts.
+- The worker should first generate a Mermaid `mindmap` text from the transcript, then generate a layered Markdown summary from the original transcript and that Mermaid mindmap.
+- The UI shows the summary content as a result card and detail tab, but must not display or render the Mermaid source.
+- Summary artifacts are written to the configured output directory as `<stem>_summary.md`; Mermaid text is written as `<stem>_mindmap.mmd`.
+- History records should preserve `summary_path`, `mindmap_path`, and summary text loading so completed tasks can reopen the summary detail.
+- If summary generation succeeds but topic generation fails, the summary remains available and the task is `partial_completed`; if topic generation succeeds but summary generation fails, topic output remains available and the task is `partial_completed`.
+- Transcript-only completion shows both `要点总结` and `启发话题点` as pending AI整理 outputs until the user confirms generation.

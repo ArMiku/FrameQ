@@ -86,8 +86,8 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
     body: "正在使用本地 ASR 模型缓存识别语音内容。",
   },
   insights_generating: {
-    title: "话题点生成中",
-    body: "正在使用 InsightFlow 从文字稿中提炼启发话题点。",
+    title: "AI 整理中",
+    body: "正在使用云端 LLM 生成要点总结和启发话题点。",
   },
   completed: {
     title: "文字稿完成",
@@ -124,7 +124,7 @@ const stageSummary: Record<WorkflowState["stage"], string> = {
   waiting_input: "准备接收一个公开视频链接",
   video_extracting: "正在准备媒体文件",
   video_transcribing: "正在生成本地文字稿",
-  insights_generating: "正在生成启发话题点",
+  insights_generating: "正在进行 AI 整理",
   completed: "视频、音频和文字稿已可查看",
   partial_completed: "文字稿已保留，可重试话题点",
   failed: "处理未完成，请查看原因",
@@ -508,7 +508,7 @@ function App() {
       return;
     }
     if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "重试话题点生成"));
+      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结和启发话题点"));
       return;
     }
 
@@ -594,7 +594,7 @@ function App() {
       url: item.url,
       submittedUrl: item.url,
     });
-    setDetailTab(item.insights.length > 0 ? "insights" : item.text ? "transcript" : null);
+    setDetailTab(item.summary ? "summary" : item.insights.length > 0 ? "insights" : item.text ? "transcript" : null);
     setActionNotice("");
     setHistoryOpen(false);
   }
@@ -803,7 +803,8 @@ function App() {
 
   const activeCopy = stageCopy[workflow.stage];
   const progressPercent = formatProgressPercent(workflow.progressPercent);
-  const detailTitle = detailTab === "insights" ? "启发话题点" : "完整文字稿";
+  const detailTitle =
+    detailTab === "insights" ? "启发话题点" : detailTab === "summary" ? "要点总结" : "完整文字稿";
   const detailText = detailTab ? getDetailText(detailTab, workflow) : "";
   const exportPath = detailTab ? getExportPath(detailTab, workflow) : null;
   const searchQuery = detailSearch.trim().toLocaleLowerCase();
@@ -817,6 +818,13 @@ function App() {
           .filter((line) => line.toLocaleLowerCase().includes(searchQuery))
           .join("\n")
       : workflow.text;
+  const visibleSummary =
+    searchQuery && workflow.summary
+      ? workflow.summary
+          .split(/\n+/)
+          .filter((line) => line.toLocaleLowerCase().includes(searchQuery))
+          .join("\n")
+      : workflow.summary;
   const accountHasActiveEntitlement =
     account.authenticated && account.entitlementStatus === "active";
   const accountChipLabel = canProcessWithAccount(account)
@@ -1036,15 +1044,15 @@ function App() {
         <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={() => setInsightConfirmOpen(false)}>
           <section
             className="sheet-panel detail-modal insight-confirm-modal insight-confirm-sheet"
-            aria-label="生成启发话题点"
+            aria-label="生成要点总结和启发话题点"
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
           >
             <header className="modal-header sheet-header">
               <div>
-                <p className="section-label">Insight topics</p>
-                <h2>生成启发话题点</h2>
+                <p className="section-label">AI organize</p>
+                <h2>生成要点总结和启发话题点</h2>
               </div>
               <button className="icon-button" type="button" onClick={() => setInsightConfirmOpen(false)} aria-label="关闭确认面板">
                 <X size={18} />
@@ -1053,7 +1061,7 @@ function App() {
             <div className="insight-confirm-content">
               <p className="settings-warning privacy-callout">
                 <ShieldCheck size={16} />
-                <span>确认后会使用管理员配置的云端 LLM 生成话题点，文字稿片段会发送到该服务，并消耗 1 次话题点额度。</span>
+                <span>确认后会使用管理员配置的云端 LLM 生成要点总结和启发话题点，文字稿片段会发送到该服务，并消耗 1 次话题点额度。</span>
               </p>
               <div className="confirm-summary">
                 <div>
@@ -1106,6 +1114,16 @@ function App() {
             </header>
             <div className="tabs">
               <button
+                className={detailTab === "summary" ? "selected" : ""}
+                type="button"
+                onClick={() => {
+                  setDetailSearch("");
+                  setDetailTab("summary");
+                }}
+              >
+                要点总结
+              </button>
+              <button
                 className={detailTab === "insights" ? "selected" : ""}
                 type="button"
                 onClick={() => {
@@ -1148,7 +1166,9 @@ function App() {
             </div>
             {actionNotice ? <p className="action-notice">{actionNotice}</p> : null}
             <div className="modal-content">
-              {detailTab === "insights" ? (
+              {detailTab === "summary" ? (
+                <p>{visibleSummary || (searchQuery ? "没有匹配的关键词。" : "要点总结生成后将在这里显示。")}</p>
+              ) : detailTab === "insights" ? (
                 workflow.insights.length > 0 ? (
                   visibleInsights.length > 0 ? (
                     <ol>
