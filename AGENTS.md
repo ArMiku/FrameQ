@@ -14,6 +14,8 @@
 - 安全规范：`docs/SECURITY.md`
 - 核心信念：`docs/design-docs/core-beliefs.md`
 - EasyDownload 抖音 fallback 参考：`docs/references/easydownload-douyin-fallback.md`
+- EasyDownload 转写优先迁移筛选：`docs/references/easydownload-transcription-migration.md`
+- EasyDownload MITM/CA/管理员提权参考(未来可选项):`docs/references/easydownload-mitm-ca-design.md`
 - 执行清单：`TASKS.md`
 - 工作流：`WORKFLOW.md`
 - 完成门禁：`docs/EXECUTION_GATES.md`
@@ -26,7 +28,6 @@
 
 ## 核心信念
 
-- 本项目只面向公开视频、用户自有视频或已授权视频，不做绕过平台限制的能力。
 - 桌面客户端必须本地优先；视频、音频和文字稿默认留在本机。
 - 运行期不得从 `D:\Github\InsightFlow\src\server` 跨目录 import；需要的能力必须复制、裁剪并内置到 `worker/insightflow/`。
 - UI 必须始终显示清晰处理阶段：输入、视频提取、视频转译、话题点生成、完成或失败。

@@ -1,5 +1,14 @@
 # Security and Compliance
 
+## 2026-06-26 Public Link Fallback Safety Boundary
+
+- EasyDownload-derived work may improve FrameQ's handling of public or user-authorized share links, but it must not introduce browser cookie import, persistent cookie storage, account login automation, QR login, CAPTCHA solving, private-content scraping, proxy pools, user-agent rotation, or browser fingerprint spoofing.
+- FrameQ must not migrate EasyDownload's WeChat MITM, certificate authority installation, system proxy changes, or administrator-elevation behavior.
+- Worker fallbacks may use fixed compatibility headers and process-local anonymous cookies naturally issued by a public share page for one invocation only. Those cookies must not be read from browser stores, written to disk, sent to FrameQ server, or stored in history/logs.
+- Bilibili login, bangumi/member-only behavior, and DASH-specific download assembly remain out of scope because they require account-aware or downloader-oriented product boundaries that FrameQ does not support.
+- Safe download helpers must avoid logging cookies, sensitive headers, authorization material, or full volatile media CDN URLs. Logs and history may keep the original submitted URL, hostnames, short error causes, quality labels, byte sizes, and local output paths.
+- When a link is unavailable, login-gated, CAPTCHA-gated, private, image-only, or has no playable video stream, the worker must return structured recoverable errors rather than attempting to bypass access controls.
+
 ## 2026-06-25 Douyin Share Page Fallback Boundary
 
 - The Douyin fallback may request public `iesdouyin.com` share pages and public media CDN URLs for user-submitted public or user-authorized links.

@@ -33,6 +33,16 @@
 - Fallback failures should be classified into user-readable causes such as ID parse failure, public share page unavailable, router data missing, no playable stream, stream download failure, and media validation failure.
 - The fallback must not collect, persist, or require user browser cookies, and must not attempt to bypass login gates, CAPTCHA, private content restrictions, or platform access controls. It is only for public or user-authorized links that expose a share page and playable media URL.
 
+## 2026-06-26 EasyDownload Transcription-Oriented Migration Scope
+
+- FrameQ should use EasyDownload only as an MIT-licensed algorithm reference for improving public-link acquisition before local transcription; it must not become a general downloader or expose a download center.
+- Douyin compatibility work should prioritize share text parsing, short-link resolution, `/note/{id}` and `/share/slides/{id}` handling, and `modal_id` or `aweme_id` extraction when those inputs resolve to a public playable video.
+- Worker download reliability should improve through streaming `.part` writes, safe resume/range validation, candidate retry, no-progress timeout handling, maximum-size guardrails, and `ffprobe` validation before the media enters ASR.
+- Xiaohongshu fallback should be video-only: resolve supported share text or `xhslink.com` links, parse public page state such as `__INITIAL_STATE__`, and extract a playable video stream only when the note is public or user-authorized.
+- The user-visible workflow remains the existing transcription flow: submit one link, process local video/audio/ASR, then optionally confirm AI整理. No stream picker, batch queue, account login, cookie import, or proxy setup should be added for this migration.
+- Do not migrate EasyDownload's WeChat MITM/CA/system proxy behavior, Bilibili login/bangumi/DASH workflows, Wails/Vue UI, tray behavior, image proxy, or download-manager product model.
+- The product copy should describe this work as improved public-link compatibility and safer download reliability for transcription, not as platform scraping or archive downloading.
+
 ## 背景
 
 用户希望在桌面客户端中输入抖音视频 URL，先确认启动本地公开视频下载、音频提取和中文 ASR 转写，再在文字稿完成后单独确认生成可继续思考的要点总结和启发话题点。
