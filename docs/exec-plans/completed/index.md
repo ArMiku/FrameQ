@@ -2,6 +2,13 @@
 
 | File | Focus |
 |------|-------|
+| `2026-06-25-douyin-share-page-fallback-plan.md` | Added a bounded Douyin share-page fallback that selects the largest validated public stream after matching `yt-dlp` failures. |
+| `2026-06-25-transcript-summary-mindmap-plan.md` | Added confirmed AI整理 outputs for transcript summaries and local Mermaid mindmap artifacts. |
+| `2026-06-23-desktop-worker-structure-refactor-plan.md` | Split the desktop React shell, Tauri bridge, and Python worker orchestration into focused modules without behavior changes. |
+| `2026-06-23-asr-model-cache-layout-plan.md` | Unified SenseVoice ASR cache layout under `<FRAMEQ_MODEL_DIR>/models/iic/...` and preserved legacy compatibility. |
+| `2026-06-23-disable-root-dotenv-llm-plan.md` | Stopped applying repository-root `.env` to desktop worker runtime after LLM config moved to server-managed checkout. |
+| `2026-06-22-four-artifact-split-flow-plan.md` | Split local transcript generation from confirmed insight generation and surfaced video/audio/transcript/insight artifacts. |
+| `2026-06-22-server-managed-llm-quota-plan.md` | Added server-managed dedicated client LLM config, desktop checkout, and monthly insight quota. |
 | `2026-06-18-macos-desktop-ui-upgrade-plan.md` | Upgraded the React desktop UI to a macOS-style utility shell |
 | `2026-06-18-topic-planner-insights-plan.md` | Added LLM topic planning before insight question generation |
 | `2026-06-18-insight-prompt-tuning-plan.md` | Aligned FrameQ insight prompts and generation parameters with the reference service |

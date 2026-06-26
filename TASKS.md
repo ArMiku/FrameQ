@@ -14,8 +14,8 @@
 
 ## 待办
 
-- [ ] 完成干净 Windows VM 与 macOS arm64/x64 真实安装包验证 — 使用轻量 runtime 资源产出安装包，在无 Python/uv/ffmpeg 的干净机器完成首启模型下载、URL → 下载 → ASR 文字稿，并记录签名/公证发布门禁状态。⚠️ 需真实 VM 环境和生产签名证书。
-- [ ] 完成桌面端一键升级的干净机签名更新验证 — 替换开发版 updater 公钥为生产公钥，构建签名更新产物，上传 GitHub Releases，在干净机验证旧版本到新版本升级。⚠️ 需生产签名私钥 + 干净 VM。
+- [ ] 完成干净 Windows VM 与 macOS arm64/x64 真实安装包验证 — 使用轻量 runtime 资源产出安装包，在无 Python/uv/ffmpeg 的干净机器完成首启模型下载、URL → 下载 → ASR 文字稿，并记录签名/公证发布门禁状态。✅ 验收：干净机器安装、首启模型下载、公开视频转写、app-local 数据保留和签名/公证状态记录完成。⚠️ 需真实 VM 环境和生产签名证书。
+- [ ] 完成桌面端一键升级的干净机签名更新验证 — 替换开发版 updater 公钥为生产公钥，构建签名更新产物，上传 GitHub Releases，在干净机验证旧版本到新版本升级。✅ 验收：旧版安装后通过 updater 发现新版、下载签名产物、安装并重启到新版，且 app-local 数据保留。⚠️ 需生产签名私钥 + 干净 VM。
 
 ## 已完成
 - [x] 实现抖音分享页 fallback 视频下载（2026-06-26）✅ yt-dlp 失败时自动降级为 iesdouyin.com/share/video 分享页解析 + play_addr ratio 探测 + 多候选流下载，支持 6 种分层错误码和流下载失败自动重试；worker/frontend/Rust 测试、构建、ruff、docs 门禁全部通过；线上烟雾测试通过（201.9 MB MP4, 2 streams, AAC 音频）。

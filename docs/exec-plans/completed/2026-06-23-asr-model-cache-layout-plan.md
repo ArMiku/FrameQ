@@ -39,3 +39,9 @@ Unify SenseVoice ASR model cache layout so ModelScope download and FunASR runtim
 - `npm --prefix app run build` - passed.
 - `python scripts/validate_agents_docs.py --level WARN` - passed, 0 errors and 0 warnings.
 - `git diff --check` - passed; only CRLF conversion warnings were reported.
+
+## Outcomes & Retrospective
+
+Delivered the canonical app-local ModelScope cache layout under `<FRAMEQ_MODEL_DIR>/models/iic/...`, with worker/Tauri compatibility for legacy layouts and focused cleanup for known duplicate SenseVoice/VAD caches. Validation recorded above covered model download, ASR loading, frontend state, Tauri availability checks, docs, and diff hygiene.
+
+Residual risk: cache migration and cleanup remain best-effort; unknown user-created model directories are intentionally preserved, and external ModelScope download reliability still depends on network/platform availability.

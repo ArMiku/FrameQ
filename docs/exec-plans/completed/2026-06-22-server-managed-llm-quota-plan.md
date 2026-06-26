@@ -47,3 +47,9 @@ Move insight-topic LLM configuration out of the desktop settings UI and into the
 - `uv run pytest worker\tests` — 99 passed.
 - `uv run ruff check worker` — passed.
 - `python scripts/validate_agents_docs.py --level WARN` — 0 errors, 0 warnings.
+
+## Outcomes & Retrospective
+
+Delivered server-managed LLM configuration, desktop checkout propagation, account quota display/gating, and monthly insight-use accounting. Final validation passed across server, desktop app, Tauri, worker, lint, build, and governance checks.
+
+Residual risk: entitled desktop clients receive temporary supplier runtime material for local worker LLM calls, so supplier-side revocation, rotation, and quota controls remain required.

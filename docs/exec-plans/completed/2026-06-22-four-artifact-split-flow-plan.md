@@ -27,3 +27,9 @@ Expose video, audio, transcript, and insight outputs in the desktop result works
 - `cargo test --manifest-path app/src-tauri/Cargo.toml` — passed, 25 tests.
 - `uv run pytest worker\tests` — passed, 76 tests.
 - `python scripts\validate_agents_docs.py --level WARN` — passed, 0 errors and 0 warnings.
+
+## Outcomes & Retrospective
+
+Delivered the split result workflow: video, audio, transcript, and insight artifacts are surfaced separately, transcript generation no longer performs server-managed LLM checkout, and insight generation remains a second confirmed action. Validation recorded above covered frontend, Tauri, worker, build, and governance checks.
+
+Residual risk: audio remains in the work directory rather than outputs by design, and video/audio viewing still depends on locating local files instead of an in-app player.

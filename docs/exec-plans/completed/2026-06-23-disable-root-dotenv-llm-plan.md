@@ -33,3 +33,9 @@ Stop applying `D:/Github/FrameQ/.env` to desktop worker runtime configuration af
 - `npm --prefix app run build` - passed.
 - `python scripts/validate_agents_docs.py --level WARN` - passed, 0 errors and 0 warnings.
 - `git diff --check` - passed; only CRLF conversion warnings were reported.
+
+## Outcomes & Retrospective
+
+Delivered the runtime boundary that ignores repository-root `.env` for desktop worker LLM configuration, keeps app-local `.env` for non-LLM local settings, and relies on server-managed checkout variables for insight generation. Validation recorded above covered worker config, Tauri subprocess environment filtering, frontend settings, build, docs, and diff hygiene.
+
+Residual risk: existing developer-local root `.env` files are not deleted automatically; they remain development artifacts and must not be treated as desktop runtime configuration.

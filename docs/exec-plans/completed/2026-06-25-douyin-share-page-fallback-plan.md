@@ -162,3 +162,9 @@ Live fallback smoke with the public Douyin URL remains pending because it depend
 - `https://www.iesdouyin.com/share/video/7653372612151692594/?app=aweme` returned SSR data containing the target `aweme_id` and `play_addr.uri`.
 - Ratio probing returned valid ranged MP4 responses for `1080p`, `720p`, and `540p`; highest-quality policy should choose the largest valid stream and tie-break toward `1080p`.
 - The fallback remains bounded to public or user-authorized links and must not add CAPTCHA, login bypass, or cookie persistence behavior.
+
+## Outcomes & Retrospective
+
+Delivered a Douyin-specific fallback that keeps `yt-dlp` as the first attempt, then parses the public share page, probes playable streams, downloads the largest valid candidate, and returns to the existing ffprobe/audio/ASR/history pipeline. Automated worker/app/Tauri/governance validation passed, and the live public Douyin smoke produced a valid local MP4 with video and AAC audio.
+
+Residual risk: the fallback depends on public Douyin/share-page behavior and external network availability; it intentionally does not add CAPTCHA solving, login automation, proxy rotation, browser fingerprint spoofing, or persistent cookies.

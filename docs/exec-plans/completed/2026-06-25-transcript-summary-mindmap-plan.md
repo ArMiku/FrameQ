@@ -28,3 +28,9 @@ Add a confirmed AI整理 flow that generates a Markdown summary, local Mermaid m
 - `npm --prefix app run build` - passed.
 - `cargo test --manifest-path app\src-tauri\Cargo.toml` - passed, 31 tests.
 - `python scripts\validate_agents_docs.py --level WARN` - passed.
+
+## Outcomes & Retrospective
+
+Delivered the confirmed AI整理 flow that writes transcript summaries and Mermaid mindmap files alongside existing insight topics, persists the new artifact paths through history, and exposes summary/mindmap outputs in the result workspace. Validation recorded above covered worker, frontend, Tauri, build, lint, and governance gates.
+
+Residual risk: Mermaid source is saved as a local artifact but not rendered in the UI, and partial artifact success remains possible when one LLM-generated artifact fails while others succeed.

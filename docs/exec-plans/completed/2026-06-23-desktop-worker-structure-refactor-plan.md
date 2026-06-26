@@ -58,3 +58,9 @@ Make desktop client, Tauri bridge, and Python worker code easier to change by sp
 - `uv run pytest worker\tests` — 99 passed.
 - `uv run ruff check worker` — passed.
 - `python scripts/validate_agents_docs.py --level WARN` — 0 errors, 0 warnings.
+
+## Outcomes & Retrospective
+
+Delivered the zero-behavior-change structure split for the React shell, Tauri bridge, and Python worker orchestration while preserving command names, CLI flags, and JSON wire shapes. Contract fixtures and cross-language tests now help prevent TS/Rust/Python drift.
+
+Residual risk: `npm --prefix app run lint` remains unavailable because the app package has no `lint` script; future large UI or Tauri changes should continue the modularization instead of rebuilding monolithic files.
