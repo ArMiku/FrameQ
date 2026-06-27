@@ -16,6 +16,7 @@ model User {
   orders       Order[]
   entitlements Entitlement[]
   redeemedCodes ActivationCode[]
+  adminEntitlementAdjustments AdminEntitlementAdjustment[]
 }
 
 model EmailOtp {
@@ -135,6 +136,25 @@ model AdminSession {
   revokedAt     DateTime?
 
   @@index([email])
+}
+
+model AdminEntitlementAdjustment {
+  id                    String   @id
+  adminEmail            String
+  userId                String
+  reason                String
+  note                  String?
+  beforeExpiresAt       DateTime?
+  afterExpiresAt        DateTime
+  beforeLlmQuotaLimit   Int
+  afterLlmQuotaLimit    Int
+  beforeLlmQuotaUsed    Int
+  afterLlmQuotaUsed     Int
+  createdAt             DateTime
+  user                  User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model WebhookEvent {

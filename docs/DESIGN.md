@@ -24,6 +24,15 @@
 - The payment sheet shows the monthly price, WeChat scan QR code, order expiration, and refresh status action in a stable layout.
 - Successful payment returns the user to the existing processing workflow without changing the local-first worker UI stages.
 
+## Admin Web Compensation UI
+
+- Admin Web should expose manual compensation as a compact support operation, not as a public pricing or sales surface.
+- User rows should make current entitlement expiry, quota limit, used quota, and remaining quota easy to scan before adjustment.
+- Compensation controls must require a reason and should support a short optional note for bug ID, release version, or support context.
+- Additive operations should be visually distinct: "延长天数" and "增加话题点次数" should not look like destructive overwrite controls.
+- After saving, the row should show the refreshed expiry and remaining quota, plus a short success or validation message.
+- Recent adjustment history should be visible to the administrator so repeated compensation can be spotted before applying another change.
+
 <!-- 由 vibe-coding-launcher 生成。 -->
 
 ## Product Shape

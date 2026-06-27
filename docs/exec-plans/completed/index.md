@@ -2,6 +2,7 @@
 
 | File | Focus |
 |------|-------|
+| `2026-06-27-admin-entitlement-adjustments-plan.md` | Added Admin Web manual entitlement and quota compensation with append-only audit records and completed browser smoke acceptance. |
 | `2026-06-23-desktop-one-click-updates-plan.md` | Implemented low-noise Tauri updater with GitHub Releases metadata/artifacts; live GitHub updater smoke is waived for v1 because mainland China GitHub access is too slow to test reliably. |
 | `2026-06-26-easydownload-transcription-download-reliability-plan.md` | Added shared safe media download helpers, Douyin share-text parsing, and video-only Xiaohongshu public-link fallback for transcription-first media acquisition. |
 | `2026-06-25-douyin-share-page-fallback-plan.md` | Added a bounded Douyin share-page fallback that selects the largest validated public stream after matching `yt-dlp` failures. |

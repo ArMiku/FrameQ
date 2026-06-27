@@ -1,5 +1,13 @@
 # Security and Compliance
 
+## 2026-06-27 Admin Entitlement Adjustment Boundary
+
+- Manual entitlement and quota adjustments are restricted to the configured Admin Web account and must reuse HttpOnly admin session cookies plus `x-frameq-csrf` validation.
+- Every successful adjustment must be auditable with administrator email, target user, reason, before/after values, and timestamp. Corrections should create another audit record instead of rewriting the original event.
+- Adjustment notes are operational metadata only. They must not include LLM API keys, cookies, transcripts, private video URLs, local file paths, payment secrets, or sensitive support chat contents.
+- Server logs should identify adjustment IDs and target users, but should avoid logging free-form notes in full.
+- Manual compensation must never require users to upload videos, audio, transcripts, histories, local model caches, cookies, or desktop configuration files.
+
 ## 2026-06-26 Public Link Fallback Safety Boundary
 
 - EasyDownload-derived work may improve FrameQ's handling of public or user-authorized share links, but it must not introduce browser cookie import, persistent cookie storage, account login automation, QR login, CAPTCHA solving, private-content scraping, proxy pools, user-agent rotation, or browser fingerprint spoofing.

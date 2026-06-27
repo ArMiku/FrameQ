@@ -185,4 +185,148 @@ describe("server-managed LLM config and quota", () => {
     });
     expect(account.json()).toMatchObject({ llm_quota_remaining: 7 });
   });
+
+  test("admin compensation extends entitlement, adds quota, and records an audit event", async () => {
+    const store = new MemoryStore();
+    await createAdminSession(store);
+    const { user, sessionToken } = await createAuthorizedUser(store);
+    const entitlement = await store.getEntitlement(user.id);
+    if (entitlement) {
+      (entitlement as any).llmQuotaUsed = 4;
+    }
+    const app = buildTestServer(store);
+
+    const adjusted = await app.inject({
+      method: "POST",
+      url: `/admin/api/users/${user.id}/entitlement-adjustments`,
+      headers: adminHeaders(),
+      payload: {
+        extend_days: 7,
+        quota_add: 5,
+        reason: "bug_compensation",
+        note: "Release 0.2.3 worker regression",
+      },
+    });
+
+    expect(adjusted.statusCode).toBe(200);
+    expect(adjusted.json()).toMatchObject({
+      user_id: user.id,
+      entitlement_expires_at: "2026-07-29T08:00:00.000Z",
+      llm_quota_limit: 25,
+      llm_quota_used: 4,
+      llm_quota_remaining: 21,
+      reason: "bug_compensation",
+    });
+    expect(adjusted.json<{ adjustment_id: string }>().adjustment_id).toMatch(/^adj_/);
+
+    const account = await app.inject({
+      method: "GET",
+      url: "/api/desktop/account",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+    expect(account.json()).toMatchObject({
+      entitlement_expires_at: "2026-07-29T08:00:00.000Z",
+      llm_quota_limit: 25,
+      llm_quota_used: 4,
+      llm_quota_remaining: 21,
+    });
+
+    expect((store as any).adminEntitlementAdjustments).toHaveLength(1);
+    expect((store as any).adminEntitlementAdjustments[0]).toMatchObject({
+      adminEmail: "lantianye@163.com",
+      userId: user.id,
+      reason: "bug_compensation",
+      note: "Release 0.2.3 worker regression",
+      beforeExpiresAt: new Date("2026-07-22T08:00:00.000Z"),
+      afterExpiresAt: new Date("2026-07-29T08:00:00.000Z"),
+      beforeLlmQuotaLimit: 20,
+      afterLlmQuotaLimit: 25,
+      beforeLlmQuotaUsed: 4,
+      afterLlmQuotaUsed: 4,
+    });
+  });
+
+  test("admin compensation can create a missing entitlement for a signed-in user", async () => {
+    const store = new MemoryStore();
+    await createAdminSession(store);
+    const user = await store.upsertUserByEmail("new-user@example.com", now);
+    const sessionToken = "new-user-session-token";
+    await store.createSession({
+      userId: user.id,
+      tokenHash: sha256(sessionToken),
+      createdAt: now,
+      expiresAt: new Date("2026-07-22T08:00:00.000Z"),
+    });
+    const app = buildTestServer(store);
+
+    const adjusted = await app.inject({
+      method: "POST",
+      url: `/admin/api/users/${user.id}/entitlement-adjustments`,
+      headers: adminHeaders(),
+      payload: {
+        extend_days: 3,
+        quota_add: 2,
+        reason: "support_goodwill",
+      },
+    });
+
+    expect(adjusted.statusCode).toBe(200);
+    expect(adjusted.json()).toMatchObject({
+      user_id: user.id,
+      entitlement_expires_at: "2026-06-25T08:00:00.000Z",
+      llm_quota_limit: 2,
+      llm_quota_used: 0,
+      llm_quota_remaining: 2,
+      reason: "support_goodwill",
+    });
+
+    const account = await app.inject({
+      method: "GET",
+      url: "/api/desktop/account",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+    expect(account.json()).toMatchObject({
+      entitlement_status: "active",
+      entitlement_expires_at: "2026-06-25T08:00:00.000Z",
+      llm_quota_remaining: 2,
+    });
+  });
+
+  test("admin compensation validates auth, csrf, payload, and target user", async () => {
+    const store = new MemoryStore();
+    await createAdminSession(store);
+    const { user } = await createAuthorizedUser(store);
+    const app = buildTestServer(store);
+
+    const missingSession = await app.inject({
+      method: "POST",
+      url: `/admin/api/users/${user.id}/entitlement-adjustments`,
+      payload: { extend_days: 1, reason: "bug_compensation" },
+    });
+    expect(missingSession.statusCode).toBe(401);
+
+    const missingCsrf = await app.inject({
+      method: "POST",
+      url: `/admin/api/users/${user.id}/entitlement-adjustments`,
+      headers: { cookie: "frameq_admin_session=admin-token; frameq_admin_csrf=csrf-token" },
+      payload: { extend_days: 1, reason: "bug_compensation" },
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+
+    const invalidPayload = await app.inject({
+      method: "POST",
+      url: `/admin/api/users/${user.id}/entitlement-adjustments`,
+      headers: adminHeaders(),
+      payload: { quota_add: 0, reason: "" },
+    });
+    expect(invalidPayload.statusCode).toBe(400);
+
+    const unknownUser = await app.inject({
+      method: "POST",
+      url: "/admin/api/users/missing-user/entitlement-adjustments",
+      headers: adminHeaders(),
+      payload: { extend_days: 1, reason: "manual_repair" },
+    });
+    expect(unknownUser.statusCode).toBe(404);
+  });
 });

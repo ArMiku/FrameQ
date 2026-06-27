@@ -319,6 +319,19 @@ export class PrismaStore implements Store {
     });
   }
 
+  async createAdminEntitlementAdjustment(input: import("./store.js").AdminEntitlementAdjustmentRecord) {
+    const adjustment = await (this.prisma as any).adminEntitlementAdjustment.create({ data: input });
+    return adjustment as import("./store.js").AdminEntitlementAdjustmentRecord;
+  }
+
+  async listAdminEntitlementAdjustments(limit = 50) {
+    const adjustments = await (this.prisma as any).adminEntitlementAdjustment.findMany({
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return adjustments as import("./store.js").AdminEntitlementAdjustmentRecord[];
+  }
+
   async createWebhookEvent(
     input: Omit<WebhookEventRecord, "id" | "createdAt"> & { createdAt: Date },
   ): Promise<boolean> {

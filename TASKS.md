@@ -18,6 +18,7 @@
 - [x] 桌面端一键升级 GitHub updater 真实下载/安装测试豁免（2026-06-27）— 因中国境内访问 GitHub Releases 速度过慢，本项目 v1 不再把旧版到新版的 GitHub updater 实测作为验收或发布阻塞项。✅ 验收口径：自动化门禁、manifest/artifact 生成、Tauri 签名校验配置和直接分发新版安装包路径成立；未声明国内 GitHub 网络真实升级链路已实测通过。
 
 ## 已完成
+- [x] 实现 Admin 手工权益补偿（2026-06-27）✅ Admin Web 支持按用户延长到期时间、增加话题点次数，并记录 append-only 审计；桌面端继续通过现有账号状态接口看到更新后的到期时间和剩余额度。✅ server 测试覆盖延期、加次数、无权益创建、鉴权/CSRF/非法参数、审计记录和桌面账号状态刷新；`npm --prefix server test`、`npm --prefix server run build`、`npm --prefix server run prisma:generate` 通过；Admin Web 浏览器手工验收通过并已归档 ExecPlan。
 - [x] 增强 EasyDownload 转写优先下载可靠性（2026-06-26）✅ 新增 worker 安全 `.part` 原子写入校验；抖音支持分享文案、短链、note/slides/modal/aweme_id 解析；小红书支持公开视频分享文案和 `xhslink.com` fallback，图片笔记/登录受限内容返回结构化错误；worker/frontend/Rust/build/docs/diff 门禁全部通过。
 - [x] 实现抖音分享页 fallback 视频下载（2026-06-26）✅ yt-dlp 失败时自动降级为 iesdouyin.com/share/video 分享页解析 + play_addr ratio 探测 + 多候选流下载，支持 6 种分层错误码和流下载失败自动重试；worker/frontend/Rust 测试、构建、ruff、docs 门禁全部通过；线上烟雾测试通过（201.9 MB MP4, 2 streams, AAC 音频）。
 - [x] 增加文字稿要点总结与 Mermaid 思维导图（2026-06-25）✅ 二次确认后一次 AI整理生成 `summary.md`、`mindmap.mmd` 和既有启发话题点；UI 只展示总结和话题点，不展示 Mermaid 源码；worker/Rust/frontend 测试、前端构建和文档门禁通过。

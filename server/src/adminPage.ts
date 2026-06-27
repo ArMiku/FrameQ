@@ -1,4 +1,9 @@
-import type { ActivationCodeRecord, EntitlementRecord, UserRecord } from "./store.js";
+import type {
+  ActivationCodeRecord,
+  AdminEntitlementAdjustmentRecord,
+  EntitlementRecord,
+  UserRecord,
+} from "./store.js";
 import type { PublicLlmConfig } from "./llmConfig.js";
 
 export function renderAdminLoginPage(): string {
@@ -103,6 +108,7 @@ export function renderAdminPage(input: {
   entitlements: Map<string, EntitlementRecord | null>;
   llmConfig: PublicLlmConfig;
   activationCodes: ActivationCodeRecord[];
+  entitlementAdjustments: AdminEntitlementAdjustmentRecord[];
 }): string {
   const userRows = input.users.length
     ? input.users
@@ -126,6 +132,28 @@ export function renderAdminPage(input: {
         .join("")
     : `<tr><td colspan="4" class="empty-cell">暂无用户</td></tr>`;
   const userEmailsById = new Map(input.users.map((user) => [user.id, user.email]));
+  const adjustmentRows = input.users.length
+    ? input.users
+        .map((user) => {
+          const entitlement = input.entitlements.get(user.id);
+          const remaining = entitlement
+            ? Math.max(0, entitlement.llmQuotaLimit - entitlement.llmQuotaUsed)
+            : 0;
+          return `<tr data-user-id="${escapeHtml(user.id)}"><td>${escapeHtml(user.email)}</td><td><span class="adjustment-expiry">${formatDate(entitlement?.expiresAt)}</span></td><td><span class="adjustment-remaining">${remaining}</span></td><td><input class="adjustment-extend-days" type="number" min="0" max="365" value="0" aria-label="延长天数" /></td><td><input class="adjustment-quota-add" type="number" min="0" max="100000" value="0" aria-label="增加话题点次数" /></td><td><select class="adjustment-reason" aria-label="调整原因"><option value="bug_compensation">bug 补偿</option><option value="support_goodwill">客服关怀</option><option value="manual_repair">手工修复</option><option value="other">其他</option></select></td><td><input class="adjustment-note" type="text" maxlength="1024" placeholder="版本/工单/备注" /></td><td><button class="secondary-button adjustment-save" type="button" data-user-id="${escapeHtml(user.id)}">保存</button><span class="adjustment-status"></span></td></tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="8" class="empty-cell">暂无用户</td></tr>`;
+  const recentAdjustmentRows = input.entitlementAdjustments.length
+    ? input.entitlementAdjustments
+        .map((adjustment) => {
+          const email = userEmailsById.get(adjustment.userId) ?? adjustment.userId;
+          const beforeExpiry = adjustment.beforeExpiresAt ? formatDate(adjustment.beforeExpiresAt) : "无";
+          const afterExpiry = formatDate(adjustment.afterExpiresAt);
+          const quotaDelta = adjustment.afterLlmQuotaLimit - adjustment.beforeLlmQuotaLimit;
+          return `<tr><td>${formatDate(adjustment.createdAt)}</td><td>${escapeHtml(email)}</td><td>${escapeHtml(adjustmentReasonText(adjustment.reason))}</td><td>${escapeHtml(beforeExpiry)} → ${escapeHtml(afterExpiry)}</td><td>${quotaDelta >= 0 ? "+" : ""}${quotaDelta}</td><td>${escapeHtml(adjustment.note ?? "")}</td></tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="6" class="empty-cell">暂无权益调整记录</td></tr>`;
   const codeRows = input.activationCodes.length
     ? input.activationCodes
         .map((code) => {
@@ -246,6 +274,36 @@ export function renderAdminPage(input: {
       <section class="admin-panel">
         <div class="table-heading">
           <div>
+            <p class="eyebrow">Compensation</p>
+            <h2>权益调整</h2>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="entitlement-adjustment-table">
+            <thead><tr><th>邮箱</th><th>当前到期</th><th>剩余次数</th><th>延长天数</th><th>增加话题点次数</th><th>原因</th><th>备注</th><th>操作</th></tr></thead>
+            <tbody>${adjustmentRows}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-panel">
+        <div class="table-heading">
+          <div>
+            <p class="eyebrow">Audit</p>
+            <h2>最近权益调整</h2>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="entitlement-adjustment-history-table">
+            <thead><tr><th>时间</th><th>邮箱</th><th>原因</th><th>到期变化</th><th>额度变化</th><th>备注</th></tr></thead>
+            <tbody>${recentAdjustmentRows}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="admin-panel">
+        <div class="table-heading">
+          <div>
             <p class="eyebrow">Codes</p>
             <h2>激活码状态</h2>
           </div>
@@ -320,6 +378,57 @@ export function renderAdminPage(input: {
             if (data && typeof data.llm_quota_remaining === "number") {
               input.value = String(data.llm_quota_remaining);
             }
+            status.textContent = "已保存";
+          } catch {
+            status.textContent = "无法连接";
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
+
+      document.querySelectorAll(".adjustment-save").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const userId = button.dataset.userId;
+          const row = button.closest("tr");
+          const extendInput = row?.querySelector(".adjustment-extend-days");
+          const quotaInput = row?.querySelector(".adjustment-quota-add");
+          const reasonInput = row?.querySelector(".adjustment-reason");
+          const noteInput = row?.querySelector(".adjustment-note");
+          const status = row?.querySelector(".adjustment-status");
+          const expiry = row?.querySelector(".adjustment-expiry");
+          const remaining = row?.querySelector(".adjustment-remaining");
+          if (!userId || !extendInput || !quotaInput || !reasonInput || !noteInput || !status) return;
+          button.disabled = true;
+          status.textContent = "保存中...";
+          const payload = {
+            reason: reasonInput.value,
+            note: noteInput.value,
+          };
+          const extendDays = Number(extendInput.value || 0);
+          const quotaAdd = Number(quotaInput.value || 0);
+          if (extendDays > 0) payload.extend_days = extendDays;
+          if (quotaAdd > 0) payload.quota_add = quotaAdd;
+          try {
+            const response = await fetch("/admin/api/users/" + encodeURIComponent(userId) + "/entitlement-adjustments", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-frameq-csrf": csrfToken },
+              body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data) {
+              status.textContent = "保存失败";
+              return;
+            }
+            if (expiry && data.entitlement_expires_at) {
+              expiry.textContent = new Date(data.entitlement_expires_at).toLocaleString();
+            }
+            if (remaining && typeof data.llm_quota_remaining === "number") {
+              remaining.textContent = String(data.llm_quota_remaining);
+            }
+            extendInput.value = "0";
+            quotaInput.value = "0";
+            noteInput.value = "";
             status.textContent = "已保存";
           } catch {
             status.textContent = "无法连接";
@@ -622,6 +731,19 @@ function activationCodeStatusText(status: string): string {
     disabled: "已停用",
   };
   return labels[status] ?? status;
+}
+
+function adjustmentReasonText(reason: string): string {
+  switch (reason) {
+    case "bug_compensation":
+      return "bug 补偿";
+    case "support_goodwill":
+      return "客服关怀";
+    case "manual_repair":
+      return "手工修复";
+    default:
+      return "其他";
+  }
 }
 
 function formatDate(value: Date | null | undefined): string {

@@ -1,5 +1,14 @@
 # FrameQ Architecture
 
+## 2026-06-27 Admin Entitlement Adjustment Boundary
+
+- Admin Web may manually compensate users by updating the existing `Entitlement` record's expiry and insight-generation quota fields; it must not introduce a separate entitlement source that bypasses the normal processing gate.
+- Compensation is an administrator-only support workflow for product bugs, release regressions, or goodwill repair. It is not a public self-service refund, coupon, or subscription-management system.
+- Manual quota compensation should add to `llmQuotaLimit` while preserving `llmQuotaUsed`, so consumed usage remains traceable and `/api/desktop/account` can keep computing remaining uses with the existing response shape.
+- Manual expiry extension should use `base = max(now, current expiresAt)` for day-based extensions, with absolute expiry setting reserved for repair cases.
+- Every successful adjustment must create an append-only server-side audit record with administrator identity, target user, reason, optional note, before/after expiry, before/after quota values, and timestamp.
+- Desktop clients do not need a new API shape for this feature. They observe the result through the existing account status refresh, entitlement gate, and quota gate.
+
 ## 2026-06-26 Worker-Owned Download Strategy Boundary
 
 - The Python worker owns all platform-specific public-link fallback strategy, safe media download helpers, candidate probing, media validation, and structured error mapping.

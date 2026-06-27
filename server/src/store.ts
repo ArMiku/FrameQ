@@ -104,6 +104,21 @@ export type AdminSessionRecord = {
   revokedAt: Date | null;
 };
 
+export type AdminEntitlementAdjustmentRecord = {
+  id: string;
+  adminEmail: string;
+  userId: string;
+  reason: string;
+  note: string | null;
+  beforeExpiresAt: Date | null;
+  afterExpiresAt: Date;
+  beforeLlmQuotaLimit: number;
+  afterLlmQuotaLimit: number;
+  beforeLlmQuotaUsed: number;
+  afterLlmQuotaUsed: number;
+  createdAt: Date;
+};
+
 export type WebhookEventRecord = {
   id: string;
   provider: string;
@@ -147,6 +162,10 @@ export type Store = {
   createAdminSession(input: Omit<AdminSessionRecord, "id" | "revokedAt">): Promise<AdminSessionRecord>;
   findAdminSessionByTokenHash(tokenHash: string, now: Date): Promise<AdminSessionRecord | null>;
   revokeAdminSession(tokenHash: string, now: Date): Promise<void>;
+  createAdminEntitlementAdjustment(
+    input: AdminEntitlementAdjustmentRecord,
+  ): Promise<AdminEntitlementAdjustmentRecord>;
+  listAdminEntitlementAdjustments(limit?: number): Promise<AdminEntitlementAdjustmentRecord[]>;
   createWebhookEvent(input: Omit<WebhookEventRecord, "id" | "createdAt"> & { createdAt: Date }): Promise<boolean>;
 };
 
@@ -161,6 +180,7 @@ export class MemoryStore implements Store {
   llmUsageEvents: LlmUsageEventRecord[] = [];
   activationCodes: ActivationCodeRecord[] = [];
   adminSessions: AdminSessionRecord[] = [];
+  adminEntitlementAdjustments: AdminEntitlementAdjustmentRecord[] = [];
   webhookEvents: WebhookEventRecord[] = [];
 
   async upsertUserByEmail(email: string, now: Date): Promise<UserRecord> {
@@ -439,6 +459,19 @@ export class MemoryStore implements Store {
     if (session) {
       session.revokedAt = now;
     }
+  }
+
+  async createAdminEntitlementAdjustment(
+    input: AdminEntitlementAdjustmentRecord,
+  ): Promise<AdminEntitlementAdjustmentRecord> {
+    this.adminEntitlementAdjustments.push(input);
+    return input;
+  }
+
+  async listAdminEntitlementAdjustments(limit = 50): Promise<AdminEntitlementAdjustmentRecord[]> {
+    return [...this.adminEntitlementAdjustments]
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+      .slice(0, limit);
   }
 
   async createWebhookEvent(

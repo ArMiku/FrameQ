@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import { z } from "zod";
 import { ActivationCodeService } from "./activation.js";
@@ -76,6 +77,23 @@ const llmCheckoutSchema = z.object({
 const adminQuotaUpdateSchema = z.object({
   remaining: z.number().int().min(0).max(100000),
 });
+
+const adminEntitlementAdjustmentSchema = z
+  .object({
+    extend_days: z.number().int().min(1).max(365).optional(),
+    expires_at: z
+      .string()
+      .max(64)
+      .refine((value) => !Number.isNaN(Date.parse(value)), "Invalid ISO date")
+      .optional(),
+    quota_add: z.number().int().min(1).max(100000).optional(),
+    reason: z.enum(["bug_compensation", "support_goodwill", "manual_repair", "other"]),
+    note: z.string().max(1024).optional(),
+  })
+  .refine(
+    (value) =>
+      value.extend_days !== undefined || value.expires_at !== undefined || value.quota_add !== undefined,
+  );
 
 export function buildServer(dependencies: ServerDependencies) {
   const app = Fastify({ logger: false });
@@ -209,6 +227,7 @@ export function buildServer(dependencies: ServerDependencies) {
       ),
     );
     const codes = await dependencies.store.listActivationCodes();
+    const entitlementAdjustments = await dependencies.store.listAdminEntitlementAdjustments(50);
     reply.type("text/html; charset=utf-8");
     reply.header("cache-control", "no-store");
     return renderAdminPage({
@@ -218,6 +237,7 @@ export function buildServer(dependencies: ServerDependencies) {
       entitlements,
       llmConfig: publicLlmConfig,
       activationCodes: codes,
+      entitlementAdjustments,
     });
   });
 
@@ -306,6 +326,72 @@ export function buildServer(dependencies: ServerDependencies) {
       return reply.code(404).send({ error: "ENTITLEMENT_NOT_FOUND" });
     }
     return quotaResponse(userId, updated, now());
+  });
+
+  app.post("/admin/api/users/:userId/entitlement-adjustments", async (request, reply) => {
+    const cookies = parseCookies(request.headers.cookie);
+    const session = await adminAuth.authenticate(cookies.get("frameq_admin_session") ?? null);
+    if (!session) {
+      return reply.code(401).send({ error: "ADMIN_AUTH_REQUIRED" });
+    }
+    const csrfToken = firstHeader(request.headers["x-frameq-csrf"]);
+    if (!adminAuth.validateCsrf(session, csrfToken)) {
+      return reply.code(403).send({ error: "CSRF_INVALID" });
+    }
+    const params = request.params as { userId?: string };
+    const userId = params.userId ?? "";
+    const parsed = adminEntitlementAdjustmentSchema.safeParse(request.body ?? {});
+    if (!userId || !parsed.success) {
+      return reply.code(400).send({ error: "INVALID_REQUEST" });
+    }
+    const user = await dependencies.store.getUserById(userId);
+    if (!user) {
+      return reply.code(404).send({ error: "USER_NOT_FOUND" });
+    }
+    const currentNow = now();
+    const before = await dependencies.store.getEntitlement(userId);
+    const beforeExpiresAt = before?.expiresAt ? new Date(before.expiresAt) : null;
+    const beforeLimit = before?.llmQuotaLimit ?? 0;
+    const beforeUsed = before?.llmQuotaUsed ?? 0;
+    const requestedAbsoluteExpiry = parsed.data.expires_at ? new Date(parsed.data.expires_at) : null;
+    const extensionBase = beforeExpiresAt && beforeExpiresAt > currentNow ? beforeExpiresAt : currentNow;
+    const extendedExpiry =
+      parsed.data.extend_days !== undefined
+        ? new Date(extensionBase.getTime() + parsed.data.extend_days * 24 * 60 * 60 * 1000)
+        : null;
+    const afterExpiresAt = requestedAbsoluteExpiry ?? extendedExpiry ?? beforeExpiresAt;
+    if (!afterExpiresAt) {
+      return reply.code(400).send({ error: "EXPIRY_REQUIRED" });
+    }
+    const afterLimit = beforeLimit + (parsed.data.quota_add ?? 0);
+    const afterUsed = beforeUsed;
+    const updated = await dependencies.store.upsertEntitlement(userId, afterExpiresAt, currentNow, {
+      llmQuotaLimit: afterLimit,
+      llmQuotaUsed: afterUsed,
+    });
+    const adjustment = await dependencies.store.createAdminEntitlementAdjustment({
+      id: `adj_${randomUUID()}`,
+      adminEmail: session.email,
+      userId,
+      reason: parsed.data.reason,
+      note: parsed.data.note?.trim() ? parsed.data.note.trim() : null,
+      beforeExpiresAt,
+      afterExpiresAt: updated.expiresAt,
+      beforeLlmQuotaLimit: beforeLimit,
+      afterLlmQuotaLimit: updated.llmQuotaLimit,
+      beforeLlmQuotaUsed: beforeUsed,
+      afterLlmQuotaUsed: updated.llmQuotaUsed,
+      createdAt: currentNow,
+    });
+    return {
+      adjustment_id: adjustment.id,
+      user_id: userId,
+      entitlement_expires_at: updated.expiresAt.toISOString(),
+      llm_quota_limit: updated.llmQuotaLimit,
+      llm_quota_used: updated.llmQuotaUsed,
+      llm_quota_remaining: llmQuotaRemaining(updated, currentNow),
+      reason: adjustment.reason,
+    };
   });
 
   app.post("/auth/email/start", async (request, reply) => {
