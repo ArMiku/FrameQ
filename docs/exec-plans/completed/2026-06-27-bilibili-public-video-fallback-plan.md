@@ -10,12 +10,12 @@ Add Bilibili ordinary public-video support to FrameQ by porting only the EasyDow
 
 - [x] 2026-06-27: Reviewed EasyDownload Bilibili docs and implementation (`url.go`, `api.go`, `http.go`, `downloader.go`, `progress.go`) and FrameQ's current worker/media/frontend boundaries. Validation: `rg` and targeted `Get-Content` inspection in the side conversation.
 - [x] 2026-06-27: Created this active ExecPlan and synchronized product, architecture, security, task, and reference documentation before implementation. Validation: `python scripts\validate_agents_docs.py --level WARN` and `git diff --check` passed.
-- [ ] 2026-06-27: Extend frontend input acceptance for ordinary Bilibili video URLs and safe `b23.tv` links. Validation: `npm --prefix app test -- app/src/workflow.test.ts`.
-- [ ] 2026-06-27: Add worker Bilibili parser, short-link resolver, metadata client, and tests. Validation: `uv run pytest worker\tests\test_bilibili_fallback.py -q`.
-- [ ] 2026-06-27: Add DASH stream selection, backup URL retry, and DRM/login/PGC rejection tests. Validation: `uv run pytest worker\tests\test_bilibili_fallback.py -q`.
-- [ ] 2026-06-27: Add video/audio `.m4s` download and FFmpeg merge integration without changing the worker result JSON shape. Validation: `uv run pytest worker\tests\test_bilibili_fallback.py worker\tests\test_media.py -q`.
-- [ ] 2026-06-27: Add UI error mapping for `BILIBILI_*` structured failures. Validation: `npm --prefix app test`.
-- [ ] 2026-06-27: Run full validation and record results before moving this plan to completed. Validation: commands listed in Validation and Acceptance.
+- [x] 2026-06-27: Extend frontend input acceptance for ordinary Bilibili video URLs and safe `b23.tv` links. Validation: `npm --prefix app test -- src/workflow.test.ts` passed.
+- [x] 2026-06-27: Add worker Bilibili parser, short-link resolver, metadata client, and tests. Validation: `uv run pytest worker\tests\test_bilibili_fallback.py worker\tests\test_media.py -q` passed.
+- [x] 2026-06-27: Add DASH stream selection, backup URL retry, and DRM/login/PGC rejection tests. Validation: `uv run pytest worker\tests\test_bilibili_fallback.py worker\tests\test_media.py -q` passed.
+- [x] 2026-06-27: Add video/audio `.m4s` download and FFmpeg merge integration without changing the worker result JSON shape. Validation: `uv run pytest worker\tests\test_bilibili_fallback.py worker\tests\test_media.py -q` passed.
+- [x] 2026-06-27: Add UI error mapping for `BILIBILI_*` structured failures. Validation: `npm --prefix app test -- src/workflow.test.ts` and `npm --prefix app test` passed.
+- [x] 2026-06-27: Run full validation and record results before moving this plan to completed. Validation: full worker/app/Rust/build/docs/diff gates passed.
 
 ## Surprises & Discoveries
 
@@ -28,6 +28,8 @@ Evidence: EasyDownload's Bilibili implementation includes account login, QR logi
 Evidence: Ordinary Bilibili playback frequently returns separate DASH video and audio streams. Unlike Douyin/Xiaohongshu fallbacks, the Bilibili fallback needs FFmpeg merge as part of media acquisition before the existing `ffprobe` and ASR pipeline can continue.
 
 Evidence: EasyDownload already handles camelCase and snake_case stream URL fields and backup URL arrays. Porting that compatibility matters more for reliability than exposing quality controls in the UI.
+
+Evidence: FrameQ's pipeline already prefers a successful `download_video` stdout path before stem/latest-file fallback, so the Bilibili fallback can return the merged MP4 path without adding Bilibili-specific output selection logic.
 
 ## Decision Log
 
@@ -43,7 +45,21 @@ Decision: Merge Bilibili DASH streams with the existing bundled FFmpeg and retur
 
 ## Outcomes & Retrospective
 
-Implementation has not started. This plan currently captures the intended scope, safety boundary, implementation tasks, and validation gates. Residual risk: Bilibili public APIs and CDN URLs may change or require login for some videos; FrameQ must surface structured recoverable errors instead of adding login, cookie, DRM, or private-content bypass behavior.
+Completed. FrameQ now accepts ordinary Bilibili BV/av URLs and safe non-empty `b23.tv` share links in the existing single-input workflow. The worker keeps `yt-dlp` first, then falls back to a bounded Bilibili flow that parses BV/av and `?p=N`, resolves short links with finite redirects, fetches public `x/web-interface/view` and `x/player/playurl` APIs, selects a DASH video/audio pair with camelCase and snake_case compatibility, retries backup URLs, downloads `.m4s` streams through the shared safe `.part` writer, and merges them to a normal MP4 with FFmpeg for the existing ffprobe, audio extraction, ASR, history, summary, mindmap, and insight pipeline.
+
+The UI now maps `BILIBILI_*` failures to user-facing recovery guidance while keeping Mermaid and platform internals hidden. The implementation intentionally does not add login, QR login, cookie import, SESSDATA, PGC/bangumi/member-only support, DRM bypass, stream picker UI, batch download, or a download center.
+
+Automated validation passed on 2026-06-27:
+
+- `uv run ruff check worker`
+- `uv run pytest worker\tests`
+- `npm --prefix app test`
+- `npm --prefix app run build`
+- `cargo test --manifest-path app\src-tauri\Cargo.toml`
+- `python scripts\validate_agents_docs.py --level WARN`
+- `git diff --check`
+
+Residual risk: live public Bilibili BV/av/b23.tv smoke was not executed in this session, so external API/CDN behavior remains a platform-availability risk. The fallback returns structured recoverable errors and must not compensate by adding login, cookie, DRM, proxy, or private-content bypass behavior.
 
 ## Context and Orientation
 
@@ -62,15 +78,18 @@ Frontend:
 Worker:
 
 - `worker/frameq_worker/media.py`
+- `worker/frameq_worker/bilibili_fallback.py`
 - `worker/frameq_worker/download_reliability.py`
 - `worker/frameq_worker/pipeline.py`
 - `worker/tests/test_media.py`
+- `worker/tests/test_bilibili_fallback.py`
 - `worker/tests/test_download_reliability.py`
 - `worker/tests/test_cli.py`
 
 Bundled runtime mirror:
 
 - `app/src-tauri/resources/worker/frameq_worker/media.py`
+- `app/src-tauri/resources/worker/frameq_worker/bilibili_fallback.py`
 - `app/src-tauri/resources/worker/frameq_worker/download_reliability.py`
 
 External reference:

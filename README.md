@@ -81,15 +81,16 @@ Supported video link
 
 | Area | Supported today |
 | --- | --- |
-| Douyin long links | `https://www.douyin.com/video/<numeric_id>` |
-| Douyin short links | `https://v.douyin.com/<short_code>/` |
-| Xiaohongshu short links | `http://xhslink.com/o/<short_code>` and `https://xhslink.com/o/<short_code>` |
+| Input workflow | One pasted public or user-authorized video source; FrameQ is transcription-first, not a general downloader |
+| Douyin public videos | Long links, short links, share text, `/note/{id}`, `/share/slides/{id}`, `modal_id`, and `aweme_id` inputs when they resolve to a playable public video |
+| Xiaohongshu public video notes | Share text, direct note IDs, full `xiaohongshu.com/explore/{note_id}` links, `xhslink.com` short links, and `www.xhslink.com` short links |
+| Bilibili ordinary public videos | BV links, av links, selected `?p=N` parts, and safe `b23.tv` short links that resolve to ordinary `/video/` pages |
 | Transcript output | Plain text and Markdown |
 | Insight output | JSON and Markdown |
 | Video and audio viewing | Locate generated files in the system file manager |
 
 > [!NOTE]
-> Platform links may still fail if they are expired, private, region-blocked, login-gated, CAPTCHA-gated, or otherwise unavailable to `yt-dlp`.
+> Platform links may still fail if they are expired, private, region-blocked, login-gated, CAPTCHA-gated, member-only, DRM-protected, or otherwise unavailable to the local worker. FrameQ does not provide platform login, browser-cookie import, proxy setup, stream picking, batch queues, or a download center.
 
 ## Architecture
 
@@ -337,9 +338,8 @@ npm --prefix app run tauri -- build --no-bundle
 
 ## Source of Truth
 
-- Product plan: [douyin_video_download_solution.md](douyin_video_download_solution.md)
+- Product specs: [docs/product-specs/](docs/product-specs/)
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Design rules: [docs/DESIGN.md](docs/DESIGN.md)
 - Security boundary: [docs/SECURITY.md](docs/SECURITY.md)
-- Product specs: [docs/product-specs/](docs/product-specs/)
 - Execution plans: [docs/exec-plans/](docs/exec-plans/)

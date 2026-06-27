@@ -21,7 +21,7 @@ Make FrameQ deterministic after a repeat URL submission. The worker still calls 
 - Evidence: the output directory is shared across tasks, so a "newest file" heuristic can attach a different task's video to a fresh URL submission when the user clears the cache and runs jobs back-to-back.
 - Evidence: the audio path lives in `work/<video_stem>.wav`, which is keyed by the video ID and is naturally scoped per task, so the same WAV can be safely reused for repeat URLs.
 - Evidence: `ffprobe` returns a fast negative result on a missing or truncated WAV, so the existing-WAV check is cheap to add before the `ffmpeg` invocation.
-- Evidence: the `douyin_video_download_solution.md` already documents that the sample URL produces a stable video ID (`7524373044106677544`), so the ID-keyed selection is testable on a fixed fixture.
+- Evidence: the root historical product plan, later migrated into `docs/` and removed, documented that the sample URL produces a stable video ID (`7524373044106677544`), so the ID-keyed selection is testable on a fixed fixture.
 
 ## Decision Log
 
@@ -43,7 +43,7 @@ Implemented. Repeat URL submissions now deterministically select the URL-ID-matc
 - `work/<video_stem>.wav` — the per-task WAV cache that is reused when valid.
 - `outputs/<video_id>.mp4` — the per-task video file the selection logic now targets.
 - `worker/tests/test_media.py` — regression coverage for the selection and reuse paths.
-- `douyin_video_download_solution.md` — the design source that documents the stable video ID fixture.
+- Root historical product plan — original design source for the stable video ID fixture; migrated into `docs/` and removed.
 
 ## Plan of Work
 

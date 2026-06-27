@@ -11,6 +11,7 @@ from frameq_worker.media import (
     build_ytdlp_command,
     download_video,
     extract_audio,
+    extract_xiaohongshu_note_id,
     parse_ffprobe_json,
     probe_media_file,
 )
@@ -153,6 +154,37 @@ def test_should_attempt_xiaohongshu_fallback_detects_embedded_short_link() -> No
     )
 
 
+def test_should_attempt_bilibili_fallback_detects_supported_links() -> None:
+    assert media.should_attempt_bilibili_fallback(
+        "https://www.bilibili.com/video/BV1Aa411c7mD?p=2",
+        "ERROR: Unsupported URL",
+    )
+    assert media.should_attempt_bilibili_fallback(
+        "copy https://b23.tv/demo more text",
+        "ERROR: Unsupported URL",
+    )
+    assert not media.should_attempt_bilibili_fallback(
+        "https://bilibili.com.evil/video/BV1Aa411c7mD",
+        "ERROR: Unsupported URL",
+    )
+
+
+def test_extract_xiaohongshu_note_id_from_full_url_and_share_text() -> None:
+    assert (
+        extract_xiaohongshu_note_id(
+            "https://www.xiaohongshu.com/explore/0123456789abcdef01234568?xsec_token=tok"
+        )
+        == "0123456789abcdef01234568"
+    )
+    assert (
+        extract_xiaohongshu_note_id(
+            "share https://www.xiaohongshu.com/explore/ABCDEFabcdef012345678901?xsec_token=tok"
+        )
+        == "abcdefabcdef012345678901"
+    )
+    assert extract_xiaohongshu_note_id("https://xhslink.com/o/jQzXcxNapU") is None
+
+
 def test_audio_only_ffprobe_result_can_be_reused_for_asr_input() -> None:
     payload = {
         "streams": [{"index": 0, "codec_type": "audio", "codec_name": "pcm_s16le"}],
@@ -272,6 +304,48 @@ def test_download_video_uses_xiaohongshu_fallback_for_supported_link_failure(
     ]
     assert fallback_calls == [
         ("share text https://xhslink.com/demo more text", tmp_path / "outputs")
+    ]
+
+
+def test_download_video_uses_bilibili_fallback_for_supported_link_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fallback_calls: list[tuple[str, Path]] = []
+
+    def fake_runner(command: list[str]) -> CommandResult:
+        return CommandResult(
+            command=command,
+            returncode=1,
+            stdout="",
+            stderr="ERROR: Unsupported URL",
+        )
+
+    def fake_fallback(
+        url: str,
+        output_dir: Path,
+        command_runner: object,
+        progress_callback: object | None = None,
+    ) -> Path:
+        fallback_calls.append((url, output_dir))
+        video_path = output_dir / "BV1Aa411c7mD.mp4"
+        video_path.write_bytes(b"bilibili fallback mp4")
+        return video_path
+
+    monkeypatch.setattr(media, "download_bilibili_video", fake_fallback)
+
+    result = download_video(
+        "https://www.bilibili.com/video/BV1Aa411c7mD",
+        output_dir=tmp_path / "outputs",
+        runner=fake_runner,
+    )
+
+    assert result.command == [
+        "bilibili-fallback",
+        "https://www.bilibili.com/video/BV1Aa411c7mD",
+    ]
+    assert fallback_calls == [
+        ("https://www.bilibili.com/video/BV1Aa411c7mD", tmp_path / "outputs")
     ]
 
 

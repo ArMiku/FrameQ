@@ -128,8 +128,8 @@ Desktop UI
 
 ## 关键文件
 
-- `douyin_video_download_solution.md`：产品与技术方案来源。
 - `AGENTS.md`：AI 协作入口地图和最高优先级约束摘要。
+- `docs/product-specs/index.md`：产品规格入口；根目录历史方案已迁移进 `docs/` 并删除。
 - `docs/product-specs/2026-06-16-douyin-video-transcription-client.md`：首个用户可见 MVP 规格。
 - `docs/exec-plans/active/2026-06-16-mvp-desktop-client-plan.md`：首个实现计划。
 - `ruff.toml`：Python worker 初始 lint 约束。

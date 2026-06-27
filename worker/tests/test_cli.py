@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 
 import frameq_worker.cli as cli
+import frameq_worker.pipeline as pipeline
+import pytest
 from frameq_worker.asr import Transcript
 from frameq_worker.cli import (
     PROGRESS_EVENT_PREFIX,
@@ -645,6 +647,52 @@ def test_run_worker_once_selects_xiaohongshu_downloaded_video_over_existing_newe
     assert result["video_path"] == downloaded_video.as_posix()
     assert result["audio_path"] == (tmp_path / "work" / f"{downloaded_stem}.wav").as_posix()
     assert runner.commands[0][-1] == "http://xhslink.com/o/jQzXcxNapU"
+
+
+def test_run_worker_once_prefers_download_result_stdout_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    downloaded_stem = "0123456789abcdef01234568"
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    downloaded_video = output_dir / f"{downloaded_stem}.mp4"
+    unrelated_video = output_dir / "newer-unrelated.mp4"
+    downloaded_video.write_bytes(b"existing xhs video")
+    unrelated_video.write_bytes(b"newer unrelated video")
+    os.utime(downloaded_video, (1, 1))
+    os.utime(unrelated_video, (20, 20))
+
+    def fake_download_video(
+        url: str,
+        output_dir: Path,
+        runner: object,
+        progress_callback: object | None = None,
+    ) -> CommandResult:
+        return CommandResult(
+            command=["xiaohongshu-fallback", url],
+            returncode=0,
+            stdout=downloaded_video.as_posix(),
+            stderr="",
+        )
+
+    monkeypatch.setattr(pipeline, "download_video", fake_download_video)
+    runner = XiaohongshuMediaRunner(downloaded_stem)
+
+    result = run_worker_once(
+        json.dumps(
+            {
+                "url": f"https://www.xiaohongshu.com/explore/{downloaded_stem}",
+                "generate_insights": False,
+            }
+        ),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=FakeTranscriber(),
+    )
+
+    assert result["status"] == "completed"
+    assert result["video_path"] == downloaded_video.as_posix()
 
 
 def test_run_worker_once_uses_configured_output_dir_for_user_artifacts(

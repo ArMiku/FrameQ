@@ -1,6 +1,6 @@
 # Douyin Video Transcription Desktop Client
 
-<!-- 由 vibe-coding-launcher 生成。来源：douyin_video_download_solution.md。 -->
+<!-- 由 vibe-coding-launcher 根据根目录历史方案迁移生成；当前以本文件为 source of truth。 -->
 
 ## 2026-06-23 Server-Managed LLM Dotenv Boundary
 

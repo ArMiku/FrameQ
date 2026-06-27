@@ -10,12 +10,12 @@ Complete FrameQ's Xiaohongshu public video note handling by porting the EasyDown
 
 - [x] 2026-06-27: Reviewed FrameQ's existing `xiaohongshu_fallback.py`, media integration, frontend URL validation, and the EasyDownload Xiaohongshu parser/client/downloader reference. Validation: `rg` and targeted `Get-Content` inspection in the side conversation.
 - [x] 2026-06-27: Created this active ExecPlan and synchronized product, architecture, security, task, and reference documentation before implementation. Validation: `python scripts\validate_agents_docs.py --level WARN` and `git diff --check` passed.
-- [ ] 2026-06-27: Extend frontend input acceptance for Xiaohongshu share text, full note URLs, and short links. Validation: `npm --prefix app test -- app/src/workflow.test.ts`.
-- [ ] 2026-06-27: Port EasyDownload parser parity into worker fallback. Validation: `uv run pytest worker\tests\test_xiaohongshu_fallback.py -q`.
-- [ ] 2026-06-27: Add Brotli/page-response compatibility and richer `__INITIAL_STATE__` parsing tests. Validation: `uv run pytest worker\tests\test_xiaohongshu_fallback.py -q`.
-- [ ] 2026-06-27: Add stream model parity, ranking, and note-id-based output selection. Validation: `uv run pytest worker\tests\test_xiaohongshu_fallback.py worker\tests\test_media.py -q`.
-- [ ] 2026-06-27: Add streaming/resumable safe video download behavior and XHS error mapping. Validation: `uv run pytest worker\tests\test_download_reliability.py worker\tests\test_xiaohongshu_fallback.py -q` and `npm --prefix app test`.
-- [ ] 2026-06-27: Run full validation and record results before moving this plan to completed. Validation: commands listed in Validation and Acceptance.
+- [x] 2026-06-27: Extend frontend input acceptance for Xiaohongshu share text, full note URLs, direct note IDs, and short links. Validation: `npm --prefix app test -- src/workflow.test.ts` passed with 16 tests.
+- [x] 2026-06-27: Port EasyDownload parser parity into worker fallback. Validation: `uv run pytest worker\tests\test_xiaohongshu_fallback.py -q` passed as part of focused and full worker test runs.
+- [x] 2026-06-27: Add Brotli/page-response compatibility and richer `__INITIAL_STATE__` parsing tests. Validation: `uv run pytest worker\tests\test_xiaohongshu_fallback.py -q` passed as part of focused and full worker test runs.
+- [x] 2026-06-27: Add stream model parity, ranking, and note-id/download-result-based output selection. Validation: `uv run pytest worker\tests\test_xiaohongshu_fallback.py worker\tests\test_media.py worker\tests\test_cli.py -q` passed.
+- [x] 2026-06-27: Add streaming/resumable safe video download behavior and XHS error mapping. Validation: `uv run pytest worker\tests\test_download_reliability.py worker\tests\test_xiaohongshu_fallback.py -q` and `npm --prefix app test -- src/workflow.test.ts` passed.
+- [x] 2026-06-27: Run full validation and record results before moving this plan to completed. Validation recorded in Outcomes & Retrospective.
 
 ## Surprises & Discoveries
 
@@ -41,7 +41,20 @@ Decision: Add explicit `XHS_*` guidance in UI error copy. Rationale: Current gen
 
 ## Outcomes & Retrospective
 
-Implementation has not started. This plan currently captures the intended scope, safety boundary, implementation tasks, and validation gates. Residual risk: Xiaohongshu public page structure and short-link behavior may change; FrameQ must surface structured recoverable errors instead of adding login, CAPTCHA, proxy, browser-cookie, or private-content bypass behavior.
+Completed. FrameQ now accepts Xiaohongshu share text, full note URLs, direct note IDs, and `xhslink.com`/`www.xhslink.com` short links in the existing single-input workflow. The worker preserves `xsec_token`, resolves short links through `Location`, embedded HTML, HTTPS retry, and redirect-depth limits, requests pages with browser-like navigation headers, decodes `gzip`/`br`/`deflate`, parses `window.__INITIAL_STATE__`, keeps deterministic stream ranking, and downloads video through streaming `.part` writes with resume-safe `Range`, max-size, and no-progress guards. The pipeline prefers explicit fallback output paths and Xiaohongshu note-id stems before falling back to new/updated file detection. UI error copy now distinguishes `XHS_*` image-only, blocked, rate-limited, no-stream, page parse, oversized, stalled, and stream download failures.
+
+Validation completed:
+
+- `uv run pytest worker\tests` — 122 passed.
+- `uv run ruff check worker` — passed.
+- `npm --prefix app test -- src/workflow.test.ts` — 16 passed.
+- `npm --prefix app test` — 84 passed after a single browser-layout timeout was rerun alone successfully.
+- `npm --prefix app run build` — passed.
+- `cargo test --manifest-path app\src-tauri\Cargo.toml` — 31 passed.
+- `python scripts\validate_agents_docs.py --level WARN` — passed with 0 errors and 0 warnings.
+- `git diff --check` — passed.
+
+Manual live public-link smoke was not performed because no stable public Xiaohongshu video link was provided in this session. Residual risk: Xiaohongshu public page structure and short-link behavior may change; FrameQ must keep surfacing structured recoverable errors instead of adding login, CAPTCHA, proxy, browser-cookie, or private-content bypass behavior.
 
 ## Context and Orientation
 

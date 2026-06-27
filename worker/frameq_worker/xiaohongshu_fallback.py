@@ -8,12 +8,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from http.cookiejar import CookieJar
 from pathlib import Path
 
-from frameq_worker.download_reliability import SafeDownloadError, write_http_response_atomically
+import brotli
+
+from frameq_worker.download_reliability import (
+    SafeDownloadError,
+    write_http_response_atomically,
+    write_http_stream_atomically,
+)
 
 XHS_DESKTOP_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -27,6 +33,11 @@ XHS_NOTE_ID_PATTERN = re.compile(r"(?i)[0-9a-f]{24}")
 XHS_SHORT_HOSTS = {"xhslink.com", "www.xhslink.com"}
 XHS_MAX_HTML_BYTES = 10 * 1024 * 1024
 XHS_MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
+XHS_SHORT_LINK_BODY_BYTES = 256 * 1024
+XHS_MAX_REDIRECT_DEPTH = 5
+XHS_DOWNLOAD_CHUNK_BYTES = 256 * 1024
+XHS_NO_PROGRESS_TIMEOUT_SECONDS = 120.0
+XHS_TRAILING_URL_PUNCTUATION = " \t\r\n\"'<>[]{}()，。！？；：、,.;:!?"
 
 
 class XiaohongshuFallbackError(RuntimeError):
@@ -101,6 +112,91 @@ class UrllibXiaohongshuHttpClient:
                 "Xiaohongshu public page request failed.",
             ) from exc
 
+    def download_to_path(
+        self,
+        url: str,
+        destination: Path,
+        *,
+        headers: dict[str, str] | None = None,
+        timeout_seconds: float = 30.0,
+        max_bytes: int | None = None,
+        no_progress_timeout_seconds: float | None = None,
+    ) -> int:
+        request_headers = dict(headers or {})
+        resume_from = _partial_file_size(destination)
+        if resume_from > 0:
+            request_headers["Range"] = f"bytes={resume_from}-"
+        try:
+            return self._download_request_to_path(
+                url,
+                destination,
+                headers=request_headers,
+                timeout_seconds=timeout_seconds,
+                max_bytes=max_bytes,
+                no_progress_timeout_seconds=no_progress_timeout_seconds,
+                resume_from_bytes=resume_from,
+            )
+        except SafeDownloadError as exc:
+            if resume_from <= 0 or exc.code != "DOWNLOAD_CONTENT_RANGE_INVALID":
+                raise
+            destination.with_name(f"{destination.name}.part").unlink(missing_ok=True)
+            return self._download_request_to_path(
+                url,
+                destination,
+                headers=dict(headers or {}),
+                timeout_seconds=timeout_seconds,
+                max_bytes=max_bytes,
+                no_progress_timeout_seconds=no_progress_timeout_seconds,
+                resume_from_bytes=0,
+            )
+
+    def _download_request_to_path(
+        self,
+        url: str,
+        destination: Path,
+        *,
+        headers: dict[str, str],
+        timeout_seconds: float,
+        max_bytes: int | None,
+        no_progress_timeout_seconds: float | None,
+        resume_from_bytes: int,
+    ) -> int:
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with self._opener.open(request, timeout=timeout_seconds) as response:
+                return write_http_stream_atomically(
+                    HttpResponse(
+                        status=response.status,
+                        headers=dict(response.headers.items()),
+                        body=b"",
+                        url=response.geturl(),
+                    ),
+                    _response_chunks(response),
+                    destination,
+                    max_bytes=max_bytes,
+                    no_progress_timeout_seconds=no_progress_timeout_seconds,
+                    resume_from_bytes=resume_from_bytes,
+                )
+        except urllib.error.HTTPError as exc:
+            return write_http_stream_atomically(
+                HttpResponse(
+                    status=exc.code,
+                    headers=dict(exc.headers.items()),
+                    body=b"",
+                    url=exc.geturl(),
+                ),
+                _response_chunks(exc),
+                destination,
+                max_bytes=max_bytes,
+                no_progress_timeout_seconds=no_progress_timeout_seconds,
+                resume_from_bytes=resume_from_bytes,
+            )
+        except urllib.error.URLError as exc:
+            raise XiaohongshuFallbackError(
+                "XHS_STREAM_DOWNLOAD_FAILED",
+                "Xiaohongshu media stream request failed.",
+            ) from exc
+
 
 def parse_xiaohongshu_input(
     raw_input: str,
@@ -111,25 +207,15 @@ def parse_xiaohongshu_input(
         return XiaohongshuParseResult(note_id=normalized.lower())
 
     client = http_client or UrllibXiaohongshuHttpClient()
+    last_error: XiaohongshuFallbackError | None = None
     for candidate_url in _extract_xhs_urls(normalized):
-        parsed = _parse_xhs_note_url(candidate_url)
-        if parsed is not None:
-            return parsed
-        if not _is_xhs_short_link(candidate_url):
+        try:
+            return _parse_xhs_url_candidate(candidate_url, client, depth=0)
+        except XiaohongshuFallbackError as exc:
+            last_error = exc
             continue
 
-        response = client.get(candidate_url, headers=_page_headers(), timeout_seconds=10.0)
-        resolved = _parse_xhs_note_url(response.url)
-        if resolved is not None:
-            return resolved
-
-        body = _decode_response_body(response)
-        for embedded_url in _extract_xhs_urls(body):
-            resolved = _parse_xhs_note_url(embedded_url)
-            if resolved is not None:
-                return resolved
-
-    raise XiaohongshuFallbackError(
+    raise last_error or XiaohongshuFallbackError(
         "XHS_ID_PARSE_FAILED",
         "Could not extract Xiaohongshu note ID from input.",
     )
@@ -207,36 +293,164 @@ def _download_first_available_stream(
     for index, candidate in enumerate(candidates):
         for stream_url in _stream_urls(candidate):
             try:
-                response = http_client.get(
-                    stream_url,
-                    headers=_media_headers(),
-                    timeout_seconds=30.0,
-                )
-                write_http_response_atomically(
-                    response,
-                    output_path,
-                    max_bytes=XHS_MAX_VIDEO_BYTES,
-                )
+                _download_stream_to_path(stream_url, output_path, http_client)
             except (SafeDownloadError, XiaohongshuFallbackError, OSError) as exc:
                 last_error = exc
                 continue
             return output_path
         _emit_stream_retry(progress_callback, index, candidates)
 
-    raise XiaohongshuFallbackError(
-        "XHS_STREAM_DOWNLOAD_FAILED",
-        "All Xiaohongshu fallback streams failed to download.",
-    ) from last_error
+    raise _map_download_error(last_error) from last_error
 
 
 def _stream_urls(candidate: XiaohongshuStreamCandidate) -> list[str]:
     return _collect_download_urls(candidate.url, candidate.backup_urls)
 
 
+def _download_stream_to_path(
+    stream_url: str,
+    output_path: Path,
+    http_client: UrllibXiaohongshuHttpClient,
+) -> int:
+    downloader = getattr(http_client, "download_to_path", None)
+    if callable(downloader):
+        return int(
+            downloader(
+                stream_url,
+                output_path,
+                headers=_media_headers(),
+                timeout_seconds=30.0,
+                max_bytes=XHS_MAX_VIDEO_BYTES,
+                no_progress_timeout_seconds=XHS_NO_PROGRESS_TIMEOUT_SECONDS,
+            )
+        )
+
+    response = http_client.get(
+        stream_url,
+        headers=_media_headers(),
+        timeout_seconds=30.0,
+    )
+    return write_http_response_atomically(
+        response,
+        output_path,
+        max_bytes=XHS_MAX_VIDEO_BYTES,
+    )
+
+
+def _response_chunks(response: object) -> Iterator[bytes]:
+    while True:
+        chunk = response.read(XHS_DOWNLOAD_CHUNK_BYTES)
+        if not chunk:
+            break
+        yield chunk
+
+
+def _partial_file_size(destination: Path) -> int:
+    part_path = destination.with_name(f"{destination.name}.part")
+    try:
+        return part_path.stat().st_size if part_path.is_file() else 0
+    except OSError:
+        return 0
+
+
+def _map_download_error(error: Exception | None) -> XiaohongshuFallbackError:
+    if isinstance(error, SafeDownloadError):
+        if error.code == "DOWNLOAD_SIZE_EXCEEDED":
+            return XiaohongshuFallbackError(
+                "XHS_VIDEO_TOO_LARGE",
+                "Xiaohongshu video exceeded the configured size limit.",
+            )
+        if error.code == "DOWNLOAD_STALLED":
+            return XiaohongshuFallbackError(
+                "XHS_DOWNLOAD_STALLED",
+                "Xiaohongshu video download stalled.",
+            )
+    return XiaohongshuFallbackError(
+        "XHS_STREAM_DOWNLOAD_FAILED",
+        "All Xiaohongshu fallback streams failed to download.",
+    )
+
+
+def _parse_xhs_url_candidate(
+    raw_url: str,
+    http_client: UrllibXiaohongshuHttpClient,
+    *,
+    depth: int,
+) -> XiaohongshuParseResult:
+    if depth > XHS_MAX_REDIRECT_DEPTH:
+        raise XiaohongshuFallbackError(
+            "XHS_SHORT_LINK_RESOLUTION_FAILED",
+            "Xiaohongshu short link redirected too many times.",
+        )
+
+    parsed = _parse_xhs_note_url(raw_url)
+    if parsed is not None:
+        return parsed
+    if not _is_xhs_short_link(raw_url):
+        raise XiaohongshuFallbackError(
+            "XHS_ID_PARSE_FAILED",
+            "Could not extract Xiaohongshu note ID from URL.",
+        )
+
+    resolved_url = _resolve_short_link(raw_url, http_client)
+    return _parse_xhs_url_candidate(resolved_url, http_client, depth=depth + 1)
+
+
+def _resolve_short_link(
+    short_url: str,
+    http_client: UrllibXiaohongshuHttpClient,
+) -> str:
+    last_error: Exception | None = None
+    for attempt_url in _short_link_attempts(short_url):
+        try:
+            return _resolve_short_link_once(attempt_url, http_client)
+        except (SafeDownloadError, XiaohongshuFallbackError, OSError) as exc:
+            last_error = exc
+            continue
+    raise XiaohongshuFallbackError(
+        "XHS_SHORT_LINK_RESOLUTION_FAILED",
+        "Xiaohongshu short link could not be resolved.",
+    ) from last_error
+
+
+def _resolve_short_link_once(
+    short_url: str,
+    http_client: UrllibXiaohongshuHttpClient,
+) -> str:
+    response = http_client.get(short_url, headers=_page_headers(), timeout_seconds=10.0)
+    location = _header(response.headers, "Location")
+    if 300 <= response.status < 400 and location:
+        return urllib.parse.urljoin(response.url or short_url, location.strip())
+
+    resolved = _parse_xhs_note_url(response.url)
+    if resolved is not None:
+        return response.url
+
+    body = _decode_response_body(response, max_bytes=XHS_SHORT_LINK_BODY_BYTES)
+    for embedded_url in _extract_xhs_urls(body):
+        if _parse_xhs_note_url(embedded_url) is not None:
+            return embedded_url
+
+    raise XiaohongshuFallbackError(
+        "XHS_SHORT_LINK_RESOLUTION_FAILED",
+        "Xiaohongshu short link response did not contain a note URL.",
+    )
+
+
+def _short_link_attempts(short_url: str) -> list[str]:
+    attempts = [short_url]
+    parsed = urllib.parse.urlparse(short_url)
+    if parsed.scheme.lower() == "http":
+        secure_url = parsed._replace(scheme="https").geturl()
+        if secure_url not in attempts:
+            attempts.append(secure_url)
+    return attempts
+
+
 def _extract_xhs_urls(raw_input: str) -> list[str]:
     urls: list[str] = []
     for match in XHS_URL_PATTERN.finditer(html.unescape(raw_input)):
-        candidate = match.group(0).rstrip("，。,.、!！?？)")
+        candidate = match.group(0).rstrip(XHS_TRAILING_URL_PUNCTUATION)
         parsed = urllib.parse.urlparse(candidate)
         if _is_acceptable_xhs_host(parsed.hostname or ""):
             urls.append(candidate)
@@ -322,7 +536,7 @@ def _raise_for_page_response(response: HttpResponse) -> None:
         )
 
 
-def _decode_response_body(response: HttpResponse) -> str:
+def _decode_response_body(response: HttpResponse, max_bytes: int = XHS_MAX_HTML_BYTES) -> str:
     body = response.body
     encoding = (
         (_header(response.headers, "Content-Encoding") or "")
@@ -333,18 +547,20 @@ def _decode_response_body(response: HttpResponse) -> str:
     try:
         if encoding == "gzip":
             body = gzip.decompress(body)
+        elif encoding == "br":
+            body = brotli.decompress(body)
         elif encoding == "deflate":
             try:
                 body = zlib.decompress(body)
             except zlib.error:
                 body = zlib.decompress(body, -zlib.MAX_WBITS)
-    except (OSError, zlib.error) as exc:
+    except (OSError, brotli.error, zlib.error) as exc:
         raise XiaohongshuFallbackError(
             "XHS_RESPONSE_DECODE_FAILED",
             "Xiaohongshu response body could not be decoded.",
         ) from exc
 
-    if len(body) > XHS_MAX_HTML_BYTES:
+    if len(body) > max_bytes:
         raise XiaohongshuFallbackError(
             "XHS_RESPONSE_TOO_LARGE",
             "Xiaohongshu page response exceeded the safety limit.",
@@ -423,7 +639,16 @@ def _extract_braced_object(text: str, start_index: int) -> str:
 
 
 def _js_to_json(raw: str) -> str:
-    converted = re.sub(r"([:,\[{]\s*)(?:undefined|void 0)(\s*[,}\]])", r"\1null\2", raw)
+    converted = re.sub(
+        r"([:,\[{]\s*)(?:undefined|void\s+0)(\s*[,}\]])",
+        r"\1null\2",
+        raw,
+    )
+    converted = re.sub(
+        r"([:,\[{]\s*)(?:undefined|void\s+0)(\s*)$",
+        r"\1null\2",
+        converted,
+    )
     return re.sub(r",(\s*[}\]])", r"\1", converted)
 
 
@@ -567,8 +792,18 @@ def _page_headers(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     headers = {
         "User-Agent": XHS_DESKTOP_USER_AGENT,
         "Referer": XHS_REFERER,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,image/apng,*/*;q=0.8"
+        ),
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
         "Cache-Control": "max-age=0",
     }
     if extra:

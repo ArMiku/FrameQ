@@ -690,6 +690,7 @@ name = "frameq-worker"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "brotli" },
     { name = "funasr" },
     { name = "modelscope" },
     { name = "torch" },
@@ -710,6 +711,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "brotli", specifier = ">=1.2.0" },
     { name = "funasr", specifier = ">=1.2.7" },
     { name = "modelscope", specifier = ">=1.37.1" },
     { name = "qwen-asr", marker = "extra == 'qwen'", specifier = ">=0.0.6" },

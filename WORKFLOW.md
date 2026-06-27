@@ -19,7 +19,7 @@
 ## Constitution
 
 - `AGENTS.md`
-- `douyin_video_download_solution.md`
+- `docs/product-specs/index.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DESIGN.md`
 - `docs/SECURITY.md`

@@ -27,9 +27,25 @@ describe("workflow state model", () => {
     expect(canSubmitUrl("https://v.douyin.com/")).toBe(false);
     expect(canSubmitUrl("http://xhslink.com/o/jQzXcxNapU")).toBe(true);
     expect(canSubmitUrl("https://xhslink.com/o/jQzXcxNapU")).toBe(true);
+    expect(canSubmitUrl("https://www.xhslink.com/demo")).toBe(true);
+    expect(
+      canSubmitUrl(
+        "复制小红书笔记 https://www.xiaohongshu.com/explore/0123456789abcdef01234568?xsec_token=tok",
+      ),
+    ).toBe(true);
+    expect(canSubmitUrl("0123456789abcdef01234568")).toBe(true);
+    expect(canSubmitUrl("https://www.bilibili.com/video/BV1Aa411c7mD?p=2")).toBe(true);
+    expect(canSubmitUrl("https://www.bilibili.com/video/av170001")).toBe(true);
+    expect(canSubmitUrl("copy https://b23.tv/demo more text")).toBe(true);
     expect(canSubmitUrl("http://xhslink.com/o/")).toBe(false);
     expect(canSubmitUrl("https://evil-xhslink.com/o/jQzXcxNapU")).toBe(false);
     expect(canSubmitUrl("https://xhslink.com.evil/o/jQzXcxNapU")).toBe(false);
+    expect(
+      canSubmitUrl("https://xiaohongshu.com.evil/explore/0123456789abcdef01234568"),
+    ).toBe(false);
+    expect(canSubmitUrl("https://www.bilibili.com/bangumi/play/ep123456")).toBe(false);
+    expect(canSubmitUrl("https://b23.tv/")).toBe(false);
+    expect(canSubmitUrl("https://b23.tv.evil/demo")).toBe(false);
   });
 
   test("starts processing by hiding input and entering video extraction", () => {
@@ -288,6 +304,46 @@ describe("workflow state model", () => {
       }),
     ).toBe(
       "抖音公开视频分享页暂时没有返回可播放的视频流，请确认链接公开可访问后重试。原始错误：DOUYIN_NO_PLAYABLE_STREAM: public share page returned no playable streams.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "XHS_IMAGE_ONLY: Xiaohongshu note is image-only.",
+        stage: "video_extracting",
+      }),
+    ).toBe(
+      "小红书图文笔记暂不支持转写，请换公开视频笔记链接后重试。原始错误：XHS_IMAGE_ONLY: Xiaohongshu note is image-only.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "XHS_DOWNLOAD_STALLED: public media stream stopped sending data.",
+        stage: "video_extracting",
+      }),
+    ).toBe(
+      "小红书视频下载长时间没有进展，请检查网络后重试，或重新复制公开视频链接。原始错误：XHS_DOWNLOAD_STALLED: public media stream stopped sending data.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "BILIBILI_DRM_PROTECTED: selected DASH stream is DRM protected.",
+        stage: "video_extracting",
+      }),
+    ).toBe(
+      "该 Bilibili 视频包含 DRM 或受保护内容，FrameQ 当前不会尝试解密或绕过权限。原始错误：BILIBILI_DRM_PROTECTED: selected DASH stream is DRM protected.",
+    );
+
+    expect(
+      formatWorkerError({
+        code: "VIDEO_DOWNLOAD_FAILED",
+        message: "BILIBILI_FFMPEG_MERGE_FAILED: ffmpeg exited with code 1.",
+        stage: "video_extracting",
+      }),
+    ).toBe(
+      "Bilibili 视频和音频已下载但合并失败，请确认 FFmpeg 可用后重试。原始错误：BILIBILI_FFMPEG_MERGE_FAILED: ffmpeg exited with code 1.",
     );
   });
 

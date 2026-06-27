@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
 
+import brotli
 import pytest
 from frameq_worker.xiaohongshu_fallback import (
     HttpResponse,
     XiaohongshuFallbackError,
+    _decode_response_body,
+    _page_headers,
     download_xiaohongshu_video,
     parse_video_stream_candidates,
     parse_xiaohongshu_input,
@@ -32,6 +35,34 @@ class FakeHttpClient:
         if isinstance(item, Exception):
             raise item
         return item
+
+
+class StreamingFakeHttpClient(FakeHttpClient):
+    def __init__(
+        self,
+        responses: dict[str, list[HttpResponse | Exception]],
+        stream_bodies: dict[str, bytes],
+    ) -> None:
+        super().__init__(responses)
+        self.stream_bodies = stream_bodies
+        self.stream_calls: list[tuple[str, Path, dict[str, str]]] = []
+
+    def download_to_path(
+        self,
+        url: str,
+        destination: Path,
+        *,
+        headers: dict[str, str] | None = None,
+        timeout_seconds: float = 30.0,
+        max_bytes: int | None = None,
+        no_progress_timeout_seconds: float | None = None,
+    ) -> int:
+        self.stream_calls.append((url, destination, headers or {}))
+        body = self.stream_bodies.get(url)
+        if body is None:
+            raise AssertionError(f"Unexpected stream URL: {url}")
+        destination.write_bytes(body)
+        return len(body)
 
 
 def wrap_initial_state(state: dict[str, object]) -> bytes:
@@ -116,6 +147,67 @@ def test_parse_xiaohongshu_input_accepts_short_link_share_text_and_xsec_token() 
     assert result.full_url.startswith("https://www.xiaohongshu.com/explore/")
 
 
+def test_parse_xiaohongshu_input_accepts_3xx_location_and_https_retry() -> None:
+    client = FakeHttpClient(
+        {
+            "http://xhslink.com/demo": [
+                XiaohongshuFallbackError(
+                    "XHS_PAGE_UNAVAILABLE",
+                    "short link failed over http",
+                )
+            ],
+            "https://xhslink.com/demo": [
+                HttpResponse(
+                    status=302,
+                    headers={
+                        "Location": (
+                            f"//www.xiaohongshu.com/explore/{NOTE_ID}"
+                            "?xsec_token=redirect-token"
+                        )
+                    },
+                    body=b"",
+                    url="https://xhslink.com/demo",
+                )
+            ],
+        }
+    )
+
+    result = parse_xiaohongshu_input(
+        "copy http://xhslink.com/demo",
+        http_client=client,
+    )
+
+    assert result.note_id == NOTE_ID
+    assert result.xsec_token == "redirect-token"
+    assert [call[0] for call in client.calls] == [
+        "http://xhslink.com/demo",
+        "https://xhslink.com/demo",
+    ]
+
+
+def test_page_headers_request_brotli_navigation_compatibility() -> None:
+    headers = _page_headers()
+
+    assert headers["Accept-Encoding"] == "gzip, deflate, br"
+    assert headers["Upgrade-Insecure-Requests"] == "1"
+    assert headers["Sec-Fetch-Mode"] == "navigate"
+
+
+def test_decode_response_body_supports_brotli_initial_state() -> None:
+    html = wrap_initial_state(video_state())
+    response = HttpResponse(
+        status=200,
+        headers={"Content-Encoding": "br"},
+        body=brotli.compress(html),
+        url=f"https://www.xiaohongshu.com/explore/{NOTE_ID}",
+    )
+
+    decoded = _decode_response_body(response)
+
+    assert "window.__INITIAL_STATE__" in decoded
+    assert NOTE_ID in decoded
+
+
 def test_parse_video_stream_candidates_prefers_best_transcription_stream() -> None:
     candidates = parse_video_stream_candidates(video_state(), NOTE_ID)
 
@@ -160,6 +252,34 @@ def test_download_xiaohongshu_video_fetches_page_and_downloads_best_stream(
         f"https://www.xiaohongshu.com/explore/{NOTE_ID}?xsec_token=token123",
         "https://cdn.example/h265.mp4",
     ]
+
+
+def test_download_xiaohongshu_video_uses_streaming_download_when_available(
+    tmp_path: Path,
+) -> None:
+    client = StreamingFakeHttpClient(
+        responses={
+            f"https://www.xiaohongshu.com/explore/{NOTE_ID}": [
+                HttpResponse(
+                    status=200,
+                    headers={"Content-Type": "text/html"},
+                    body=wrap_initial_state(video_state()),
+                    url=f"https://www.xiaohongshu.com/explore/{NOTE_ID}",
+                )
+            ]
+        },
+        stream_bodies={"https://cdn.example/h265.mp4": b"streamed mp4"},
+    )
+
+    path = download_xiaohongshu_video(NOTE_ID, output_dir=tmp_path, http_client=client)
+
+    assert path.read_bytes() == b"streamed mp4"
+    assert len(client.stream_calls) == 1
+    stream_url, destination, headers = client.stream_calls[0]
+    assert stream_url == "https://cdn.example/h265.mp4"
+    assert destination == tmp_path / f"{NOTE_ID}.mp4"
+    assert headers["Referer"] == "https://www.xiaohongshu.com/"
+    assert headers["Accept"] == "*/*"
 
 
 def test_download_xiaohongshu_video_retries_backup_stream(tmp_path: Path) -> None:

@@ -74,6 +74,9 @@ const PROGRESS_STEP_LABELS: Array<Pick<ProgressStep, "id" | "label">> = [
   { id: "video_transcribing", label: "视频转译中" },
   { id: "insights_generating", label: "AI 整理中" },
 ];
+const SUPPORTED_URL_PATTERN = /https?:\/\/[^\s"'<>]+/gi;
+const XIAOHONGSHU_NOTE_ID_PATTERN = /^[0-9a-f]{24}$/i;
+const TRAILING_URL_PUNCTUATION_PATTERN = /[，。！？；：、,.;:!?）)\]}]+$/u;
 
 export function createInitialWorkflow(): WorkflowState {
   return {
@@ -97,6 +100,16 @@ export function createInitialWorkflow(): WorkflowState {
 }
 
 export function canSubmitUrl(rawUrl: string): boolean {
+  const input = rawUrl.trim();
+  if (XIAOHONGSHU_NOTE_ID_PATTERN.test(input)) {
+    return true;
+  }
+
+  const candidates = looksLikeUrl(input) ? [input] : extractSupportedUrls(input);
+  return candidates.some(canSubmitSingleUrl);
+}
+
+function canSubmitSingleUrl(rawUrl: string): boolean {
   try {
     const url = new URL(rawUrl);
     const hostname = url.hostname.toLowerCase();
@@ -118,10 +131,29 @@ export function canSubmitUrl(rawUrl: string): boolean {
       );
     }
 
-    return isXiaohongshuShortLink(hostname, normalizedPath);
+    return (
+      isXiaohongshuShortLink(hostname, normalizedPath) ||
+      isXiaohongshuNoteUrl(hostname, normalizedPath) ||
+      isBilibiliShortLink(hostname, normalizedPath) ||
+      isBilibiliVideoUrl(hostname, normalizedPath)
+    );
   } catch {
     return false;
   }
+}
+
+function looksLikeUrl(value: string): boolean {
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+function extractSupportedUrls(value: string): string[] {
+  return Array.from(value.matchAll(SUPPORTED_URL_PATTERN), (match) =>
+    trimUrlCandidate(match[0]),
+  );
+}
+
+function trimUrlCandidate(value: string): string {
+  return value.trim().replace(TRAILING_URL_PUNCTUATION_PATTERN, "");
 }
 
 function isDouyinHost(hostname: string): boolean {
@@ -129,7 +161,40 @@ function isDouyinHost(hostname: string): boolean {
 }
 
 function isXiaohongshuShortLink(hostname: string, normalizedPath: string): boolean {
-  return hostname === "xhslink.com" && /^\/o\/[A-Za-z0-9_-]+$/.test(normalizedPath);
+  if (hostname !== "xhslink.com" && hostname !== "www.xhslink.com") {
+    return false;
+  }
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments.length > 0 && !(segments.length === 1 && segments[0] === "o");
+}
+
+function isXiaohongshuNoteUrl(hostname: string, normalizedPath: string): boolean {
+  if (!isXiaohongshuHost(hostname)) {
+    return false;
+  }
+  return /(?:^|\/)[0-9a-f]{24}(?:$|\/)/i.test(normalizedPath);
+}
+
+function isXiaohongshuHost(hostname: string): boolean {
+  return hostname === "xiaohongshu.com" || hostname.endsWith(".xiaohongshu.com");
+}
+
+function isBilibiliShortLink(hostname: string, normalizedPath: string): boolean {
+  if (hostname !== "b23.tv" && hostname !== "www.b23.tv") {
+    return false;
+  }
+  return normalizedPath.split("/").filter(Boolean).length > 0;
+}
+
+function isBilibiliVideoUrl(hostname: string, normalizedPath: string): boolean {
+  if (!isBilibiliHost(hostname)) {
+    return false;
+  }
+  return /^\/video\/(?:BV[0-9A-Za-z]{10,}|av\d+)$/i.test(normalizedPath);
+}
+
+function isBilibiliHost(hostname: string): boolean {
+  return hostname === "bilibili.com" || hostname.endsWith(".bilibili.com");
 }
 
 export function startProcessing(state: WorkflowState, url: string): WorkflowState {
@@ -227,6 +292,18 @@ export function formatWorkerError(error: WorkerErrorResult): string {
 function formatVideoDownloadError(message: string): string {
   const rawSummary = summarizeRawError(message);
   const lowerMessage = rawSummary.toLowerCase();
+  const bilibiliGuidance = formatBilibiliDownloadGuidance(lowerMessage);
+  if (bilibiliGuidance) {
+    return rawSummary
+      ? `${bilibiliGuidance}原始错误：${rawSummary}`
+      : bilibiliGuidance;
+  }
+  const xiaohongshuGuidance = formatXiaohongshuDownloadGuidance(lowerMessage);
+  if (xiaohongshuGuidance) {
+    return rawSummary
+      ? `${xiaohongshuGuidance}原始错误：${rawSummary}`
+      : xiaohongshuGuidance;
+  }
   let guidance = "视频下载失败，请确认链接可公开访问后重试。";
 
   if (
@@ -263,6 +340,95 @@ function formatVideoDownloadError(message: string): string {
   }
 
   return rawSummary ? `${guidance}原始错误：${rawSummary}` : guidance;
+}
+
+function formatBilibiliDownloadGuidance(lowerMessage: string): string | null {
+  if (lowerMessage.includes("bilibili_drm_protected")) {
+    return "该 Bilibili 视频包含 DRM 或受保护内容，FrameQ 当前不会尝试解密或绕过权限。";
+  }
+
+  if (lowerMessage.includes("bilibili_ffmpeg_merge_failed")) {
+    return "Bilibili 视频和音频已下载但合并失败，请确认 FFmpeg 可用后重试。";
+  }
+
+  if (
+    lowerMessage.includes("bilibili_unsupported_content") ||
+    lowerMessage.includes("bilibili_login_required")
+  ) {
+    return "当前仅支持 Bilibili 普通公开视频，不支持番剧、影视、课程、会员或受保护内容。";
+  }
+
+  if (
+    lowerMessage.includes("bilibili_id_parse_failed") ||
+    lowerMessage.includes("bilibili_short_link_resolve_failed")
+  ) {
+    return "Bilibili 链接无法识别，请粘贴普通公开视频 BV/av 链接或有效 b23.tv 短链。";
+  }
+
+  if (
+    lowerMessage.includes("bilibili_video_info_unavailable") ||
+    lowerMessage.includes("bilibili_part_not_found")
+  ) {
+    return "Bilibili 公开视频信息暂时不可用，请确认分 P 存在且链接可公开访问后重试。";
+  }
+
+  if (
+    lowerMessage.includes("bilibili_no_playable_stream") ||
+    lowerMessage.includes("bilibili_dash_download_failed")
+  ) {
+    return "Bilibili 公开视频暂时没有返回可下载的视频音频流，请稍后重试或换一个公开视频链接。";
+  }
+
+  return null;
+}
+
+function formatXiaohongshuDownloadGuidance(lowerMessage: string): string | null {
+  if (lowerMessage.includes("xhs_image_only")) {
+    return "小红书图文笔记暂不支持转写，请换公开视频笔记链接后重试。";
+  }
+
+  if (
+    lowerMessage.includes("xhs_note_blocked") ||
+    lowerMessage.includes("xhs_note_not_found")
+  ) {
+    return "小红书笔记需要登录、已失效或不可公开访问，请确认是公开视频笔记后重试。";
+  }
+
+  if (lowerMessage.includes("xhs_rate_limited")) {
+    return "小红书请求暂时被限流，请稍后重试。";
+  }
+
+  if (lowerMessage.includes("xhs_no_playable_stream")) {
+    return "小红书公开视频暂时没有返回可播放的视频流，请重新复制公开视频链接后重试。";
+  }
+
+  if (
+    lowerMessage.includes("xhs_initial_state_missing") ||
+    lowerMessage.includes("xhs_initial_state_malformed") ||
+    lowerMessage.includes("xhs_response_decode_failed") ||
+    lowerMessage.includes("xhs_response_too_large")
+  ) {
+    return "小红书页面结构暂时无法解析，请稍后重试或重新复制公开视频链接。";
+  }
+
+  if (lowerMessage.includes("xhs_video_too_large")) {
+    return "小红书视频超过当前安全下载大小限制，请换较短的公开视频后重试。";
+  }
+
+  if (lowerMessage.includes("xhs_download_stalled")) {
+    return "小红书视频下载长时间没有进展，请检查网络后重试，或重新复制公开视频链接。";
+  }
+
+  if (
+    lowerMessage.includes("xhs_stream_download_failed") ||
+    lowerMessage.includes("xhs_page_unavailable") ||
+    lowerMessage.includes("xhs_short_link_resolution_failed") ||
+    lowerMessage.includes("xhs_id_parse_failed")
+  ) {
+    return "小红书公开视频下载失败，请确认链接可公开访问后重试。";
+  }
+
+  return null;
 }
 
 function summarizeRawError(message: string): string {

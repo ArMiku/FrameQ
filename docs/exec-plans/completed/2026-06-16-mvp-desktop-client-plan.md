@@ -27,7 +27,7 @@ Decision Log, and Outcomes & Retrospective must be kept up to date as work proce
 
 ## Surprises & Discoveries
 
-- Evidence: `douyin_video_download_solution.md` records that the sample URL download produced a valid MP4 with HEVC video, AAC audio, 1024x576 resolution, and about 271.3 seconds duration.
+- Evidence: the root historical product plan, later migrated into `docs/` and removed, recorded that the sample URL download produced a valid MP4 with HEVC video, AAC audio, 1024x576 resolution, and about 271.3 seconds duration.
 - Evidence: Development machine has `uv 0.11.3`, Node `v24.5.0`, npm `11.7.0`, and FFmpeg available; `cargo` is not currently on PATH, so full Tauri/Rust build is blocked until Rust tooling is installed.
 - Evidence: `npm --prefix app run tauri -- build` fails at `cargo metadata` with `program not found`, confirming the desktop build blocker is Rust/Cargo rather than the JS app.
 - Evidence: Real sample URL download created `outputs/7524373044106677544.mp4` with HEVC video, AAC audio, 1280x720 resolution, 271.3 seconds duration, and 8,864,763 bytes.
@@ -67,7 +67,7 @@ Completed. The MVP desktop workflow now covers project-local `uv` worker executi
 
 ## Context and Orientation
 
-- `douyin_video_download_solution.md` is the source product and technical design.
+- The root historical product plan was the original source product and technical design; it has since been migrated into `docs/` and removed.
 - `docs/product-specs/2026-06-16-douyin-video-transcription-client.md` defines user-visible scope and acceptance.
 - `docs/ARCHITECTURE.md` defines planned module boundaries.
 - `docs/DESIGN.md` defines UI states and interaction rules.

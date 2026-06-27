@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Python worker for FrameQ desktop video transcription workflows."
 requires-python = ">=3.11"
 dependencies = [
+    "brotli>=1.2.0",
     "funasr>=1.2.7",
     "modelscope>=1.37.1",
     "torch>=2.10.0",

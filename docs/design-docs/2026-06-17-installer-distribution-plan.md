@@ -1,8 +1,11 @@
 # FrameQ 一键安装对外发布方案
 
+> [!WARNING]
+> 历史草案，已被后续轻量安装包方案取代，不再作为 release 发布依据。当前 release 口径：默认 ASR 模型为 `iic/SenseVoiceSmall`，模型由首启引导下载到 app-local data；Qwen/Qwen3-ASR 仅保留为开发或未来可选适配；安装包不得内置 ASR 权重、LLM key、云端 LLM 模型或用户私有配置。
+
 | 字段 | 值 |
 |------|---|
-| 状态 | Draft |
+| 状态 | Superseded historical draft |
 | 创建日期 | 2026-06-17 |
 | 作者 | WorkBuddy |
 | 关联文档 | `AGENTS.md`、`docs/ARCHITECTURE.md`、`docs/SECURITY.md`、`docs/design-docs/core-beliefs.md` |
@@ -24,7 +27,7 @@
 | Recoverable partial success | `core-beliefs.md §4` | 话题点失败不丢文字稿 |
 | Observable progress | `core-beliefs.md §5` | 长耗时阶段必须有可见状态 |
 | Secrets 不硬编码 | `SECURITY.md §Secrets` | LLM Key 不进入桌面安装包和本机 `.env`，只由 FrameQ server 管理员托管 |
-| **权重不入安装包** | `AGENTS.md 核心信念` | **本方案需要重新审视，见 §3.4** |
+| **权重不入安装包** | `AGENTS.md 核心信念` | 当前 release 必须遵守；本文中曾提出的权重入包方案已废弃，见 §3.4 |
 
 ### 1.3 当前架构的发布阻塞点
 
@@ -48,7 +51,7 @@ FrameQ-Setup-x.y.z.exe  (约 1.5–2.5 GB)
 │   │   ├── python.exe
 │   │   ├── python311.dll
 │   │   ├── Lib/                        # 标准库
-│   │   └── site-packages/              # 预装依赖：modelscope, qwen-asr, yt-dlp, torch, ...
+│   │   └── site-packages/              # 历史草案预装依赖；当前 release 不默认安装 qwen-asr
 │   ├── worker/                         # frameq_worker 源码（含 insightflow/）
 │   ├── pyproject.toml                  # 仅作为元数据，运行期不再 pip install
 │   ├── bin/
@@ -64,12 +67,12 @@ FrameQ-Setup-x.y.z.exe  (约 1.5–2.5 GB)
 |------|------|------|
 | Rust 壳 + Tauri 运行时 | ~10 MB | |
 | python-build-standalone | ~30 MB | 独立 Python 3.11 |
-| 预装 site-packages | ~1.2 GB | 主要来自 torch CPU、modelscope、qwen-asr、funasr 等大依赖 |
+| 预装 site-packages | ~1.2 GB | 历史草案估算；当前 release 不默认安装 qwen-asr |
 | ffmpeg/ffprobe | ~80 MB | |
 | worker 源码 | <1 MB | |
 | **小计（不含 ASR 模型）** | **~1.3 GB** | |
-| Qwen3-ASR-0.6B 权重 | ~1.8 GB | 见 §3.4 决策 |
-| **若模型入包总计** | **~3.1 GB** | |
+| 历史 Qwen3-ASR-0.6B 权重估算 | ~1.8 GB | 已废弃，不进入当前 release 安装包 |
+| **历史模型入包总计** | **~3.1 GB** | 已废弃 |
 
 ### 2.2 运行期调用链（重写后）
 
@@ -102,7 +105,7 @@ FrameQ-Setup-x.y.z.exe  (约 1.5–2.5 GB)
 - 解压到 `app/src-tauri/resources/python/`
 - 通过 `tauri.conf.json` 的 `bundle.resources` 字段一并打包
 
-**为何不选 PyInstaller**：qwen-asr / modelscope 依赖含原生扩展（torch、numpy BLAS），PyInstaller hidden-imports 调试成本高，且单文件 exe 启动慢。python-build-standalone 直接复用标准 import 机制，零适配。
+**为何不选 PyInstaller**：历史草案评估过 qwen-asr / modelscope 这类原生扩展依赖（torch、numpy BLAS）的打包成本；PyInstaller hidden-imports 调试成本高，且单文件 exe 启动慢。python-build-standalone 直接复用标准 import 机制，零适配。
 
 **为何不选 uv 内嵌**：uv 仍需在用户机器执行 `uv sync`，触网下载依赖，违背"无脑即用"。本方案在**构建期**就完成依赖安装，运行期不再触网。
 
@@ -112,7 +115,7 @@ FrameQ-Setup-x.y.z.exe  (约 1.5–2.5 GB)
 1. 在构建机（CI 或本地）创建临时 venv：`python -m venv build-venv`
 2. `build-venv\Scripts\pip install -r requirements.txt`（从 `pyproject.toml` 导出）
 3. 把 `build-venv\Lib\site-packages\` 整个复制到 `resources\python\Lib\site-packages\`
-4. 确认 `modelscope`、`qwen_asr`、`yt_dlp`、`torch`、`numpy` 等关键模块可被 `resources\python\python.exe -c "import modelscope"` 导入
+4. 确认 release 依赖中的 `modelscope`、`funasr`、`yt_dlp`、`torch`、`numpy` 等关键模块可被 `resources\python\python.exe -c "import modelscope"` 导入；`qwen_asr` 不属于当前普通 release 默认依赖
 
 **requirements.txt 生成**：在 `pyproject.toml` 中追加 `[project.optional-dependencies] bundle = [...]`，列出 modelscope 等运行期依赖；构建脚本用 `uv export --no-dev` 产出锁定版本。
 
@@ -129,11 +132,11 @@ FrameQ-Setup-x.y.z.exe  (约 1.5–2.5 GB)
 
 **为何不打包完整 ffmpeg**：essentials 已含所有 FrameQ 需要的编解码器（AAC、MP3、WAV、Opus）。full shared 版本会引入额外 200MB+，无收益。
 
-### 3.4 ASR 模型分发：核心信念冲突与决策
+### 3.4 ASR 模型分发：历史冲突与当前取代决策
 
 #### 冲突点
 
-`AGENTS.md` 核心信念明确写"大模型权重不打进安装包"。但用户本次要求"无脑安装即用、不考虑体积"。两者在 ASR 模型这一项上直接冲突。
+`AGENTS.md` 核心信念明确写"大模型权重不打进安装包"。本草案曾按"无脑安装即用、不考虑体积"方向评估过权重入包，但该方向已被后续轻量安装包 + 首启模型下载方案取代。
 
 #### 三个候选方案
 
@@ -143,21 +146,28 @@ FrameQ-Setup-x.y.z.exe  (约 1.5–2.5 GB)
 | **B. 模型直接入包** | ~3.1 GB | 双击即用，完全离线 | **是**，需更新 `AGENTS.md` 与 `core-beliefs.md` | 用户明确要"无脑即用" |
 | **C. 混合：安装包内置 + 联网校验更新** | ~3.1 GB | 即用 + 后台校验模型版本 | **是**，同方案 B | 平衡离线可用与版本新鲜度 |
 
-#### 推荐方案
+#### 历史推荐方案（已废弃）
 
-**推荐方案 B**，理由：
+本草案曾推荐方案 B，理由：
 - 用户明确表达"不考虑体积，只要最省心"
-- Qwen3-ASR-0.6B 是 FrameQ 唯一模型，版本稳定，无频繁更新需求
+- 当时假设 Qwen3-ASR-0.6B 是 FrameQ 唯一模型，版本稳定，无频繁更新需求
 - 首启动下载 1.8GB 在中国大陆网络环境体验差（modelscope CDN 不稳），违背"无脑即用"初衷
 - 3.1GB 安装包在 2026 年的带宽环境下可接受（一次下载，永久离线可用）
 
-**前提条件**：实施前必须先更新 `AGENTS.md` 和 `docs/design-docs/core-beliefs.md`，把"权重不入安装包"修订为"**权重可入安装包，但必须满足：① 仅限 Qwen3-ASR 等核心模型；② LLM 仍按需配置不入包；③ 模型版本在 `models/MODEL_VERSION.txt` 中显式记录**"。这是治理流程要求，不可跳过。
+该推荐已废弃。不得再按本草案修改 `AGENTS.md` 或 `docs/design-docs/core-beliefs.md` 去允许权重入包。
 
-#### 模型路径处理
+#### 当前取代决策
 
-- 构建期：把 `models/models--Qwen--Qwen3-ASR-0.6B/` 复制到 `resources/models/`
-- 运行期：Rust 侧设置 `FRAMEQ_MODEL_DIR=<resource_dir>/models`
-- worker `asr.py:50-58` 的 `resolve_model_cache_dir()` 无需改动，自动读取环境变量
+- release 默认 ASR 模型为 `iic/SenseVoiceSmall`。
+- 安装包只内置 Python runtime、worker、媒体工具和必要依赖，不内置 ASR 权重。
+- SenseVoice Small 和必要 VAD 模型由首启引导下载到 app-local data，并显式处理进度、取消、失败降级和离线状态。
+- Qwen/Qwen3-ASR 仅保留为开发或未来可选适配；若未来重新暴露，必须重新更新产品规格、架构、安全边界、打包边界和验证门禁。
+
+#### 历史模型路径处理（已废弃）
+
+- 不再把 `models/models--Qwen--Qwen3-ASR-0.6B/` 复制到 `resources/models/`。
+- `resources/models` 不作为普通 release 的模型权重承载目录。
+- release 运行期模型缓存应位于 app-local data 或 `FRAMEQ_MODEL_DIR` 指定目录。
 
 ### 3.5 LLM 配置：server-managed checkout
 
@@ -182,8 +192,8 @@ Rust 侧 `process_video` 命令通过环境变量 `FRAMEQ_OUTPUT_DIR` 和 `FRAME
 
 ### 阶段 1：治理前置（必须先做）
 
-1. 更新 `docs/design-docs/core-beliefs.md`：修订权重分发信念（见 §3.4）
-2. 更新 `AGENTS.md`：同步核心信念条目
+1. 本历史草案的权重入包治理变更不得执行；当前 `docs/design-docs/core-beliefs.md` 和 `AGENTS.md` 的"权重不入安装包"口径保持有效。
+2. 如需修改安装包分发策略，必须新建规格和 ExecPlan，而不是复用本草案的权重入包路径。
 3. 在 `docs/product-specs/` 创建 `2026-06-17-installer-distribution-spec.md`，描述用户可见安装体验
 4. 在 `docs/exec-plans/active/` 创建 `2026-06-17-installer-distribution-plan.md`，列出 ExecPlan
 
@@ -266,7 +276,7 @@ Rust 侧 `process_video` 命令通过环境变量 `FRAMEQ_OUTPUT_DIR` 和 `FRAME
 
 | 风险 | 概率 | 影响 | 缓解 |
 |------|------|------|------|
-| python-build-standalone 与 modelscope 原生扩展兼容性问题 | 中 | 高 | 构建期 `python.exe -c "import modelscope, qwen_asr, torch"` 冒烟测试；保留 PyInstaller 作为 fallback |
+| python-build-standalone 与 modelscope/funasr 原生扩展兼容性问题 | 中 | 高 | 构建期 `python.exe -c "import modelscope, funasr, torch"` 冒烟测试；保留 PyInstaller 作为 fallback |
 | torch CPU 版在部分老旧 CPU 上因 AVX 指令缺失崩溃 | 低 | 高 | 在 README 注明最低 CPU 要求；或改用 torch CPU 通用版（牺牲性能） |
 | 安装包过大导致部分用户下载失败 | 中 | 中 | 提供 GitHub Release + 国内镜像（如 Gitee、腾讯 COS）双链路 |
 | modelscope 在运行期尝试联网校验版本导致卡顿 | 中 | 低 | 设置 `MODELSCOPE_OFFLINE=1` 环境变量强制离线 |
@@ -280,7 +290,7 @@ Rust 侧 `process_video` 命令通过环境变量 `FRAMEQ_OUTPUT_DIR` 和 `FRAME
 1. 用 `torch+cpu` 替换默认 torch：节省 ~200MB
 2. 删除 site-packages 中的 `tests/`、`__pycache__/`、`.dist-info/`：节省 ~100MB
 3. 用 UPX 压缩 python.dll 和 ffmpeg.exe：节省 ~50MB
-4. 模型量化：Qwen3-ASR-0.6B → 0.3B INT8：节省 ~1GB（需验证精度）
+4. 可选模型体积优化需按未来模型规格单独评估；不得把 Qwen3-ASR 权重入包作为默认优化路径
 
 ## 7. 不在本方案范围内
 

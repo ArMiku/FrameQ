@@ -63,7 +63,7 @@ All MVP tasks closed. The desktop client can submit a Douyin URL, see live progr
 - `worker/frameq_worker/llm.py` — OpenAI-compatible InsightFlow LLM client and default `temperature`.
 - `app/src-tauri/src/lib.rs` — Tauri commands for processing, progress, cancel, and retry.
 - `app/src/App.tsx` and `app/src/workflow.ts` — React UI state machine and detail modal.
-- `douyin_video_download_solution.md` and `docs/product-specs/2026-06-16-douyin-video-transcription-client.md` — product and technical source documents.
+- Root historical product plan, since migrated into `docs/` and removed, and `docs/product-specs/2026-06-16-douyin-video-transcription-client.md` — product and technical source documents.
 - `docs/ARCHITECTURE.md`, `docs/DESIGN.md`, `docs/SECURITY.md` — module boundaries, UI rules, and security boundaries.
 
 ## Plan of Work

@@ -8,7 +8,7 @@
 
 ## 快速入口
 
-- 项目方案：`douyin_video_download_solution.md`
+- 项目方案：`docs/product-specs/index.md`（根目录历史方案已迁移进 `docs/` 并删除）
 - 架构：`docs/ARCHITECTURE.md`
 - 设计规范：`docs/DESIGN.md`
 - 安全规范：`docs/SECURITY.md`

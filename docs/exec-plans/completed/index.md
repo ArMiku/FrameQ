@@ -2,7 +2,9 @@
 
 | File | Focus |
 |------|-------|
+| `2026-06-27-bilibili-public-video-fallback-plan.md` | Completed Bilibili ordinary public-video fallback with BV/av/b23.tv input acceptance, public API metadata/playurl parsing, DASH video/audio safe download, FFmpeg merge, backup URL retry, and `BILIBILI_*` UI guidance. |
 | `2026-06-27-admin-entitlement-adjustments-plan.md` | Added Admin Web manual entitlement and quota compensation with append-only audit records and completed browser smoke acceptance. |
+| `2026-06-27-xiaohongshu-video-fallback-completion-plan.md` | Completed Xiaohongshu public video-note fallback with share/full/direct/short-link input acceptance, Brotli page compatibility, safe resumable video download, and `XHS_*` UI guidance. |
 | `2026-06-23-desktop-one-click-updates-plan.md` | Implemented low-noise Tauri updater with GitHub Releases metadata/artifacts; live GitHub updater smoke is waived for v1 because mainland China GitHub access is too slow to test reliably. |
 | `2026-06-26-easydownload-transcription-download-reliability-plan.md` | Added shared safe media download helpers, Douyin share-text parsing, and video-only Xiaohongshu public-link fallback for transcription-first media acquisition. |
 | `2026-06-25-douyin-share-page-fallback-plan.md` | Added a bounded Douyin share-page fallback that selects the largest validated public stream after matching `yt-dlp` failures. |

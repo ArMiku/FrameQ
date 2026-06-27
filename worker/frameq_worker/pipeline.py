@@ -25,6 +25,7 @@ from frameq_worker.media import (
     download_video,
     extract_audio,
     extract_douyin_video_id,
+    extract_xiaohongshu_note_id,
     probe_media_file,
 )
 from frameq_worker.model_download import (
@@ -167,7 +168,7 @@ def run_worker_pipeline(
 ) -> ProcessResult:
     output_dir = resolve_output_dir(project_root, environ)
     work_dir = resolve_work_dir(project_root, environ)
-    video_id = extract_douyin_video_id(request.url)
+    video_id = extract_douyin_video_id(request.url) or extract_xiaohongshu_note_id(request.url)
     media_files_before_download = snapshot_video_files(output_dir)
 
     emit_progress(
@@ -177,7 +178,7 @@ def run_worker_pipeline(
         18,
     )
     try:
-        download_video(
+        download_result = download_video(
             request.url,
             output_dir=output_dir,
             runner=command_runner,
@@ -196,7 +197,9 @@ def run_worker_pipeline(
         "正在校验视频和音频流。",
         34,
     )
-    video_path = find_video_by_stem(output_dir, video_id) if video_id else None
+    video_path = find_video_from_download_stdout(download_result.stdout, output_dir)
+    if video_path is None:
+        video_path = find_video_by_stem(output_dir, video_id) if video_id else None
     if video_path is None:
         video_path = find_new_or_updated_video(output_dir, media_files_before_download)
     if video_path is None:
@@ -439,6 +442,33 @@ def find_video_by_stem(output_dir: Path, stem: str | None) -> Path | None:
         return None
 
     return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def find_video_from_download_stdout(stdout: str, output_dir: Path) -> Path | None:
+    if not stdout.strip() or not output_dir.exists():
+        return None
+
+    try:
+        output_root = output_dir.resolve()
+    except OSError:
+        return None
+
+    for raw_line in reversed(stdout.splitlines()):
+        raw_path = raw_line.strip().strip("\"'")
+        if not raw_path:
+            continue
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = output_dir / candidate
+        try:
+            resolved_candidate = candidate.resolve()
+        except OSError:
+            continue
+        if not resolved_candidate.is_relative_to(output_root):
+            continue
+        if candidate.is_file() and candidate.suffix.lower() in VIDEO_SUFFIXES:
+            return candidate
+    return None
 
 
 def can_reuse_audio(audio_path: Path, runner: CommandRunner) -> bool:

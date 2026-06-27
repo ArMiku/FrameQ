@@ -8,6 +8,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from frameq_worker.bilibili_fallback import (
+    BilibiliFallbackError,
+    download_bilibili_video,
+)
 from frameq_worker.douyin_fallback import (
     DouyinFallbackError,
     download_douyin_video,
@@ -32,6 +36,9 @@ ProgressCallback = Callable[[dict[str, object]], None]
 DOUYIN_URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 DOUYIN_HOST_SUFFIXES = ("douyin.com", "iesdouyin.com")
 XIAOHONGSHU_HOST_SUFFIXES = ("xiaohongshu.com", "xhslink.com")
+XIAOHONGSHU_NOTE_ID_PATTERN = re.compile(r"(?i)[0-9a-f]{24}")
+BILIBILI_HOST_SUFFIXES = ("bilibili.com", "b23.tv")
+URL_TRAILING_PUNCTUATION = " \t\r\n\"'<>[]{}()，。！？；：、,.;:!?"
 
 
 class CommandExecutionError(RuntimeError):
@@ -71,6 +78,11 @@ class MediaInfo:
 
 def extract_douyin_video_id(url: str) -> str | None:
     return extract_aweme_id(url)
+
+
+def extract_xiaohongshu_note_id(source: str) -> str | None:
+    match = XIAOHONGSHU_NOTE_ID_PATTERN.search(source)
+    return match.group(0).lower() if match else None
 
 
 def build_ytdlp_command(url: str, output_dir: Path) -> list[str]:
@@ -169,6 +181,28 @@ def download_video(
                 stdout=video_path.as_posix(),
                 stderr="",
             )
+        if should_attempt_bilibili_fallback(url, result.stderr or result.stdout):
+            try:
+                video_path = download_bilibili_video(
+                    url,
+                    output_dir=output_dir,
+                    command_runner=runner,
+                    progress_callback=progress_callback,
+                )
+            except BilibiliFallbackError as exc:
+                fallback_result = CommandResult(
+                    command=["bilibili-fallback", url],
+                    returncode=1,
+                    stdout="",
+                    stderr=f"{exc.code}: {exc}",
+                )
+                raise CommandExecutionError(fallback_result) from exc
+            return CommandResult(
+                command=["bilibili-fallback", url],
+                returncode=0,
+                stdout=video_path.as_posix(),
+                stderr="",
+            )
         raise CommandExecutionError(result)
     return result
 
@@ -197,9 +231,17 @@ def should_attempt_xiaohongshu_fallback(url: str, failure_message: str) -> bool:
     )
 
 
+def should_attempt_bilibili_fallback(url: str, failure_message: str) -> bool:
+    return bool(failure_message.strip()) and _contains_supported_url(
+        url,
+        BILIBILI_HOST_SUFFIXES,
+    )
+
+
 def _contains_supported_url(raw_input: str, host_suffixes: tuple[str, ...]) -> bool:
     for match in DOUYIN_URL_PATTERN.finditer(raw_input):
         candidate = match.group(0).rstrip("，。,.、!！?？)")
+        candidate = candidate.rstrip(URL_TRAILING_PUNCTUATION)
         host = (urllib.parse.urlparse(candidate).hostname or "").lower().rstrip(".")
         if any(host == suffix or host.endswith(f".{suffix}") for suffix in host_suffixes):
             return True
