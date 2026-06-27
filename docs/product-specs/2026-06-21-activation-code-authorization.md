@@ -9,7 +9,7 @@ FrameQ's first small-user release should keep the email account login flow and u
 - Let signed-in desktop users redeem a one-time activation code to unlock processing.
 - Let the sole administrator, `lantianye@163.com`, generate and inspect activation codes through a server-hosted Admin Web page.
 - Reuse the existing `Entitlement` record as the only processing gate.
-- Keep videos, audio, transcripts, history, local model cache, and LLM keys on the user's machine.
+- Keep videos, audio, transcripts, history, and local model cache on the user's machine. LLM key/config is managed by FrameQ server, not desktop `.env`.
 
 ## User-visible Requirements
 

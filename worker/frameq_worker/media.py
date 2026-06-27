@@ -211,6 +211,9 @@ def should_attempt_douyin_fallback(url: str, failure_message: str) -> bool:
     if not _contains_supported_url(url, DOUYIN_HOST_SUFFIXES):
         return False
 
+    if _contains_supported_douyin_aweme_id(url):
+        return True
+
     normalized = failure_message.lower()
     fallback_markers = (
         "expecting value",
@@ -222,6 +225,20 @@ def should_attempt_douyin_fallback(url: str, failure_message: str) -> bool:
         "json",
     )
     return any(marker in normalized for marker in fallback_markers)
+
+
+def _contains_supported_douyin_aweme_id(raw_input: str) -> bool:
+    for match in DOUYIN_URL_PATTERN.finditer(raw_input):
+        candidate = match.group(0).rstrip(URL_TRAILING_PUNCTUATION)
+        host = (urllib.parse.urlparse(candidate).hostname or "").lower().rstrip(".")
+        if not any(
+            host == suffix or host.endswith(f".{suffix}")
+            for suffix in DOUYIN_HOST_SUFFIXES
+        ):
+            continue
+        if extract_aweme_id(candidate):
+            return True
+    return False
 
 
 def should_attempt_xiaohongshu_fallback(url: str, failure_message: str) -> bool:

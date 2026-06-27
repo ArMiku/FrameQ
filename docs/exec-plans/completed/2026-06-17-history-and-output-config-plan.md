@@ -26,7 +26,7 @@ FrameQ should remember completed or failed local processing tasks and let users 
 ## Decision Log
 
 - Decision: Store history in `work/history.json`. Rationale: it is local-first, already ignored, easy to inspect, and does not add a database dependency. Date/Author: 2026-06-17 / Codex.
-- Decision: Store output directory in `.env` as `FRAMEQ_OUTPUT_DIR`; blank means project-root `outputs/`. Rationale: the worker already reads project `.env`, and this keeps config consistent with LLM settings. Date/Author: 2026-06-17 / Codex.
+- Decision: Store output directory in `.env` as `FRAMEQ_OUTPUT_DIR`; blank means project-root `outputs/`. Superseded clarification: this remains a non-LLM local setting only. LLM configuration is now server-managed and must not be stored in desktop `.env`. Date/Author: 2026-06-17 / Codex; clarified 2026-06-27.
 - Decision: Output directory changes affect only new tasks; old history keeps actual saved paths. Rationale: moving or rewriting old files would be surprising and risks data loss. Date/Author: 2026-06-17 / Codex.
 
 ## Outcomes & Retrospective
@@ -39,7 +39,7 @@ Validation notes: `cargo fmt --manifest-path app\src-tauri\Cargo.toml --check` c
 
 ## Context and Orientation
 
-- `worker/frameq_worker/config.py` loads project `.env` and merges it with process environment.
+- `worker/frameq_worker/config.py` now loads app-local data `.env` for non-LLM settings and ignores legacy local LLM dotenv fields; project-root `.env` is not desktop runtime config.
 - `worker/frameq_worker/cli.py` orchestrates download, media validation, audio extraction, ASR, InsightFlow, and final `ProcessResult`.
 - `app/src-tauri/src/lib.rs` owns commands for process execution and settings persistence.
 - `app/src/settingsClient.ts` maps Tauri setting commands to frontend-friendly camelCase fields.
@@ -54,7 +54,7 @@ Validation notes: `cargo fmt --manifest-path app\src-tauri\Cargo.toml --check` c
    - Append a sanitized history item to `work/history.json` when a processing run returns.
    - Cover default output directory, configured output directory, and history persistence with Python tests.
 2. Tauri:
-   - Extend LLM settings view/input with `output_dir`.
+   - Keep output directory as a local setting; desktop LLM settings were later removed in favor of server-managed LLM checkout.
    - Preserve unrelated `.env` entries and save `FRAMEQ_OUTPUT_DIR`.
    - Add `get_history` command that reads `work/history.json` and returns newest-first records.
    - Cover config read/save and history read behavior with Rust tests.

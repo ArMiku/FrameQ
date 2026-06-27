@@ -23,6 +23,17 @@ describe("workflow state model", () => {
     expect(canSubmitUrl("https://notdouyin.com/video/7524373044106677544")).toBe(false);
     expect(canSubmitUrl("https://evil-douyin.com/video/7524373044106677544")).toBe(false);
     expect(canSubmitUrl("https://www.douyin.com/video/7524373044106677544")).toBe(true);
+    expect(canSubmitUrl("https://www.douyin.com/note/7653372612151692594")).toBe(true);
+    expect(canSubmitUrl("https://www.douyin.com/share/slides/7653372612151692594")).toBe(true);
+    expect(
+      canSubmitUrl("https://www.douyin.com/note/123?modal_id=7653372612151692594"),
+    ).toBe(true);
+    expect(canSubmitUrl("https://www.douyin.com/?aweme_id=7653372612151692594")).toBe(true);
+    expect(
+      canSubmitUrl(
+        "copy https://www.douyin.com/share/slides/7653372612151692594 more text",
+      ),
+    ).toBe(true);
     expect(canSubmitUrl("https://v.douyin.com/LllWTdm3-Dg/")).toBe(true);
     expect(canSubmitUrl("https://v.douyin.com/")).toBe(false);
     expect(canSubmitUrl("http://xhslink.com/o/jQzXcxNapU")).toBe(true);

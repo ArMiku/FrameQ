@@ -223,7 +223,7 @@ Rust 侧 `process_video` 命令通过环境变量 `FRAMEQ_OUTPUT_DIR` 和 `FRAME
    - `Command::new(resource_dir.join("python/python.exe"))`
    - 设置 `PYTHONPATH`、`PATH`（前置 `resources/bin`）、`FRAMEQ_MODEL_DIR`、`FRAMEQ_OUTPUT_DIR`、`FRAMEQ_WORK_DIR`、`FRAMEQ_RESOURCE_DIR`
    - `current_dir(user_data_dir)`
-5. 新增首启动向导命令 `check_first_run()` 和本机设置保存命令 `save_llm_config(config)`；该命令只保存 ASR 与输出目录设置，并移除旧 LLM 字段
+5. 新增首启动向导命令 `check_first_run()` 和本机设置保存命令（当前口径为本机 ASR、输出目录和模型下载设置）；该命令不得保存 LLM 字段，并应移除旧本地 LLM 字段
 6. `Cargo.toml` 添加 `dirs = "5"`
 
 ### 阶段 4：worker 侧适配

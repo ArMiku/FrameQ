@@ -18,7 +18,7 @@ Expose video, audio, transcript, and insight outputs in the desktop result works
 - Video and audio are viewed by locating their local files; no in-app media player is added.
 - Audio remains in the configured work directory and is not copied to `outputs/`.
 - Insight generation starts only after a second confirmation from the result workspace.
-- Account/month-card gating still applies before both flows, but only insight generation requests server-managed LLM checkout and consumes one insight quota use.
+- Account/entitlement gating still applies before both flows, but only insight generation requests server-managed LLM checkout and consumes one insight quota use.
 
 ## Verification
 

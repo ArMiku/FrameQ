@@ -217,7 +217,7 @@ The workflow validates and rewrites the uploaded `latest.json` as UTF-8 without 
 
 The desktop app stores non-LLM local settings in its app-local data `.env` file. The settings sheet creates this file when needed, shows its path, and can reveal it in the system file manager.
 
-This file is for local output, ASR, and model-download settings only. Insight-topic LLM configuration is managed on the FrameQ server and is not read from desktop `.env` files.
+This file is for local output, ASR, and model-download settings only. Insight-topic LLM configuration is managed on the FrameQ server and is not read from desktop `.env` files. Do not put `FRAMEQ_LLM_*` keys in desktop `.env`; legacy local LLM keys are ignored by the desktop worker.
 
 ## Server Deployment
 

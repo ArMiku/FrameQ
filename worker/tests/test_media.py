@@ -147,6 +147,21 @@ def test_should_attempt_douyin_fallback_detects_embedded_short_link() -> None:
     )
 
 
+def test_should_attempt_douyin_fallback_detects_supported_aweme_id_inputs() -> None:
+    assert media.should_attempt_douyin_fallback(
+        "https://www.douyin.com/note/123?modal_id=7653372612151692594",
+        "ERROR: Unsupported URL",
+    )
+    assert media.should_attempt_douyin_fallback(
+        "copy https://www.douyin.com/share/slides/7653372612151692594 more text",
+        "ERROR: Unsupported URL",
+    )
+    assert media.should_attempt_douyin_fallback(
+        "https://www.douyin.com/?aweme_id=7653372612151692594",
+        "ERROR: Unsupported URL",
+    )
+
+
 def test_should_attempt_xiaohongshu_fallback_detects_embedded_short_link() -> None:
     assert media.should_attempt_xiaohongshu_fallback(
         "share text https://xhslink.com/demo more text",

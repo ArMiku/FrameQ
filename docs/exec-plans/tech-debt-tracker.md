@@ -12,7 +12,7 @@ Last updated: 2026-06-17
 
 | Topic | Evidence | Closed |
 |------|----------|--------|
-| Real InsightFlow LLM live call not smoke-tested | Project `.env` uses `FRAMEQ_LLM_PROVIDER=openai_compatible`, SiliconFlow base URL, a real API key, and `deepseek-ai/DeepSeek-V3.2`; retry smoke on `outputs/7524373044106677544_transcript.txt` returned `completed`, generated 8 insights, and wrote `outputs/7524373044106677544_insights.json` | 2026-06-17 |
+| Historical InsightFlow LLM live smoke | Closed by the 2026-06-17 smoke, but the project-root `.env` path is now retired. Current live LLM validation must use FrameQ server Admin Web config plus server-managed checkout; desktop `.env` is limited to non-LLM local settings. | 2026-06-17 |
 
 ## Debt Handling Rules
 

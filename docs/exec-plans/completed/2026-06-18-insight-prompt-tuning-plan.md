@@ -22,7 +22,7 @@ Align FrameQ's embedded InsightFlow topic generation behavior with the local ref
 - Evidence: FrameQ's previous 500-character formula generated 2-3x too many questions on long transcripts, which made the result list noisy and the copy/export surface long.
 - Evidence: `temperature=0.7` is the reference service's default; the previous `0.2` produced overly deterministic but repetitive questions on long inputs.
 - Evidence: the prompt-tuning change keeps the 1000-character formula even after the later topic-planner change, so the planner's fallback path benefits from the same heuristic.
-- Evidence: `FRAMEQ_LLM_TEMPERATURE` (if set) overrides the new `0.7` default at the LLM client level, so the change is non-breaking for users who already pin a value.
+- Evidence: the `0.7` default is now the desktop worker default for insight generation. Desktop `.env` no longer provides LLM configuration; future prompt or generation controls should be exposed through server-managed configuration or explicit product settings.
 
 ## Decision Log
 
@@ -34,13 +34,13 @@ Align FrameQ's embedded InsightFlow topic generation behavior with the local ref
 
 ## Outcomes & Retrospective
 
-Implemented. The InsightFlow prompt now matches the reference service's reader-focused style, the topic-count formula uses 1000 characters, and the default `temperature` is `0.7`. The 1000-character heuristic was preserved by the later topic-planner change as the direct-generation fallback strategy. No user-visible surface changed: the request/result schema, UI states, and history records are unchanged. Validation passed (`uv run pytest worker\tests`, `uv run ruff check worker`, `python scripts/validate_agents_docs.py --level WARN`). Residual risk: the prompt is still Chinese-language tuned; English transcripts may read slightly stilted, but the `.env` `FRAMEQ_LLM_*` configuration and the optional `global_prompt` section give downstream callers a way to add English guidance without re-tuning the default.
+Implemented. The InsightFlow prompt now matches the reference service's reader-focused style, the topic-count formula uses 1000 characters, and the default `temperature` is `0.7`. The 1000-character heuristic was preserved by the later topic-planner change as the direct-generation fallback strategy. No user-visible surface changed: the request/result schema, UI states, and history records are unchanged. Validation passed (`uv run pytest worker\tests`, `uv run ruff check worker`, `python scripts/validate_agents_docs.py --level WARN`). Residual risk: the prompt is still Chinese-language tuned; English transcripts may read slightly stilted. Current desktop `.env` does not control LLM config; future language controls should be added through server-managed configuration or explicit product settings.
 
 ## Context and Orientation
 
 - `worker/frameq_worker/insightflow/prompt.py` — owns the prompt content, including the reader-focused expression constraints and the optional `global_prompt` / `question_prompt` sections.
 - `worker/frameq_worker/insightflow/generator.py` — owns the topic-count formula (1000-character heuristic, at least one per chunk).
-- `worker/frameq_worker/llm.py` — OpenAI-compatible LLM client; default `temperature=0.7`, env-var override `FRAMEQ_LLM_TEMPERATURE` still wins.
+- `worker/frameq_worker/llm.py` — OpenAI-compatible LLM client; default `temperature=0.7`; desktop `.env` no longer manages LLM configuration.
 - `worker/tests/test_insights.py` — regression coverage for prompt content, optional prompt sections, topic-count calculation through generated prompts, and the LLM request payload temperature.
 - `docs/product-specs/2026-06-16-douyin-video-transcription-client.md` — durable spec that records the InsightFlow behavior.
 - `2026-06-18-topic-planner-insights-plan.md` — the later change that uses the 1000-character heuristic as the fallback.
@@ -61,5 +61,5 @@ Implemented. The InsightFlow prompt now matches the reference service's reader-f
 - `python scripts/validate_agents_docs.py --level WARN` passes.
 - The InsightFlow prompt contains the reference service's reader-focused expression constraints and the optional `global_prompt` / `question_prompt` sections.
 - The topic-count formula produces approximately one question per 1000 characters and at least one question per chunk.
-- The default LLM request payload carries `temperature=0.7`; an explicit `FRAMEQ_LLM_TEMPERATURE` override still wins.
+- The default LLM request payload carries `temperature=0.7`; desktop `.env` no longer provides LLM configuration.
 - The change does not import anything from `D:\Github\InsightFlow\src\server`.

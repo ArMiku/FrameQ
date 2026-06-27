@@ -26,7 +26,7 @@ FrameQ should support ASR model selection without breaking the existing local-fi
 
 ## Decision Log
 
-- Decision: Persist ASR model selection in `.env` as `FRAMEQ_ASR_MODEL`. Rationale: it matches existing LLM/output settings, stays local, and can be read by Tauri and worker. Date/Author: 2026-06-17 / Codex.
+- Decision: Persist ASR model selection in `.env` as `FRAMEQ_ASR_MODEL`. Superseded clarification: this remains a non-LLM local setting only; LLM configuration is server-managed and not read from desktop `.env`. Date/Author: 2026-06-17 / Codex; clarified 2026-06-27.
 - Decision: Keep `Qwen/Qwen3-ASR-0.6B` as default for the initial SenseVoice support change. Rationale: it was already validated locally and avoided surprising changes for existing users. Date/Author: 2026-06-17 / Codex.
 - Decision update: Make `iic/SenseVoiceSmall` the default ASR model after user request. Rationale: SenseVoice is now the preferred default while Qwen remains available as an explicit option. Date/Author: 2026-06-17 / Codex.
 - Decision: Use `funasr.AutoModel` for SenseVoice models. Rationale: this is the official FunASR/SenseVoice runtime path and keeps model loading local. Date/Author: 2026-06-17 / Codex.
@@ -43,7 +43,7 @@ Validation notes: `cargo fmt --manifest-path app\src-tauri\Cargo.toml --check` c
 ## Context and Orientation
 
 - `worker/frameq_worker/asr.py` owns ASR adapters, model cache resolution, transcript writing, and current Qwen adapter.
-- `worker/frameq_worker/cli.py` parses worker requests, merges project `.env`, builds real ASR when enabled, and emits progress events.
+- `worker/frameq_worker/cli.py` parses worker requests, merges app-local non-LLM `.env` settings, builds real ASR when enabled, and emits progress events.
 - `app/src-tauri/src/lib.rs` owns settings persistence and process spawning.
 - `app/src/settingsClient.ts` maps Tauri settings commands into frontend state.
 - `app/src/App.tsx` owns the settings modal UI.

@@ -22,7 +22,7 @@ Make FrameQ installable for ordinary Windows and macOS users without requiring P
 - Add tests for release runtime command construction, app-local config/history paths, worker work/output env behavior, and release-visible ASR model list.
 - Replace Rust repo-root/`uv` worker spawning with bundled Python/resource-dir spawning.
 - Redirect config, history, outputs, work, and model cache to app-local data.
-- Add first-run command/UI path for missing LLM configuration.
+- Add first-run command/UI paths for local ASR model readiness and account/server LLM readiness guidance; desktop `.env` must not collect LLM configuration.
 - Add build-installer scripts and Tauri resource packaging entries for Windows and macOS.
 - Harden installer packaging so model resources are excluded from ordinary-user resources and macOS arm64/x64 use explicit target triples.
 - Add Tauri commands and UI for ASR model status, download progress, cancellation, and missing-model recovery.

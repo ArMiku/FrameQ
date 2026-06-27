@@ -119,16 +119,7 @@ function canSubmitSingleUrl(rawUrl: string): boolean {
 
     const normalizedPath = url.pathname.replace(/\/+$/, "");
     if (isDouyinHost(hostname)) {
-      if (/^\/video\/\d+$/.test(normalizedPath)) {
-        return true;
-      }
-
-      const shortCode = url.pathname.split("/").filter(Boolean);
-      return (
-        hostname === "v.douyin.com" &&
-        shortCode.length === 1 &&
-        /^[A-Za-z0-9_-]+$/.test(shortCode[0])
-      );
+      return isDouyinSupportedUrl(url, hostname, normalizedPath);
     }
 
     return (
@@ -158,6 +149,29 @@ function trimUrlCandidate(value: string): string {
 
 function isDouyinHost(hostname: string): boolean {
   return hostname === "douyin.com" || hostname.endsWith(".douyin.com");
+}
+
+function isDouyinSupportedUrl(url: URL, hostname: string, normalizedPath: string): boolean {
+  if (/^\/(?:video|note)\/\d+$/.test(normalizedPath)) {
+    return true;
+  }
+  if (/^\/share\/slides\/\d+$/.test(normalizedPath)) {
+    return true;
+  }
+  if (hasNumericSearchParam(url, ["modal_id", "aweme_id"])) {
+    return true;
+  }
+
+  const shortCode = normalizedPath.split("/").filter(Boolean);
+  return (
+    hostname === "v.douyin.com" &&
+    shortCode.length === 1 &&
+    /^[A-Za-z0-9_-]+$/.test(shortCode[0])
+  );
+}
+
+function hasNumericSearchParam(url: URL, names: string[]): boolean {
+  return names.some((name) => /^\d+$/.test(url.searchParams.get(name) ?? ""));
 }
 
 function isXiaohongshuShortLink(hostname: string, normalizedPath: string): boolean {

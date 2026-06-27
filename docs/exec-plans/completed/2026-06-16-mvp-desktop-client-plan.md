@@ -1,5 +1,7 @@
 # Build MVP Douyin Video Transcription Desktop Client
 
+> Superseded LLM note: this historical MVP plan predates server-managed LLM checkout. Mentions of project-root `.env`, `.env.example`, or `FRAMEQ_LLM_*` for LLM configuration describe the 2026-06-16 validation path only. Current desktop runtime ignores local LLM dotenv keys; LLM key/config is managed by FrameQ server Admin Web and delivered through server-managed checkout.
+
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries,
 Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
@@ -21,7 +23,7 @@ Decision Log, and Outcomes & Retrospective must be kept up to date as work proce
 - [x] 2026-06-16: Detail modal copy/export interactions are wired. Validation: active tab text is copied through the clipboard API; export reveals the generated transcript or insights file using Tauri opener.
 - [x] 2026-06-16: Model download/loading progress is visible in the UI. Validation: worker CLI emits prefixed progress JSON on stderr, Tauri forwards `worker-progress` events, and the UI merges stage message/percent updates.
 - [x] 2026-06-16: InsightFlow retry is wired from `partial_completed` UI state through Tauri to a worker-only retry command. Validation: `uv run pytest worker\tests\test_cli.py -q` and `npm --prefix app test -- workerClient.test.ts workflow.test.ts`.
-- [x] 2026-06-16: InsightFlow LLM client can be configured from project `.env`. Validation: focused tests cover `.env` loading, OpenAI-compatible client request/response handling, CLI client construction, and external-service warning copy.
+- [x] 2026-06-16: Historical InsightFlow LLM client could be configured from project `.env` for MVP validation. This path is now retired; current desktop runtime uses server-managed LLM checkout.
 - [x] 2026-06-17: True cancel semantics are wired through UI and Tauri. Validation: frontend tests cover `cancel_process` and cancelled workflow state; Rust tests cover worker process state tracking; Tauri build compiles the `cancel_process` command.
 - [x] 2026-06-17: Focused validation passes and residual risks are documented. Validation: real InsightFlow LLM retry smoke returned `completed` with 8 insights; `uv run ruff check worker`, `uv run pytest worker\tests`, `npm --prefix app test`, `cargo test --manifest-path app\src-tauri\Cargo.toml`, `python scripts/validate_agents_docs.py --level ERROR`, `npm --prefix app run build`, and `npm --prefix app run tauri -- build --no-bundle` all passed.
 
@@ -45,7 +47,7 @@ Decision Log, and Outcomes & Retrospective must be kept up to date as work proce
 - Evidence: `retry_insights` calls `python -m frameq_worker --retry-insights-json ...` with the existing transcript path and text, so a retry does not re-download video or rerun ASR.
 - Evidence: `.env.example` documents `FRAMEQ_LLM_*` keys; `.env` remains ignored by git, and configured LLM progress copy warns that transcript text is sent to the service.
 - Evidence: `cancel_process` terminates the tracked worker process tree and the React operation id guard ignores progress or results from a cancelled operation.
-- Evidence: real InsightFlow LLM retry smoke used the project `.env` with `FRAMEQ_LLM_PROVIDER=openai_compatible`, SiliconFlow base URL, and `deepseek-ai/DeepSeek-V3.2`; the worker returned `completed`, generated 8 insights, and wrote `outputs/7524373044106677544_insights.json`.
+- Evidence: the historical real InsightFlow LLM retry smoke used the then-current project `.env` path with `FRAMEQ_LLM_PROVIDER=openai_compatible`, SiliconFlow base URL, and `deepseek-ai/DeepSeek-V3.2`; the worker returned `completed`, generated 8 insights, and wrote `outputs/7524373044106677544_insights.json`. This is no longer the desktop runtime configuration path.
 - Evidence: final validation exposed an environment-dependent test; `test_retry_insights_once_preserves_transcript_when_client_is_missing` now uses a temporary project root so local `.env` cannot mask the missing-client case.
 
 ## Decision Log
@@ -57,13 +59,13 @@ Decision Log, and Outcomes & Retrospective must be kept up to date as work proce
 - Decision: Keep real ASR opt-in through `FRAMEQ_ALLOW_REAL_ASR=1` until model download/loading progress is user-visible in the desktop UI. Rationale: desktop smoke tests should not silently download large model weights; the worker now uses `models/` or `FRAMEQ_MODEL_DIR` for cache placement. Date/Author: 2026-06-16 / Codex.
 - Decision: Stream worker progress through stderr-prefixed JSON instead of mixing progress with stdout. Rationale: stdout remains the stable final result contract while Tauri can forward live progress events to React. Date/Author: 2026-06-16 / Codex.
 - Decision: Add a dedicated InsightFlow retry command instead of resubmitting the original URL. Rationale: `partial_completed` already has a usable transcript, and retry should only repeat the failed topic-generation stage. Date/Author: 2026-06-16 / Codex.
-- Decision: Store development LLM configuration in project `.env` and commit only `.env.example`. Rationale: local setup is simple while API keys stay outside git; environment variables can still override `.env` for CI or packaged runs. Date/Author: 2026-06-16 / User + Codex.
+- Decision: Store development LLM configuration in project `.env` for initial MVP validation. Superseded: current LLM configuration is server-managed, and desktop `.env` no longer stores or supplies LLM keys/config. Date/Author: 2026-06-16 / User + Codex; superseded 2026-06-22/23.
 - Decision: Track a single active worker PID in Tauri and terminate the process tree on cancel. Rationale: the desktop app launches `uv run python`, so Windows cancellation must kill the process tree rather than only resetting React state. Date/Author: 2026-06-17 / Codex.
-- Decision: Keep SiliconFlow configured through `FRAMEQ_LLM_PROVIDER=openai_compatible` for MVP final validation instead of introducing provider-specific aliases. Rationale: SiliconFlow exposes an OpenAI-compatible Chat Completions API, and the existing provider contract already covers it. Date/Author: 2026-06-17 / Codex.
+- Decision: Keep SiliconFlow configured through `FRAMEQ_LLM_PROVIDER=openai_compatible` for MVP final validation instead of introducing provider-specific aliases. Superseded: current desktop LLM runtime receives server-managed checkout material instead of local dotenv config. Date/Author: 2026-06-17 / Codex; superseded 2026-06-22/23.
 
 ## Outcomes & Retrospective
 
-Completed. The MVP desktop workflow now covers project-local `uv` worker execution, structured request/result schema, Tauri React TypeScript UI, local download/media/audio extraction, real Qwen3-ASR transcript generation, embedded InsightFlow topic generation, `.env`-driven OpenAI-compatible LLM calls, retry from `partial_completed`, live progress events, detail copy/export, and true cancellation of active worker processes. Final validation also confirmed a real SiliconFlow-backed InsightFlow retry generated 8 insights from the existing sample transcript. Tauri release application build and installer bundling have been validated, with installer success reported by the user after WiX setup/cache. Remaining MVP residual risk: the final real LLM smoke was CLI-level retry rather than a fresh manual desktop UI run through the retry button.
+Completed. The MVP desktop workflow covered project-local `uv` worker execution, structured request/result schema, Tauri React TypeScript UI, local download/media/audio extraction, real Qwen3-ASR transcript generation, embedded InsightFlow topic generation, historical `.env`-driven OpenAI-compatible LLM validation, retry from `partial_completed`, live progress events, detail copy/export, and true cancellation of active worker processes. Current LLM runtime no longer uses desktop `.env`; it uses server-managed checkout. Final validation also confirmed a real SiliconFlow-backed InsightFlow retry generated 8 insights from the existing sample transcript. Tauri release application build and installer bundling have been validated, with installer success reported by the user after WiX setup/cache. Remaining MVP residual risk: the final real LLM smoke was CLI-level retry rather than a fresh manual desktop UI run through the retry button.
 
 ## Context and Orientation
 

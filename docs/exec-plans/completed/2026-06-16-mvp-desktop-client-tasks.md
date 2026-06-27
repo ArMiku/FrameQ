@@ -1,5 +1,7 @@
 # MVP Desktop Client Tasks Plan
 
+> Superseded LLM note: this historical task breakdown predates server-managed LLM checkout. Mentions of project-root `.env` or `FRAMEQ_LLM_*` for LLM configuration are historical only. Current desktop `.env` is for non-LLM local settings only; LLM key/config is managed by FrameQ server.
+
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries,
 Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 
@@ -25,7 +27,7 @@ This plan is the implementation task ledger for the MVP FrameQ desktop client. I
 - [x] 2026-06-16: Added copy/export interactions to the detail modal. Validation: copy uses the active tab text; export reveals the generated transcript or insights file in the system file manager.
 - [x] 2026-06-16: Added model download/loading progress UI. Validation: worker emits prefixed progress JSON on stderr, Tauri forwards `worker-progress` events, and the progress pane updates stage text and percent.
 - [x] 2026-06-16: Added InsightFlow retry interaction for `partial_completed`. Validation: focused worker and frontend tests cover retry through a dedicated `retry_insights_json` worker command.
-- [x] 2026-06-16: Supported `.env` configuration for a real InsightFlow LLM client. Validation: focused tests cover `.env` loading, OpenAI-compatible client request/response handling, CLI client construction, and external-service warning copy.
+- [x] 2026-06-16: Historical `.env` configuration path supported a real InsightFlow LLM client for MVP validation. Current desktop runtime uses server-managed LLM checkout instead.
 - [x] 2026-06-17: Added true cancel semantics. Validation: cancel terminates the active worker process tree; late results no longer overwrite the UI.
 - [x] 2026-06-17: Final MVP validation and residual risk closeout. Validation: real InsightFlow LLM retry smoke returned `completed` with 8 insights; full automated tests, frontend build, docs gate, and Tauri no-bundle build all pass.
 
@@ -46,7 +48,7 @@ This plan is the implementation task ledger for the MVP FrameQ desktop client. I
 - Decision: Pair this task ledger with `2026-06-16-mvp-desktop-client-plan.md` instead of folding the task list into the high-level plan. Rationale: keeps the high-level plan stable while this file acts as the dated, evidence-backed task history; the two can evolve at different cadences. Date/Author: 2026-06-17 / Codex.
 - Decision: Record each MVP task with the date it closed, what was done, and the exact validation command that proved it. Rationale: a future reviewer or recovery session needs a one-line answer to "what ran and how do I re-run it"; the bullet format mirrors the policy used in `TASKS.md`. Date/Author: 2026-06-17 / Codex.
 - Decision: Treat real ASR as opt-in through `FRAMEQ_ALLOW_REAL_ASR=1` for the duration of MVP smoke testing. Rationale: the desktop smoke should not silently trigger a 600 MB model download; the worker defaults to `ASR_MODEL_NOT_READY` so the failure mode is observable. Date/Author: 2026-06-16 / Codex.
-- Decision: Keep development LLM configuration in project `.env` and commit only `.env.example`. Rationale: local setup is simple while API keys stay outside git; environment variables can still override `.env` for CI or packaged runs. Date/Author: 2026-06-16 / User + Codex.
+- Decision: Keep development LLM configuration in project `.env` for the initial MVP validation. Superseded: current LLM configuration is server-managed; desktop `.env` no longer stores or supplies LLM keys/config. Date/Author: 2026-06-16 / User + Codex; superseded 2026-06-22/23.
 - Decision: Use SiliconFlow with `deepseek-ai/DeepSeek-V3.2` for the real InsightFlow smoke rather than introducing provider-specific aliases. Rationale: SiliconFlow exposes an OpenAI-compatible Chat Completions API, and the existing OpenAI-compatible provider contract already covers it. Date/Author: 2026-06-17 / Codex.
 
 ## Outcomes & Retrospective
@@ -74,7 +76,7 @@ All MVP tasks closed. The desktop client can submit a Douyin URL, see live progr
 4. Implement the ASR adapter and transcript writers; use a fake transcriber for fast iteration and switch to real Qwen3-ASR once the model cache is in place.
 5. Embed and adapt InsightFlow topic generation; map a missing LLM client to `partial_completed`.
 6. Wire Tauri commands, the worker CLI subprocess, the progress event stream, cancel, retry, copy, and export.
-7. Add `.env`-driven OpenAI-compatible LLM configuration and run the first real SiliconFlow smoke.
+7. Add the historical `.env`-driven OpenAI-compatible LLM validation path and run the first real SiliconFlow smoke. Current LLM runtime uses server-managed checkout.
 8. Close MVP with true cancel semantics, a final validation pass, and a residual risk note in `TASKS.md`.
 
 ## Validation and Acceptance
