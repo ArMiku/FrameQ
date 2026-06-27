@@ -1,5 +1,14 @@
 # Security and Compliance
 
+## 2026-06-27 Bilibili Public Video Fallback Safety Boundary
+
+- Bilibili fallback may request only user-submitted public or user-authorized ordinary video links, safe `b23.tv` redirects, public video metadata APIs, public playurl APIs, and public DASH media URLs needed to create one local MP4 for transcription.
+- The fallback must not read browser cookies, persist cookies, collect or store `SESSDATA`, automate login, show QR login, solve CAPTCHA, scrape private videos, bypass member-only access, decrypt DRM, rotate user agents, use proxy pools, or spoof browser fingerprints.
+- PGC/bangumi/movie links, VIP/member-only streams, login-required streams, private/unavailable videos, CAPTCHA/risk-control pages, malformed API responses, DRM-protected streams, and no-playable-stream cases must return structured recoverable errors rather than attempting to bypass platform controls.
+- Fixed compatibility headers such as `User-Agent`, `Referer`, `Origin`, and `Accept-Language` are allowed for public Bilibili API/media requests. Credential-bearing headers and cookies are not allowed.
+- Streaming/resumable video and audio download helpers must enforce max-size and no-progress limits, keep partial files scoped to destination `.part`/temporary `.m4s` files, and preserve any existing completed media file if the new download or FFmpeg merge fails.
+- Full volatile Bilibili CDN URLs, cookies, `SESSDATA`, sensitive request headers, authorization material, and DRM key material must not be stored in local history, UI errors, logs, app-local settings, or FrameQ server requests. Logs may keep short causes, hostnames, Bilibili IDs, part index, quality labels, byte sizes, and local output paths.
+
 ## 2026-06-27 Xiaohongshu Public Video Fallback Safety Boundary
 
 - Xiaohongshu fallback may request only user-submitted public or user-authorized share links, short links, full note URLs, and their public media URLs.
@@ -23,7 +32,7 @@
 - EasyDownload-derived work may improve FrameQ's handling of public or user-authorized share links, but it must not introduce browser cookie import, persistent cookie storage, account login automation, QR login, CAPTCHA solving, private-content scraping, proxy pools, user-agent rotation, or browser fingerprint spoofing.
 - FrameQ must not migrate EasyDownload's WeChat MITM, certificate authority installation, system proxy changes, or administrator-elevation behavior.
 - Worker fallbacks may use fixed compatibility headers and process-local anonymous cookies naturally issued by a public share page for one invocation only. Those cookies must not be read from browser stores, written to disk, sent to FrameQ server, or stored in history/logs.
-- Bilibili login, bangumi/member-only behavior, and DASH-specific download assembly remain out of scope because they require account-aware or downloader-oriented product boundaries that FrameQ does not support.
+- Bilibili ordinary public-video DASH assembly is allowed only when it can run without login or cookies and produces one local MP4 for transcription. Bilibili login, QR login, SESSDATA handling, PGC/bangumi, member-only behavior, DRM, and downloader-oriented workflows remain out of scope.
 - Safe download helpers must avoid logging cookies, sensitive headers, authorization material, or full volatile media CDN URLs. Logs and history may keep the original submitted URL, hostnames, short error causes, quality labels, byte sizes, and local output paths.
 - When a link is unavailable, login-gated, CAPTCHA-gated, private, image-only, or has no playable video stream, the worker must return structured recoverable errors rather than attempting to bypass access controls.
 

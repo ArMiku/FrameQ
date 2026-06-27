@@ -1,5 +1,14 @@
 # FrameQ Architecture
 
+## 2026-06-27 Bilibili Public Video Fallback Boundary
+
+- Bilibili fallback remains worker-owned and ordinary-public-video-only. UI and Tauri submit a source string and receive the existing worker result shape; they do not call Bilibili APIs, select DASH streams, import cookies, or manage downloads.
+- The frontend may accept ordinary Bilibili BV/av video URLs and safe `b23.tv` short links, but all platform interpretation happens inside the Python worker.
+- The worker should port EasyDownload's ordinary Bilibili parser, Web API, DASH stream selection, backup URL, and FFmpeg merge ideas into `worker/frameq_worker/bilibili_fallback.py` and shared download helpers, not call or bundle the Go/Wails EasyDownload runtime.
+- `yt-dlp` stays the first attempt. Bilibili fallback runs only after a Bilibili-related failure and only for public or user-authorized ordinary videos.
+- The fallback should parse BV/av IDs, resolve safe `b23.tv` links, select a single part from `?p=N` or the first part, fetch `x/web-interface/view` and `x/player/playurl`, choose one video stream plus one audio stream, download `.m4s` files safely, and merge them to MP4 with the existing bundled FFmpeg.
+- The fallback must not add Bilibili QR login, account login automation, `SESSDATA` collection or storage, browser cookie import, PGC/bangumi support, VIP/member-only access, DRM decryption, stream picker UI, batch queue, proxy pools, or a download-center product surface.
+
 ## 2026-06-27 Xiaohongshu Video Fallback Completion Boundary
 
 - Xiaohongshu fallback remains worker-owned and video-only. UI and Tauri submit a source string and receive the existing worker result shape; they do not parse Xiaohongshu HTML, select streams, import cookies, or manage downloads.
@@ -25,7 +34,7 @@
 - `yt-dlp` remains the first attempt for supported public links. Worker fallback code may run only after matching failures and only for public or user-authorized links that can expose a playable media URL.
 - EasyDownload is an MIT-licensed design and algorithm reference. FrameQ should port the minimal needed behavior into `worker/` and must not import, shell out to, or bundle the Go/Wails application as a runtime dependency.
 - Shared download reliability helpers may support `.part` files, resume-safe range checks, no-progress timeouts, maximum-size guardrails, and candidate retries, but they must preserve the current output/history/result contract.
-- Xiaohongshu fallback is scoped to video suitable for transcription. Image albums, platform archiving, login-gated content, and broad multi-platform downloader behavior are outside the desktop worker boundary.
+- Xiaohongshu fallback is scoped to video suitable for transcription. Bilibili fallback is scoped to ordinary public videos that expose no-cookie DASH streams. Image albums, platform archiving, login-gated content, Bilibili PGC/bangumi/member-only/DRM behavior, and broad multi-platform downloader behavior are outside the desktop worker boundary.
 
 ## 2026-06-25 Douyin Share Page Fallback Boundary
 

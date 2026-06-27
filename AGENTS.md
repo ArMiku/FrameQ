@@ -16,6 +16,7 @@
 - EasyDownload 抖音 fallback 参考：`docs/references/easydownload-douyin-fallback.md`
 - EasyDownload 转写优先迁移筛选：`docs/references/easydownload-transcription-migration.md`
 - EasyDownload 小红书 fallback 参考：`docs/references/easydownload-xiaohongshu-fallback.md`
+- EasyDownload Bilibili fallback 参考：`docs/references/easydownload-bilibili-fallback.md`
 - EasyDownload MITM/CA/管理员提权参考(未来可选项):`docs/references/easydownload-mitm-ca-design.md`
 - 执行清单：`TASKS.md`
 - 工作流：`WORKFLOW.md`

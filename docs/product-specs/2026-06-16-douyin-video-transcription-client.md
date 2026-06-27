@@ -39,8 +39,9 @@
 - Douyin compatibility work should prioritize share text parsing, short-link resolution, `/note/{id}` and `/share/slides/{id}` handling, and `modal_id` or `aweme_id` extraction when those inputs resolve to a public playable video.
 - Worker download reliability should improve through streaming `.part` writes, safe resume/range validation, candidate retry, no-progress timeout handling, maximum-size guardrails, and `ffprobe` validation before the media enters ASR.
 - Xiaohongshu fallback should be video-only: resolve supported share text or `xhslink.com` links, parse public page state such as `__INITIAL_STATE__`, and extract a playable video stream only when the note is public or user-authorized.
+- Bilibili fallback should support ordinary public BV/av videos and safe `b23.tv` short links by fetching public Web API metadata, selecting one no-cookie DASH video/audio stream pair, downloading `.m4s` files safely, and merging them into one MP4 for the existing transcription pipeline.
 - The user-visible workflow remains the existing transcription flow: submit one link, process local video/audio/ASR, then optionally confirm AI整理. No stream picker, batch queue, account login, cookie import, or proxy setup should be added for this migration.
-- Do not migrate EasyDownload's WeChat MITM/CA/system proxy behavior, Bilibili login/bangumi/DASH workflows, Wails/Vue UI, tray behavior, image proxy, or download-manager product model.
+- Do not migrate EasyDownload's WeChat MITM/CA/system proxy behavior, Bilibili login/SESSDATA/bangumi/member-only/DRM workflows, Wails/Vue UI, tray behavior, image proxy, or download-manager product model.
 - The product copy should describe this work as improved public-link compatibility and safer download reliability for transcription, not as platform scraping or archive downloading.
 
 ## 2026-06-27 Xiaohongshu Video Fallback Completion
@@ -53,6 +54,18 @@
 - Download should be safe for large videos: streaming `.part` writes, resume-safe range validation, no-progress timeout, 2 GiB maximum video size, backup URL retry, and existing-file preservation on failure.
 - Image-only Xiaohongshu notes, private/login-gated notes, CAPTCHA-gated notes, rate-limited pages, malformed page state, oversized videos, stalled downloads, or no playable video stream should produce structured recoverable `XHS_*` errors with clear Chinese UI guidance.
 - The resulting MP4 should still flow through the existing `ffprobe`, `ffmpeg`, ASR, history, transcript, summary, mindmap, and insight generation pipeline without changing the worker JSON result shape.
+
+## 2026-06-27 Bilibili Public Video Fallback
+
+- Bilibili support should accept ordinary public video URLs in BV and av forms, plus safe `b23.tv` short links that resolve to ordinary `/video/` pages.
+- The desktop UI should keep the single input workflow and should not introduce a Bilibili download center, stream picker, quality selector, batch queue, login flow, QR login, cookie import, or proxy setup.
+- Worker fallback should parse BV/av IDs, preserve the submitted source for history, resolve safe short links with finite redirect depth, and select one part from `?p=N` or the first part by default.
+- Worker metadata lookup should use public Bilibili Web APIs for ordinary videos: `x/web-interface/view` for title/pages/cid and `x/player/playurl` with DASH flags for video/audio stream URLs.
+- Worker stream selection should align with EasyDownload's public-video model: parse camelCase and snake_case URL fields, merge backup URLs, prefer AV1 over HEVC over H.264, choose higher bandwidth within the same codec, and choose the highest-bandwidth audio stream.
+- Download should be safe for DASH media: video/audio `.m4s` streaming `.part` writes, resume-safe range validation where available, no-progress timeout, maximum-size guardrails, backup URL retry, and existing-file preservation on failure.
+- Worker merge should use the existing bundled FFmpeg to combine the selected video and audio streams with stream copy into a normal MP4, then continue through the existing `ffprobe`, audio extraction, ASR, history, transcript, summary, mindmap, and insight pipeline without changing the worker JSON result shape.
+- PGC/bangumi links, login-required videos, member-only streams, DRM-protected streams, unavailable videos, malformed API responses, failed DASH downloads, or failed FFmpeg merges should produce structured recoverable `BILIBILI_*` errors with clear Chinese UI guidance.
+- The fallback must not collect, store, or request browser cookies or `SESSDATA`, must not automate login or QR login, and must not attempt to bypass CAPTCHA, private content, member-only access, or DRM.
 
 ## 背景
 

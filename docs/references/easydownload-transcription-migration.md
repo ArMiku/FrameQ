@@ -33,6 +33,7 @@ Immediately useful:
 - Generic safe download helper: stream to a temporary `.part` file, validate `Range` and `Content-Range`, apply no-progress timeouts, enforce a configured maximum size, and resume or retry only when the remote response makes that safe.
 - Candidate fallback for media URLs: probe multiple public media candidates, collapse duplicates by verified size, prefer the best transcription-safe playable file, and try the next candidate if download or `ffprobe` validation fails.
 - Xiaohongshu video fallback: resolve supported share text and `xhslink.com` links, parse public page state such as `__INITIAL_STATE__`, and extract a playable video stream only when the content is public or user-authorized.
+- Bilibili ordinary public-video fallback: resolve BV/av and safe `b23.tv` inputs, read public Web API metadata, select one no-cookie DASH video/audio stream pair, download `.m4s` streams safely, and merge them into one MP4 for transcription.
 
 Deferred:
 
@@ -44,7 +45,7 @@ Do not migrate:
 
 - WeChat MITM proxy, certificate installation, system proxy changes, or administrator elevation.
 - Browser cookie import, persistent cookie stores, account login automation, QR login, CAPTCHA handling, or private-content scraping.
-- Bilibili login, bangumi/member-only behavior, DASH-specific download assembly, or full platform download workflows.
+- Bilibili login, SESSDATA handling, bangumi/PGC, member-only behavior, DRM/decryption, or full platform download workflows.
 - Wails/Vue UI, tray integration, theme system, notification UX, image proxy, or a download-center product surface.
 - Proxy pools, user-agent rotation, browser fingerprint spoofing, or anti-bot evasion mechanics.
 
@@ -62,4 +63,5 @@ Do not migrate:
 - Douyin-specific details are already captured in `docs/references/easydownload-douyin-fallback.md`.
 - New download reliability code should live under `worker/frameq_worker/` near the current media/fallback modules and keep the existing worker result schema stable.
 - New Xiaohongshu fallback behavior should be guarded by tests and share the same security boundary as Douyin: public or user-authorized links only, no login or CAPTCHA bypass.
+- New Bilibili fallback behavior should be guarded by tests and share the same security boundary: ordinary public videos only, no cookies, no SESSDATA, no login, no PGC/bangumi, no member-only streams, and no DRM bypass.
 - Product copy should describe these changes as improved public-link compatibility and reliability, not as a general downloader.
