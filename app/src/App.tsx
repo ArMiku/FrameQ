@@ -153,7 +153,7 @@ function accountProcessBlockerMessage(account: AccountStatus, actionLabel: strin
   }
 
   if (account.entitlementStatus !== "active") {
-    return `请先输入激活码激活 FrameQ 月卡后再${actionLabel}。`;
+    return `请先输入激活码激活 FrameQ 后再${actionLabel}。`;
   }
 
   if (!account.llmConfigured) {
@@ -161,7 +161,7 @@ function accountProcessBlockerMessage(account: AccountStatus, actionLabel: strin
   }
 
   if (account.llmQuotaRemaining <= 0) {
-    return "本月启发话题点次数已用完，请联系管理员补充额度或兑换新的激活码。";
+    return "启发话题点次数已用完，请联系管理员补充额度或兑换新的激活码。";
   }
 
   return `当前账号暂不能${actionLabel}，请刷新账号状态后重试。`;
@@ -630,7 +630,7 @@ function App() {
       const status = await redeemActivationCode(code);
       setAccount(status);
       setActivationCodeDraft("");
-      setAccountNotice("激活成功，月卡已生效。");
+      setAccountNotice("激活成功，授权已生效。");
     } catch (error) {
       setAccountNotice(`激活失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -828,7 +828,7 @@ function App() {
   const accountHasActiveEntitlement =
     account.authenticated && account.entitlementStatus === "active";
   const accountChipLabel = canProcessWithAccount(account)
-    ? "月卡有效"
+    ? "授权有效"
     : account.authenticated
       ? accountHasActiveEntitlement
         ? account.llmConfigured
@@ -837,13 +837,13 @@ function App() {
         : "激活"
       : "登录";
   const accountStatusText = canProcessWithAccount(account)
-    ? `月卡有效${account.entitlementExpiresAt ? `至 ${formatHistoryDate(account.entitlementExpiresAt)}` : ""}`
+    ? `授权有效${account.entitlementExpiresAt ? `至 ${formatHistoryDate(account.entitlementExpiresAt)}` : ""}`
     : account.authenticated
       ? accountHasActiveEntitlement
         ? account.llmConfigured
           ? "话题点次数不足"
           : "等待管理员配置 LLM"
-        : "未激活月卡"
+        : "未激活"
       : "未登录";
   return (
     <main className="app-shell">
@@ -883,7 +883,7 @@ function App() {
               className={`account-chip ${canProcessWithAccount(account) ? "active" : ""}`}
               type="button"
               onClick={() => openAccountPanel()}
-              aria-label="账号与月卡"
+              aria-label="账号与授权"
             >
               <UserRound size={15} />
               <span>{accountChipLabel}</span>

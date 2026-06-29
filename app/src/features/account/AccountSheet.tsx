@@ -41,7 +41,7 @@ export function AccountSheet({
     <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={onClose}>
       <section
         className="sheet-panel detail-modal account-modal account-sheet"
-        aria-label="账号与月卡"
+        aria-label="账号与授权"
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
@@ -49,7 +49,7 @@ export function AccountSheet({
         <header className="modal-header sheet-header">
           <div>
             <p className="section-label">Account</p>
-            <h2>账号与月卡</h2>
+            <h2>账号与授权</h2>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="关闭账号面板">
             <X size={18} />
@@ -59,7 +59,7 @@ export function AccountSheet({
           <p className="settings-warning privacy-callout">
             <ShieldCheck size={16} />
             <span>
-              账号服务只验证登录、激活码、月卡和话题点次数；视频、音频、文字稿和历史记录仍保留在本机，LLM 配置由管理员统一管理。
+              账号服务只验证登录、激活码、授权状态和话题点次数；视频、音频、文字稿和历史记录仍保留在本机，LLM 配置由管理员统一管理。
             </span>
           </p>
           <div className={`account-status-card ${canProcessWithAccount(account) ? "active" : "inactive"}`}>
@@ -79,8 +79,8 @@ export function AccountSheet({
                 </strong>
                 <small>
                   {account.llmQuotaResetsAt
-                    ? `随月卡到期重置：${formatHistoryDate(account.llmQuotaResetsAt)}`
-                    : "激活月卡后获得次数"}
+                    ? `随授权到期重置：${formatHistoryDate(account.llmQuotaResetsAt)}`
+                    : "激活后获得次数"}
                 </small>
               </div>
               <div>
@@ -95,7 +95,7 @@ export function AccountSheet({
             <div className="activation-panel">
               <div>
                 <span className="account-status-label">激活码</span>
-                <strong>输入管理员发放的月卡激活码</strong>
+                <strong>输入管理员发放的激活码</strong>
                 <small>兑换成功后将为当前邮箱增加 31 天权益。</small>
               </div>
               <input
@@ -133,7 +133,7 @@ export function AccountSheet({
               disabled={activationRedeeming || canProcessWithAccount(account)}
             >
               <KeyRound size={16} />
-              <span>{canProcessWithAccount(account) ? "月卡已生效" : activationRedeeming ? "兑换中" : "兑换激活码"}</span>
+              <span>{canProcessWithAccount(account) ? "授权已生效" : activationRedeeming ? "兑换中" : "兑换激活码"}</span>
             </button>
           ) : (
             <button type="button" className="primary-button" onClick={onStartLogin} disabled={accountLoading}>
