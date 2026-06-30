@@ -11,6 +11,7 @@ import {
   getVisibleWorkflowError,
   isProcessingStage,
   mergeProgressEvent,
+  normalizeSubmitUrl,
   startProcessing,
   startInsightRetry,
   summarizeWorkerResult,
@@ -48,6 +49,14 @@ describe("workflow state model", () => {
     expect(canSubmitUrl("https://www.bilibili.com/video/BV1Aa411c7mD?p=2")).toBe(true);
     expect(canSubmitUrl("https://www.bilibili.com/video/av170001")).toBe(true);
     expect(canSubmitUrl("copy https://b23.tv/demo more text")).toBe(true);
+    expect(canSubmitUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe(true);
+    expect(canSubmitUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(true);
+    expect(canSubmitUrl("https://www.youtube.com/shorts/abcDEF_123-")).toBe(true);
+    expect(
+      canSubmitUrl(
+        "copy https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123 more text",
+      ),
+    ).toBe(true);
     expect(canSubmitUrl("http://xhslink.com/o/")).toBe(false);
     expect(canSubmitUrl("https://evil-xhslink.com/o/jQzXcxNapU")).toBe(false);
     expect(canSubmitUrl("https://xhslink.com.evil/o/jQzXcxNapU")).toBe(false);
@@ -57,6 +66,28 @@ describe("workflow state model", () => {
     expect(canSubmitUrl("https://www.bilibili.com/bangumi/play/ep123456")).toBe(false);
     expect(canSubmitUrl("https://b23.tv/")).toBe(false);
     expect(canSubmitUrl("https://b23.tv.evil/demo")).toBe(false);
+    expect(canSubmitUrl("https://www.youtube.com/playlist?list=PL123")).toBe(false);
+    expect(canSubmitUrl("https://www.youtube.com/channel/UC123")).toBe(false);
+    expect(canSubmitUrl("https://www.youtube.com/@frameq")).toBe(false);
+    expect(canSubmitUrl("https://youtu.be/")).toBe(false);
+    expect(canSubmitUrl("https://youtube.com.evil/watch?v=dQw4w9WgXcQ")).toBe(false);
+    expect(canSubmitUrl("https://music.youtube.com/watch?v=dQw4w9WgXcQ")).toBe(false);
+    expect(canSubmitUrl("ftp://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe(false);
+  });
+
+  test("normalizes submitted share text to the supported url", () => {
+    expect(
+      normalizeSubmitUrl(
+        "copy https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123 more text",
+      ),
+    ).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123");
+    expect(normalizeSubmitUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(
+      "https://youtu.be/dQw4w9WgXcQ",
+    );
+    expect(normalizeSubmitUrl("0123456789abcdef01234568")).toBe(
+      "0123456789abcdef01234568",
+    );
+    expect(normalizeSubmitUrl("https://www.youtube.com/playlist?list=PL123")).toBeNull();
   });
 
   test("starts processing by hiding input and entering video extraction", () => {
@@ -356,6 +387,39 @@ describe("workflow state model", () => {
     ).toBe(
       "Bilibili 视频和音频已下载但合并失败，请确认 FFmpeg 可用后重试。原始错误：BILIBILI_FFMPEG_MERGE_FAILED: ffmpeg exited with code 1.",
     );
+
+    const youtubeLoginMessage = formatWorkerError({
+      code: "VIDEO_DOWNLOAD_FAILED",
+      message: "YOUTUBE_LOGIN_REQUIRED: Sign in to confirm you are not a bot. Use --cookies.",
+      stage: "video_extracting",
+    });
+    expect(youtubeLoginMessage).toContain("YouTube");
+    expect(youtubeLoginMessage).toContain("公开视频");
+    expect(youtubeLoginMessage).not.toContain("--cookies");
+
+    const youtubeAgeMessage = formatWorkerError({
+      code: "VIDEO_DOWNLOAD_FAILED",
+      message: "YOUTUBE_AGE_RESTRICTED: This video is age restricted.",
+      stage: "video_extracting",
+    });
+    expect(youtubeAgeMessage).toContain("YouTube");
+    expect(youtubeAgeMessage).toContain("年龄");
+
+    const youtubePrivateMessage = formatWorkerError({
+      code: "VIDEO_DOWNLOAD_FAILED",
+      message: "YOUTUBE_PRIVATE_OR_UNAVAILABLE: Video unavailable.",
+      stage: "video_extracting",
+    });
+    expect(youtubePrivateMessage).toContain("YouTube");
+    expect(youtubePrivateMessage).toContain("不可公开访问");
+
+    const youtubeNoStreamMessage = formatWorkerError({
+      code: "VIDEO_DOWNLOAD_FAILED",
+      message: "YOUTUBE_NO_PLAYABLE_STREAM: No video formats found.",
+      stage: "video_extracting",
+    });
+    expect(youtubeNoStreamMessage).toContain("YouTube");
+    expect(youtubeNoStreamMessage).toContain("可下载");
   });
 
   test("formats insight generation failures with actionable recovery guidance", () => {

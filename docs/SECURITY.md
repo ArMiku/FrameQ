@@ -1,5 +1,14 @@
 # Security and Compliance
 
+## 2026-06-29 YouTube Public Video Safety Boundary
+
+- YouTube v1 may request only user-submitted public ordinary video or Shorts links through `yt-dlp`, and only to create one local media file for transcription.
+- FrameQ must not read browser cookies, persist cookies, request cookie files, use `--cookies`, use `--cookies-from-browser`, store Google/YouTube login material, automate login, solve CAPTCHA, bypass age/member/private restrictions, use proxies for access control bypass, or process playlists as a batch.
+- `watch?v=...&list=...` may be accepted only as a single-video request with `--no-playlist`; playlist/channel/handle/music/live/login-gated inputs must fail recoverably.
+- YouTube/Google volatile media CDN URLs, signed query strings, cookies, Authorization headers, and login or bypass instructions must not be stored in app-local history, UI errors, logs, settings, or FrameQ server requests.
+- Worker error sanitization should remove `googlevideo.com`/`videoplayback` signed URLs and cookie guidance before messages reach the UI.
+- Existing completed local media files must be preserved if a new YouTube download attempt fails.
+
 ## 2026-06-27 Bilibili Public Video Fallback Safety Boundary
 
 - Bilibili fallback may request only user-submitted public or user-authorized ordinary video links, safe `b23.tv` redirects, public video metadata APIs, public playurl APIs, and public DASH media URLs needed to create one local MP4 for transcription.

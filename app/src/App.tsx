@@ -32,6 +32,7 @@ import {
   getVisibleWorkflowError,
   isProcessingStage,
   mergeProgressEvent,
+  normalizeSubmitUrl,
   startProcessing,
   startInsightRetry,
   summarizeWorkerResult,
@@ -419,7 +420,10 @@ function App() {
       openAccountPanel(accountProcessBlockerMessage(account, "开始新任务"));
       return;
     }
-    const submittedUrl = workflow.url;
+    const submittedUrl = normalizeSubmitUrl(workflow.url);
+    if (!submittedUrl) {
+      return;
+    }
     const operationId = operationIdRef.current + 1;
     operationIdRef.current = operationId;
     setWorkflow((current) => startProcessing(current, submittedUrl));

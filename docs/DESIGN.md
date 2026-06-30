@@ -1,5 +1,13 @@
 # FrameQ Design Guidelines
 
+## 2026-06-29 YouTube Download UX
+
+- YouTube support is invisible inside the existing single-link workflow: no YouTube tab, platform picker, stream picker, playlist queue, login prompt, or cookie prompt.
+- The input accepts public YouTube watch links, `youtu.be` short links, and Shorts links, while rejecting playlist-only, channel, handle, music, lookalike-host, unsupported-scheme, and empty-short-link inputs before processing.
+- Failure copy for `YOUTUBE_*` errors should say the content is not publicly accessible or no playable stream is available, then ask the user to retry with another public video.
+- UI copy must not direct users to import cookies, log in to YouTube, solve CAPTCHA, or bypass age/member/private restrictions.
+- Mermaid mindmap behavior is unchanged: YouTube transcripts may later generate a local `.mmd` file during AI整理, but the UI still only shows summary and insight content.
+
 ## 2026-06-25 Douyin Download Fallback UX
 
 - Douyin share page fallback is invisible by default: the user still submits one URL and sees the existing `视频提取中` stage.

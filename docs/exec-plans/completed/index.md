@@ -2,6 +2,7 @@
 
 | File | Focus |
 |------|-------|
+| `2026-06-29-youtube-public-video-support-plan.md` | Added public YouTube watch/short/Shorts support through existing yt-dlp pipeline with 720p transcription-first policy, sanitized `YOUTUBE_*` failures, and no login/cookie/playlist behavior. |
 | `2026-06-27-bilibili-public-video-fallback-plan.md` | Completed Bilibili ordinary public-video fallback with BV/av/b23.tv input acceptance, public API metadata/playurl parsing, DASH video/audio safe download, FFmpeg merge, backup URL retry, and `BILIBILI_*` UI guidance. |
 | `2026-06-27-admin-entitlement-adjustments-plan.md` | Added Admin Web manual entitlement and quota compensation with append-only audit records and completed browser smoke acceptance. |
 | `2026-06-27-xiaohongshu-video-fallback-completion-plan.md` | Completed Xiaohongshu public video-note fallback with share/full/direct/short-link input acceptance, Brotli page compatibility, safe resumable video download, and `XHS_*` UI guidance. |

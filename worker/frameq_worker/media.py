@@ -38,6 +38,23 @@ DOUYIN_HOST_SUFFIXES = ("douyin.com", "iesdouyin.com")
 XIAOHONGSHU_HOST_SUFFIXES = ("xiaohongshu.com", "xhslink.com")
 XIAOHONGSHU_NOTE_ID_PATTERN = re.compile(r"(?i)[0-9a-f]{24}")
 BILIBILI_HOST_SUFFIXES = ("bilibili.com", "b23.tv")
+YOUTUBE_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com")
+YOUTUBE_SHORT_HOSTS = ("youtu.be", "www.youtu.be")
+YOUTUBE_VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+YOUTUBE_FORMAT_SELECTOR = (
+    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
+    "best[height<=720][ext=mp4]/"
+    "bestvideo[height<=720]+bestaudio/"
+    "best[height<=720]/best"
+)
+YOUTUBE_MEDIA_URL_PATTERN = re.compile(
+    r"https?://[^\s\"'<>]*(?:googlevideo\.com|videoplayback)[^\s\"'<>]*",
+    re.IGNORECASE,
+)
+YOUTUBE_COOKIE_HINT_PATTERN = re.compile(
+    r"\s*(?:use|using|try|pass)?\s*--cookies(?:-from-browser)?[^\.\n]*(?:\.|$)",
+    re.IGNORECASE,
+)
 URL_TRAILING_PUNCTUATION = " \t\r\n\"'<>[]{}()，。！？；：、,.;:!?"
 
 
@@ -87,6 +104,19 @@ def extract_xiaohongshu_note_id(source: str) -> str | None:
 
 def build_ytdlp_command(url: str, output_dir: Path) -> list[str]:
     output_template = (output_dir / "%(id)s.%(ext)s").as_posix()
+    if should_attempt_youtube_processing(url):
+        return [
+            "yt-dlp",
+            "--no-playlist",
+            "-f",
+            YOUTUBE_FORMAT_SELECTOR,
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            output_template,
+            url,
+        ]
+
     return ["yt-dlp", "--no-playlist", "-o", output_template, url]
 
 
@@ -203,6 +233,8 @@ def download_video(
                 stdout=video_path.as_posix(),
                 stderr="",
             )
+        if should_attempt_youtube_processing(url):
+            raise CommandExecutionError(classify_youtube_download_failure(result))
         raise CommandExecutionError(result)
     return result
 
@@ -255,10 +287,127 @@ def should_attempt_bilibili_fallback(url: str, failure_message: str) -> bool:
     )
 
 
+def should_attempt_youtube_processing(url: str) -> bool:
+    return any(
+        _is_supported_youtube_video_url(candidate)
+        for candidate in _iter_url_candidates(url)
+    )
+
+
+def classify_youtube_download_failure(result: CommandResult) -> CommandResult:
+    raw_message = result.stderr or result.stdout or "yt-dlp failed to download the YouTube video."
+    normalized = raw_message.lower()
+    if any(
+        marker in normalized
+        for marker in (
+            "age-restricted",
+            "age restricted",
+            "confirm your age",
+            "age verification",
+        )
+    ):
+        code = "YOUTUBE_AGE_RESTRICTED"
+    elif any(
+        marker in normalized
+        for marker in (
+            "sign in",
+            "login",
+            "logged in",
+            "not a bot",
+            "captcha",
+            "cookie",
+            "cookies",
+            "authentication",
+            "verify you are",
+        )
+    ):
+        code = "YOUTUBE_LOGIN_REQUIRED"
+    elif any(
+        marker in normalized
+        for marker in (
+            "no video formats",
+            "no formats found",
+            "no playable",
+            "requested format is not available",
+            "format is not available",
+        )
+    ):
+        code = "YOUTUBE_NO_PLAYABLE_STREAM"
+    elif any(
+        marker in normalized
+        for marker in (
+            "private video",
+            "video unavailable",
+            "unavailable",
+            "has been removed",
+            "members-only",
+            "member-only",
+            "not available",
+        )
+    ):
+        code = "YOUTUBE_PRIVATE_OR_UNAVAILABLE"
+    else:
+        code = "YOUTUBE_DOWNLOAD_FAILED"
+
+    sanitized = sanitize_youtube_error(raw_message)
+    if not sanitized:
+        sanitized = "yt-dlp failed to download the YouTube video."
+
+    return CommandResult(
+        command=result.command,
+        returncode=result.returncode,
+        stdout=result.stdout,
+        stderr=f"{code}: {sanitized}",
+    )
+
+
+def sanitize_youtube_error(message: str) -> str:
+    without_media_urls = YOUTUBE_MEDIA_URL_PATTERN.sub(
+        "[youtube media url removed]",
+        message,
+    )
+    without_cookie_hints = YOUTUBE_COOKIE_HINT_PATTERN.sub(" ", without_media_urls)
+    return re.sub(r"\s+", " ", without_cookie_hints).strip()
+
+
+def _is_supported_youtube_video_url(candidate: str) -> bool:
+    parsed = urllib.parse.urlparse(candidate)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+
+    host = (parsed.hostname or "").lower().rstrip(".")
+    normalized_path = parsed.path.rstrip("/")
+    if host in YOUTUBE_SHORT_HOSTS:
+        segments = [segment for segment in normalized_path.split("/") if segment]
+        return len(segments) == 1 and _is_youtube_video_id(segments[0])
+
+    if host not in YOUTUBE_HOSTS:
+        return False
+
+    if normalized_path == "/watch":
+        video_id = urllib.parse.parse_qs(parsed.query).get("v", [""])[0]
+        return _is_youtube_video_id(video_id)
+
+    segments = [segment for segment in normalized_path.split("/") if segment]
+    if len(segments) == 2 and segments[0] == "shorts":
+        return _is_youtube_video_id(segments[1])
+
+    return False
+
+
+def _is_youtube_video_id(value: str) -> bool:
+    return bool(value) and bool(YOUTUBE_VIDEO_ID_PATTERN.fullmatch(value))
+
+
+def _iter_url_candidates(raw_input: str) -> list[str]:
+    return [
+        match.group(0).rstrip("，。,.、!！?？)").rstrip(URL_TRAILING_PUNCTUATION)
+        for match in DOUYIN_URL_PATTERN.finditer(raw_input)
+    ]
+
+
 def _contains_supported_url(raw_input: str, host_suffixes: tuple[str, ...]) -> bool:
-    for match in DOUYIN_URL_PATTERN.finditer(raw_input):
-        candidate = match.group(0).rstrip("，。,.、!！?？)")
-        candidate = candidate.rstrip(URL_TRAILING_PUNCTUATION)
+    for candidate in _iter_url_candidates(raw_input):
         host = (urllib.parse.urlparse(candidate).hostname or "").lower().rstrip(".")
         if any(host == suffix or host.endswith(f".{suffix}") for suffix in host_suffixes):
             return True

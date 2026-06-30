@@ -9,11 +9,14 @@ from frameq_worker.media import (
     build_audio_extract_command,
     build_ffprobe_command,
     build_ytdlp_command,
+    classify_youtube_download_failure,
     download_video,
     extract_audio,
     extract_xiaohongshu_note_id,
     parse_ffprobe_json,
     probe_media_file,
+    sanitize_youtube_error,
+    should_attempt_youtube_processing,
 )
 
 
@@ -30,6 +33,30 @@ def test_build_ytdlp_command_downloads_single_video_to_outputs_template() -> Non
         "outputs/%(id)s.%(ext)s",
         "https://www.douyin.com/video/7524373044106677544",
     ]
+
+
+def test_build_ytdlp_command_uses_transcription_first_youtube_format_policy() -> None:
+    command = build_ytdlp_command(
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        output_dir=Path("outputs"),
+    )
+
+    assert command[0] == "yt-dlp"
+    assert "--no-playlist" in command
+    assert "-o" in command
+    assert "outputs/%(id)s.%(ext)s" in command
+    assert "https://www.youtube.com/watch?v=dQw4w9WgXcQ" in command
+    assert "-f" in command
+    format_selector = command[command.index("-f") + 1]
+    assert "height<=720" in format_selector
+    assert "mp4" in format_selector
+    assert "m4a" in format_selector
+    assert command[command.index("--merge-output-format") + 1] == "mp4"
+    assert "--cookies" not in command
+    assert "--cookies-from-browser" not in command
+    assert "--proxy" not in command
+    assert "--username" not in command
+    assert "--password" not in command
 
 
 def test_build_ffprobe_command_outputs_json_for_media_file() -> None:
@@ -182,6 +209,60 @@ def test_should_attempt_bilibili_fallback_detects_supported_links() -> None:
         "https://bilibili.com.evil/video/BV1Aa411c7mD",
         "ERROR: Unsupported URL",
     )
+
+
+def test_should_attempt_youtube_processing_detects_single_public_video_links() -> None:
+    assert should_attempt_youtube_processing("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert should_attempt_youtube_processing("https://youtu.be/dQw4w9WgXcQ")
+    assert should_attempt_youtube_processing("https://www.youtube.com/shorts/abcDEF_123-")
+    assert should_attempt_youtube_processing(
+        "copy https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123 more text"
+    )
+    assert not should_attempt_youtube_processing("https://www.youtube.com/playlist?list=PL123")
+    assert not should_attempt_youtube_processing("https://www.youtube.com/channel/UC123")
+    assert not should_attempt_youtube_processing("https://www.youtube.com/@frameq")
+    assert not should_attempt_youtube_processing("https://youtu.be/")
+    assert not should_attempt_youtube_processing("https://youtube.com.evil/watch?v=dQw4w9WgXcQ")
+    assert not should_attempt_youtube_processing(
+        "https://music.youtube.com/watch?v=dQw4w9WgXcQ"
+    )
+
+
+def test_classify_youtube_download_failure_maps_common_ytdlp_errors() -> None:
+    cases = [
+        (
+            "Sign in to confirm you are not a bot. Use --cookies.",
+            "YOUTUBE_LOGIN_REQUIRED:",
+        ),
+        ("This video is age-restricted.", "YOUTUBE_AGE_RESTRICTED:"),
+        ("Private video. Video unavailable.", "YOUTUBE_PRIVATE_OR_UNAVAILABLE:"),
+        (
+            "No video formats found. Requested format is not available.",
+            "YOUTUBE_NO_PLAYABLE_STREAM:",
+        ),
+        ("ERROR: extractor failed.", "YOUTUBE_DOWNLOAD_FAILED:"),
+    ]
+
+    for stderr, expected_prefix in cases:
+        result = classify_youtube_download_failure(
+            CommandResult(command=["yt-dlp"], returncode=1, stdout="", stderr=stderr)
+        )
+
+        assert result.stderr.startswith(expected_prefix)
+
+
+def test_sanitize_youtube_error_removes_signed_media_urls_and_cookie_hints() -> None:
+    sanitized = sanitize_youtube_error(
+        "ERROR https://rr1---sn.googlevideo.com/videoplayback?expire=1&sig=SECRET "
+        "Use --cookies-from-browser chrome or --cookies cookies.txt."
+    )
+
+    assert "googlevideo.com" not in sanitized
+    assert "videoplayback" not in sanitized
+    assert "sig=SECRET" not in sanitized
+    assert "--cookies" not in sanitized
+    assert "--cookies-from-browser" not in sanitized
+    assert "[youtube media url removed]" in sanitized
 
 
 def test_extract_xiaohongshu_note_id_from_full_url_and_share_text() -> None:
@@ -362,6 +443,28 @@ def test_download_video_uses_bilibili_fallback_for_supported_link_failure(
     assert fallback_calls == [
         ("https://www.bilibili.com/video/BV1Aa411c7mD", tmp_path / "outputs")
     ]
+
+
+def test_download_video_classifies_youtube_failure_without_cookie_guidance(
+    tmp_path: Path,
+) -> None:
+    def fake_runner(command: list[str]) -> CommandResult:
+        return CommandResult(
+            command=command,
+            returncode=1,
+            stdout="",
+            stderr="ERROR: Sign in to confirm you are not a bot. Use --cookies.",
+        )
+
+    with pytest.raises(CommandExecutionError) as error:
+        download_video(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            output_dir=tmp_path,
+            runner=fake_runner,
+        )
+
+    assert error.value.result.stderr.startswith("YOUTUBE_LOGIN_REQUIRED:")
+    assert "--cookies" not in error.value.result.stderr
 
 
 def test_download_video_preserves_non_douyin_ytdlp_failure(tmp_path: Path) -> None:
