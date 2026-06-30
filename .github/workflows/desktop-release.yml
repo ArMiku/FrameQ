@@ -15,6 +15,11 @@ on:
         required: true
         default: true
         type: boolean
+      build_windows_updater:
+        description: "Build and upload the Windows installer and updater artifacts"
+        required: true
+        default: true
+        type: boolean
       build_macos_x64:
         description: "Build and upload the macOS Intel DMG"
         required: true
@@ -32,6 +37,7 @@ permissions:
 jobs:
   windows-updater-artifacts:
     name: Windows updater artifacts
+    if: ${{ github.event_name == 'push' || inputs.build_windows_updater }}
     runs-on: windows-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -99,7 +105,7 @@ jobs:
   macos-x64-dmg-artifact:
     name: macOS Intel DMG artifact
     needs: windows-updater-artifacts
-    if: ${{ github.event_name == 'push' || inputs.build_macos_x64 }}
+    if: ${{ always() && (github.event_name == 'push' || inputs.build_macos_x64) && (needs.windows-updater-artifacts.result == 'success' || needs.windows-updater-artifacts.result == 'skipped') }}
     runs-on: macos-15-intel
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -143,7 +149,7 @@ jobs:
   macos-arm64-dmg-artifact:
     name: macOS Apple Silicon DMG artifact
     needs: windows-updater-artifacts
-    if: ${{ github.event_name == 'push' || inputs.build_macos_arm64 }}
+    if: ${{ always() && (github.event_name == 'push' || inputs.build_macos_arm64) && (needs.windows-updater-artifacts.result == 'success' || needs.windows-updater-artifacts.result == 'skipped') }}
     runs-on: macos-15
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}

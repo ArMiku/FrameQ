@@ -203,6 +203,8 @@ describe("Tauri desktop window configuration", () => {
     expect(existsSync(desktopReleaseWorkflowPath)).toBe(true);
     const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
 
+    expect(workflow).toContain("build_windows_updater:");
+    expect(workflow).toContain("if: ${{ github.event_name == 'push' || inputs.build_windows_updater }}");
     expect(workflow).toContain("tauri-apps/tauri-action@v0");
     expect(workflow).toContain("includeUpdaterJson: true");
     expect(workflow).toContain("updaterJsonPreferNsis: true");
@@ -219,7 +221,8 @@ describe("Tauri desktop window configuration", () => {
 
     expect(workflow).toContain("macos-x64-dmg-artifact");
     expect(workflow).toContain("build_macos_x64:");
-    expect(workflow).toContain("if: ${{ github.event_name == 'push' || inputs.build_macos_x64 }}");
+    expect(workflow).toContain("needs.windows-updater-artifacts.result == 'skipped'");
+    expect(workflow).toContain("github.event_name == 'push' || inputs.build_macos_x64");
     expect(workflow).toContain("runs-on: macos-15-intel");
     expect(workflow).toContain("node scripts/build-installer.mjs --target macos-x64 --skip-tauri-build");
     expect(workflow).toContain("npm --prefix app run tauri -- build --bundles dmg --target x86_64-apple-darwin");
@@ -227,7 +230,7 @@ describe("Tauri desktop window configuration", () => {
 
     expect(workflow).toContain("macos-arm64-dmg-artifact");
     expect(workflow).toContain("build_macos_arm64:");
-    expect(workflow).toContain("if: ${{ github.event_name == 'push' || inputs.build_macos_arm64 }}");
+    expect(workflow).toContain("github.event_name == 'push' || inputs.build_macos_arm64");
     expect(workflow).toContain("runs-on: macos-15");
     expect(workflow).toContain("FRAMEQ_PYTHON_STANDALONE_URL_ARM64");
     expect(workflow).toContain("FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64");
