@@ -204,6 +204,24 @@ describe("Tauri desktop window configuration", () => {
     expect(workflow).not.toContain("build-installer.ps1");
   });
 
+  test("desktop release workflow builds separate macOS Intel and Apple Silicon DMGs", () => {
+    const workflow = readFileSync(desktopReleaseWorkflowPath, "utf8");
+
+    expect(workflow).toContain("macos-x64-dmg-artifact");
+    expect(workflow).toContain("runs-on: macos-15-intel");
+    expect(workflow).toContain("node scripts/build-installer.mjs --target macos-x64 --skip-tauri-build");
+    expect(workflow).toContain("npm --prefix app run tauri -- build --bundles dmg --target x86_64-apple-darwin");
+    expect(workflow).toContain("target/x86_64-apple-darwin/release/bundle/dmg/*.dmg");
+
+    expect(workflow).toContain("macos-arm64-dmg-artifact");
+    expect(workflow).toContain("runs-on: macos-15");
+    expect(workflow).toContain("FRAMEQ_PYTHON_STANDALONE_URL_ARM64");
+    expect(workflow).toContain("FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64");
+    expect(workflow).toContain("node scripts/build-installer.mjs --target macos-arm64 --skip-tauri-build");
+    expect(workflow).toContain("npm --prefix app run tauri -- build --bundles dmg --target aarch64-apple-darwin");
+    expect(workflow).toContain("target/aarch64-apple-darwin/release/bundle/dmg/*.dmg");
+  });
+
   test("installer runtime still includes ModelScope for first-run model download", () => {
     const script = readFileSync(installerScriptPath, "utf8");
 
