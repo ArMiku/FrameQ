@@ -100,13 +100,17 @@ export function createInitialWorkflow(): WorkflowState {
 }
 
 export function canSubmitUrl(rawUrl: string): boolean {
+  return normalizeSubmitUrl(rawUrl) !== null;
+}
+
+export function normalizeSubmitUrl(rawUrl: string): string | null {
   const input = rawUrl.trim();
   if (XIAOHONGSHU_NOTE_ID_PATTERN.test(input)) {
-    return true;
+    return input;
   }
 
   const candidates = looksLikeUrl(input) ? [input] : extractSupportedUrls(input);
-  return candidates.some(canSubmitSingleUrl);
+  return candidates.find(canSubmitSingleUrl) ?? null;
 }
 
 function canSubmitSingleUrl(rawUrl: string): boolean {
@@ -126,7 +130,9 @@ function canSubmitSingleUrl(rawUrl: string): boolean {
       isXiaohongshuShortLink(hostname, normalizedPath) ||
       isXiaohongshuNoteUrl(hostname, normalizedPath) ||
       isBilibiliShortLink(hostname, normalizedPath) ||
-      isBilibiliVideoUrl(hostname, normalizedPath)
+      isBilibiliVideoUrl(hostname, normalizedPath) ||
+      isYoutubeShortLink(hostname, normalizedPath) ||
+      isYoutubeVideoUrl(url, hostname, normalizedPath)
     );
   } catch {
     return false;
@@ -209,6 +215,36 @@ function isBilibiliVideoUrl(hostname: string, normalizedPath: string): boolean {
 
 function isBilibiliHost(hostname: string): boolean {
   return hostname === "bilibili.com" || hostname.endsWith(".bilibili.com");
+}
+
+function isYoutubeShortLink(hostname: string, normalizedPath: string): boolean {
+  if (hostname !== "youtu.be" && hostname !== "www.youtu.be") {
+    return false;
+  }
+
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments.length === 1 && isYoutubeVideoId(segments[0]);
+}
+
+function isYoutubeVideoUrl(url: URL, hostname: string, normalizedPath: string): boolean {
+  if (!isYoutubeHost(hostname)) {
+    return false;
+  }
+
+  if (normalizedPath === "/watch") {
+    return isYoutubeVideoId(url.searchParams.get("v") ?? "");
+  }
+
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments.length === 2 && segments[0] === "shorts" && isYoutubeVideoId(segments[1]);
+}
+
+function isYoutubeHost(hostname: string): boolean {
+  return hostname === "youtube.com" || hostname === "www.youtube.com" || hostname === "m.youtube.com";
+}
+
+function isYoutubeVideoId(value: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(value);
 }
 
 export function startProcessing(state: WorkflowState, url: string): WorkflowState {
@@ -306,6 +342,14 @@ export function formatWorkerError(error: WorkerErrorResult): string {
 function formatVideoDownloadError(message: string): string {
   const rawSummary = summarizeRawError(message);
   const lowerMessage = rawSummary.toLowerCase();
+  const youtubeGuidance = formatYoutubeDownloadGuidance(lowerMessage);
+  if (youtubeGuidance) {
+    const youtubeSummary = summarizeRawError(sanitizeYoutubeRawSummary(rawSummary));
+    return youtubeSummary
+      ? `${youtubeGuidance}原始错误：${youtubeSummary}`
+      : youtubeGuidance;
+  }
+
   const bilibiliGuidance = formatBilibiliDownloadGuidance(lowerMessage);
   if (bilibiliGuidance) {
     return rawSummary
@@ -354,6 +398,38 @@ function formatVideoDownloadError(message: string): string {
   }
 
   return rawSummary ? `${guidance}原始错误：${rawSummary}` : guidance;
+}
+
+function formatYoutubeDownloadGuidance(lowerMessage: string): string | null {
+  if (lowerMessage.includes("youtube_login_required")) {
+    return "YouTube 要求登录或验证，FrameQ 当前不使用 Cookie 或账号登录；请换公开视频链接后重试。";
+  }
+
+  if (lowerMessage.includes("youtube_age_restricted")) {
+    return "该 YouTube 视频存在年龄、会员或访问限制，FrameQ 当前不会使用登录态绕过限制；请换公开视频后重试。";
+  }
+
+  if (lowerMessage.includes("youtube_private_or_unavailable")) {
+    return "该 YouTube 视频不可公开访问、已删除或为私有内容，请确认链接公开可访问后重试。";
+  }
+
+  if (lowerMessage.includes("youtube_no_playable_stream")) {
+    return "YouTube 暂时没有返回可下载的视频音频格式，请稍后重试或换一个公开视频链接。";
+  }
+
+  if (lowerMessage.includes("youtube_download_failed")) {
+    return "YouTube 公开视频下载失败，请检查网络或换一个公开可访问的视频链接。";
+  }
+
+  return null;
+}
+
+function sanitizeYoutubeRawSummary(message: string): string {
+  return message
+    .replace(/https?:\/\/[^\s"'<>]*(?:googlevideo\.com|videoplayback)[^\s"'<>]*/gi, "[youtube media url removed]")
+    .replace(/\s*(?:use|using|try|pass)?\s*--cookies(?:-from-browser)?[^\.\n]*(?:\.|$)/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatBilibiliDownloadGuidance(lowerMessage: string): string | null {

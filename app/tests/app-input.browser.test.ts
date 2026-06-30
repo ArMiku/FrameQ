@@ -369,6 +369,133 @@ describe("App browser input interactions", () => {
     }
   });
 
+  test("submits the normalized supported URL extracted from share text", async () => {
+    const target = await requestJson<CdpTarget>(
+      cdpPort,
+      `/json/new?${encodeURIComponent(appUrl)}`,
+      "PUT",
+    );
+    const page = await connectToCdp(target.webSocketDebuggerUrl);
+    const shareText =
+      "copy https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123 more text";
+
+    try {
+      await page.send("Page.enable");
+      await page.send("Runtime.enable");
+      await page.send("Page.addScriptToEvaluateOnNewDocument", {
+        source: `
+          (() => {
+            window.__FRAMEQ_TEST_COMMANDS__ = [];
+            window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+              unregisterListener: () => {}
+            };
+            window.__TAURI_INTERNALS__ = {
+              callbacks: {},
+              transformCallback: () => 1,
+              unregisterCallback: () => {},
+              invoke: async (command, args) => {
+                window.__FRAMEQ_TEST_COMMANDS__.push({ command, args });
+                if (command === "check_first_run") {
+                  return {
+                    user_data_dir: "C:/FrameQ",
+                    default_output_dir: "C:/FrameQ/outputs",
+                    asr_model: "iic/SenseVoiceSmall",
+                    asr_model_dir: "C:/FrameQ/models/SenseVoiceSmall",
+                    asr_model_available: true,
+                    asr_model_source: "modelscope"
+                  };
+                }
+                if (command === "get_account_status") {
+                  return {
+                    authenticated: true,
+                    email: "tester@frameq.local",
+                    entitlement_status: "active",
+                    entitlement_expires_at: null,
+                    llm_quota_limit: 20,
+                    llm_quota_used: 0,
+                    llm_quota_remaining: 20,
+                    llm_quota_resets_at: null,
+                    llm_configured: true,
+                    last_verified_at: null,
+                    can_process: true,
+                    server_error: null
+                  };
+                }
+                if (command === "plugin:deep-link|get_current") {
+                  return [];
+                }
+                if (command === "plugin:event|listen") {
+                  return 1;
+                }
+                if (command === "plugin:event|unlisten") {
+                  return null;
+                }
+                if (command === "process_video") {
+                  return {
+                    status: "completed",
+                    video_path: "C:/FrameQ/outputs/demo.mp4",
+                    audio_path: "C:/FrameQ/work/demo.wav",
+                    text: "transcript",
+                    summary: "",
+                    insights: [],
+                    transcript_path: "C:/FrameQ/outputs/demo_transcript.txt",
+                    summary_path: null,
+                    mindmap_path: null,
+                    insights_path: null,
+                    error: null
+                  };
+                }
+                throw new Error("Unexpected command: " + command);
+              },
+              convertFileSrc: (filePath) => filePath
+            };
+          })();
+        `,
+      });
+      const loaded = page.waitForEvent("Page.loadEventFired");
+      await page.send("Page.navigate", { url: appUrl });
+      await loaded;
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('.command-panel')) && !document.querySelector('.result-workspace')",
+      );
+
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('#video-url').focus()",
+      });
+      await page.send("Input.insertText", { text: shareText });
+      await waitForRuntimeCondition(page, "!document.querySelector('.primary-button').disabled");
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('.primary-button').click()",
+      });
+      await waitForRuntimeCondition(
+        page,
+        "window.__FRAMEQ_TEST_COMMANDS__.some((entry) => entry.command === 'process_video')",
+      );
+
+      const submitted = await page.send<{ result: { value: Record<string, unknown> } }>(
+        "Runtime.evaluate",
+        {
+          expression: `(() => {
+            const entry = window.__FRAMEQ_TEST_COMMANDS__.find((item) =>
+              item.command === 'process_video'
+            );
+            return {
+              submittedUrl: entry?.args?.request?.url ?? null
+            };
+          })()`,
+          returnByValue: true,
+        },
+      );
+
+      expect(submitted.result.value).toEqual({
+        submittedUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123",
+      });
+    } finally {
+      page.close();
+    }
+  }, 10_000);
+
   test("returns to the paste-link screen after signing out from a completed task", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,

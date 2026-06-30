@@ -695,6 +695,49 @@ def test_run_worker_once_prefers_download_result_stdout_path(
     assert result["video_path"] == downloaded_video.as_posix()
 
 
+def test_run_worker_once_flows_youtube_stdout_path_into_existing_media_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    downloaded_video = output_dir / "dQw4w9WgXcQ.mp4"
+    downloaded_video.write_bytes(b"youtube video")
+
+    def fake_download_video(
+        url: str,
+        output_dir: Path,
+        runner: object,
+        progress_callback: object | None = None,
+    ) -> CommandResult:
+        return CommandResult(
+            command=["yt-dlp", "--no-playlist", url],
+            returncode=0,
+            stdout=downloaded_video.as_posix(),
+            stderr="",
+        )
+
+    monkeypatch.setattr(pipeline, "download_video", fake_download_video)
+    runner = FakeMediaRunner()
+
+    result = run_worker_once(
+        json.dumps(
+            {
+                "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "generate_insights": False,
+            }
+        ),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=FakeTranscriber(),
+    )
+
+    assert result["status"] == "completed"
+    assert result["video_path"] == downloaded_video.as_posix()
+    assert result["audio_path"] == (tmp_path / "work" / "dQw4w9WgXcQ.wav").as_posix()
+    assert [command[0] for command in runner.commands] == ["ffprobe", "ffmpeg"]
+
+
 def test_run_worker_once_uses_configured_output_dir_for_user_artifacts(
     tmp_path: Path,
 ) -> None:

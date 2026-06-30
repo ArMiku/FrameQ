@@ -2,6 +2,17 @@
 
 <!-- 由 vibe-coding-launcher 根据根目录历史方案迁移生成；当前以本文件为 source of truth。 -->
 
+## 2026-06-29 YouTube Public Video Support
+
+- FrameQ should accept ordinary public YouTube single-video links in the existing single input: `youtube.com/watch?v=...`, `youtu.be/...`, and `youtube.com/shorts/...`.
+- `watch?v=...&list=...` is treated as one video only; the worker must keep `--no-playlist` and ignore playlist context.
+- Playlist pages, channel pages, handle pages, `music.youtube.com`, live-only content, private videos, member-only videos, age/login-restricted videos, and empty short links remain unsupported.
+- YouTube v1 uses the existing `yt-dlp` extractor and existing video -> audio -> local ASR -> optional AI整理 pipeline. It does not add a YouTube crawler, YouTube API integration, login flow, cookie import, proxy setup, download center, stream picker, or batch workflow.
+- The worker should use a transcription-first format policy for YouTube: prefer MP4/M4A video+audio up to 720p, with fallback to available 720p-or-below formats.
+- YouTube failures should remain top-level `VIDEO_DOWNLOAD_FAILED` while surfacing sanitized `YOUTUBE_*` cause prefixes for UI copy: login/verification required, age restricted, private/unavailable, no playable stream, or generic download failure.
+- UI recovery copy should ask the user to retry with a public accessible video and must not instruct users to provide cookies or login.
+- Full volatile YouTube/Google media CDN URLs, signed query parameters, cookies, Authorization material, login state, and bypass instructions must not be stored in history, logs, UI errors, or server requests.
+
 ## 2026-06-23 Server-Managed LLM Dotenv Boundary
 
 - Insight topic generation LLM configuration is now managed by the FrameQ server Admin Web.
