@@ -254,6 +254,9 @@ describe("Tauri desktop window configuration", () => {
     expect(workflow).toContain("node scripts/build-installer.mjs --target macos-x64 --skip-tauri-build");
     expect(workflow).toContain("npm --prefix app run tauri -- build --bundles dmg --target x86_64-apple-darwin");
     expect(workflow).toContain("target/x86_64-apple-darwin/release/bundle/dmg/*.dmg");
+    expect(workflow).toContain(
+      "node scripts/verify-macos-self-contained.mjs \"app/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources/python\"",
+    );
 
     expect(workflow).toContain("macos-arm64-dmg-artifact");
     expect(workflow).toContain("build_macos_arm64:");
@@ -265,6 +268,30 @@ describe("Tauri desktop window configuration", () => {
     expect(workflow).toContain("node scripts/build-installer.mjs --target macos-arm64 --skip-tauri-build");
     expect(workflow).toContain("npm --prefix app run tauri -- build --bundles dmg --target aarch64-apple-darwin");
     expect(workflow).toContain("target/aarch64-apple-darwin/release/bundle/dmg/*.dmg");
+    expect(workflow).toContain(
+      "node scripts/verify-macos-self-contained.mjs \"app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources/python\"",
+    );
+  });
+
+  test("installer vendors and verifies self-contained macOS native dylibs", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+    const verifyScript = readFileSync(
+      resolve(import.meta.dirname, "../../scripts/verify-macos-self-contained.mjs"),
+      "utf8",
+    );
+
+    // delocate runs only on the Intel target that lacks prebuilt native wheels.
+    expect(script).toContain('target === "macos-x64"');
+    expect(script).toContain('"--from", "delocate", "delocate-path"');
+    // Both macOS arches run the static self-containment guard.
+    expect(script).toContain("prepareSelfContainedMacRuntime");
+    expect(script).toContain("verify-macos-self-contained.mjs");
+
+    // The guard rejects Homebrew/MacPorts prefixes that break on clean Macs.
+    expect(verifyScript).toContain("delocate-listdeps");
+    expect(verifyScript).toContain('"/usr/local/"');
+    expect(verifyScript).toContain('"/opt/homebrew/"');
+    expect(verifyScript).toContain('"/opt/local/"');
   });
 
   test("installer runtime still includes ModelScope for first-run model download", () => {

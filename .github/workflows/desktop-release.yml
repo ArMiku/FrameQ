@@ -142,6 +142,9 @@ jobs:
       - name: Build macOS Intel DMG
         run: npm --prefix app run tauri -- build --bundles dmg --target x86_64-apple-darwin
 
+      - name: Verify bundled runtime is self-contained
+        run: node scripts/verify-macos-self-contained.mjs "app/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources/python"
+
       - name: Upload macOS Intel DMG
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -186,6 +189,9 @@ jobs:
 
       - name: Build macOS Apple Silicon DMG
         run: npm --prefix app run tauri -- build --bundles dmg --target aarch64-apple-darwin
+
+      - name: Verify bundled runtime is self-contained
+        run: node scripts/verify-macos-self-contained.mjs "app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources/python"
 
       - name: Upload macOS Apple Silicon DMG
         env:
