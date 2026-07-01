@@ -187,6 +187,9 @@ The GitHub Actions workflow `.github/workflows/desktop-release.yml` prepares the
 ```text
 FRAMEQ_PYTHON_STANDALONE_URL
 FRAMEQ_FFMPEG_ARCHIVE_URL
+FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64
+FRAMEQ_FFMPEG_ARCHIVE_URL_MACOS_X64
+FRAMEQ_FFPROBE_ARCHIVE_URL_MACOS_X64
 FRAMEQ_PYTHON_STANDALONE_URL_ARM64
 FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64
 FRAMEQ_FFPROBE_ARCHIVE_URL_ARM64
@@ -194,7 +197,7 @@ TAURI_SIGNING_PRIVATE_KEY
 TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 ```
 
-The existing `FRAMEQ_PYTHON_STANDALONE_URL` / `FRAMEQ_FFMPEG_ARCHIVE_URL` pair is used by the Windows job and as the fallback for the macOS Intel job. If those generic secrets point at Windows archives, set `FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64` and `FRAMEQ_FFMPEG_ARCHIVE_URL_MACOS_X64` with macOS x64 archives so the Intel DMG job does not reuse Windows runtime inputs. The Apple Silicon job supports split macOS arm64 media archives: set `FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64` to the ffmpeg archive and `FRAMEQ_FFPROBE_ARCHIVE_URL_ARM64` to the ffprobe archive.
+The `FRAMEQ_PYTHON_STANDALONE_URL` / `FRAMEQ_FFMPEG_ARCHIVE_URL` pair is used only by the Windows job. Each macOS job requires its own architecture-specific archives and does not fall back to the Windows secrets: set `FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64`, `FRAMEQ_FFMPEG_ARCHIVE_URL_MACOS_X64`, and `FRAMEQ_FFPROBE_ARCHIVE_URL_MACOS_X64` for the Intel DMG job, and `FRAMEQ_PYTHON_STANDALONE_URL_ARM64`, `FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64`, and `FRAMEQ_FFPROBE_ARCHIVE_URL_ARM64` for the Apple Silicon job. Both macOS jobs use split media archives: point the `..._FFMPEG_ARCHIVE_URL_...` secret at the ffmpeg archive and the `..._FFPROBE_ARCHIVE_URL_...` secret at the ffprobe archive. A missing macOS secret fails the build instead of silently reusing Windows runtime inputs.
 
 Create or update a release by pushing a `v*` tag or running the workflow manually with a tag such as `v0.1.0`. Manual runs can disable `build_windows_updater`, `build_macos_x64`, or `build_macos_arm64` when patching only one release asset. Draft releases are useful for inspection, but updater clients only resolve `releases/latest/download/latest.json?frameq-updater=1` after the release is published as a non-draft, non-prerelease release.
 
