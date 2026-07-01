@@ -254,8 +254,10 @@ describe("Tauri desktop window configuration", () => {
     expect(workflow).toContain("node scripts/build-installer.mjs --target macos-x64 --skip-tauri-build");
     expect(workflow).toContain("npm --prefix app run tauri -- build --bundles dmg --target x86_64-apple-darwin");
     expect(workflow).toContain("target/x86_64-apple-darwin/release/bundle/dmg/*.dmg");
+    // The Intel job re-imports the packaged runtime so a dropped .dylibs folder
+    // (delocate output) fails the build before the DMG is uploaded.
     expect(workflow).toContain(
-      "node scripts/verify-macos-self-contained.mjs \"app/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources/python\"",
+      "x86_64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources",
     );
 
     expect(workflow).toContain("macos-arm64-dmg-artifact");
@@ -269,7 +271,13 @@ describe("Tauri desktop window configuration", () => {
     expect(workflow).toContain("npm --prefix app run tauri -- build --bundles dmg --target aarch64-apple-darwin");
     expect(workflow).toContain("target/aarch64-apple-darwin/release/bundle/dmg/*.dmg");
     expect(workflow).toContain(
-      "node scripts/verify-macos-self-contained.mjs \"app/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources/python\"",
+      "aarch64-apple-darwin/release/bundle/macos/FrameQ.app/Contents/Resources/resources",
+    );
+
+    // Both macOS jobs import the packaged runtime end to end (exercises the
+    // delocated @loader_path links inside the built .app).
+    expect(workflow).toContain(
+      'import funasr, modelscope, yt_dlp; import frameq_worker; print(\'bundled runtime import OK\')',
     );
   });
 
