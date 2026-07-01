@@ -144,7 +144,13 @@ function getArchiveLeafName(value, fallbackName) {
 }
 
 async function prepareArchiveInput(value, destinationDirectory, fallbackName) {
-  const archivePath = join(destinationDirectory, getArchiveLeafName(value, fallbackName));
+  // Isolate each archive in its own directory keyed by the (unique) fallback
+  // name. URLs can share a leaf name — for example evermeet's .../ffmpeg/zip and
+  // .../ffprobe/zip both end in "zip" — and without isolation the second
+  // download would overwrite the first, silently swapping ffmpeg for ffprobe.
+  const isolatedDirectory = join(destinationDirectory, basename(fallbackName, ".archive"));
+  await mkdir(isolatedDirectory, { recursive: true });
+  const archivePath = join(isolatedDirectory, getArchiveLeafName(value, fallbackName));
   if (existsSync(value)) {
     await copyFile(value, archivePath);
   } else {

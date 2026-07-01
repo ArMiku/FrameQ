@@ -178,6 +178,9 @@ describe("Tauri desktop window configuration", () => {
     expect(script).toContain("--ffprobe-archive-url");
     expect(script).toContain("const ffprobeArchive = options.ffprobeArchiveUrl");
     expect(script).toContain("await copyFfmpegFromArchive(ffmpegArchive, ffprobeArchive, binRoot, options.target)");
+    // Archives download into per-role directories so URLs that share a leaf name
+    // (e.g. evermeet .../ffmpeg/zip and .../ffprobe/zip) cannot overwrite each other.
+    expect(script).toContain('basename(fallbackName, ".archive")');
   });
 
   test("installer script normalizes macOS Python launchers when reusing runtime resources", () => {
