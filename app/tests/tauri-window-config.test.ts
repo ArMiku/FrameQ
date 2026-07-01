@@ -191,6 +191,17 @@ describe("Tauri desktop window configuration", () => {
     expect(skipDownloadsBranch).toContain("await normalizeUnixPythonLaunchers(pythonRoot)");
   });
 
+  test("installer script normalizes Python launchers without pinning a CPython minor version", () => {
+    const script = readFileSync(installerScriptPath, "utf8");
+
+    // Launcher setup must detect python3.<minor> dynamically so bumping the
+    // bundled standalone does not require editing hardcoded 3.12 paths here.
+    expect(script).toContain("findVersionedUnixPythonLauncher");
+    expect(script).toContain(String.raw`/^python3\.\d+$/`);
+    expect(script).not.toContain('symlink("python3.12"');
+    expect(script).not.toContain('join(root, "bin", "python3.12")');
+  });
+
   test("installer script has a tracked local settings template to bundle", () => {
     expect(existsSync(rootEnvExamplePath)).toBe(true);
     const script = readFileSync(installerScriptPath, "utf8");
@@ -276,6 +287,16 @@ describe("Tauri desktop window configuration", () => {
     expect(projectDependencies).toContain("platform_machine == 'x86_64'");
     expect(manifest).toContain("[project.optional-dependencies]");
     expect(manifest).toContain('qwen = ["qwen-asr>=0.0.6"]');
+  });
+
+  test("worker manifest documents the macOS Intel CPython constraint for the torch pin", () => {
+    const manifest = readFileSync(workerManifestPath, "utf8");
+
+    // torch==2.2.2 macOS x86_64 wheels stop at cp312, so the bundled standalone
+    // must stay on CPython 3.11/3.12. Keep that rationale next to the pin so the
+    // secret FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64 is not bumped blindly.
+    expect(manifest).toContain("cp312");
+    expect(manifest).toContain("FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64");
   });
 
   test("local bundled worker syncs history after insight retry when present", () => {

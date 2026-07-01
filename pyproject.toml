@@ -7,6 +7,12 @@ dependencies = [
     "brotli>=1.2.0",
     "funasr>=1.2.7",
     "modelscope>=1.37.1",
+    # macOS Intel (x86_64) is pinned to torch 2.2.2 — the last release that ships
+    # macOS x86_64 wheels — which only publishes up to CPython 3.12 (cp312) and
+    # requires numpy<2. Keep FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64 on CPython
+    # 3.11 or 3.12: a newer standalone (e.g. 3.13) has no torch==2.2.2 wheel, so
+    # the Intel build fails at pip install / the import smoke test in
+    # scripts/build-installer.mjs. Other platforms track modern torch below.
     "numpy<2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "torch==2.2.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "torch>=2.10.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",

@@ -237,33 +237,53 @@ async function copyWorkerRuntime(destination) {
   await removePythonCaches(destination);
 }
 
+async function findVersionedUnixPythonLauncher(binDirectory) {
+  if (!existsSync(binDirectory)) {
+    return undefined;
+  }
+
+  // python-build-standalone ships the real interpreter as python3.<minor>
+  // (for example python3.12) with python/python3 as symlinks to it. Match the
+  // minor-version launcher without pinning a specific CPython minor, so bumping
+  // the bundled standalone does not silently break launcher normalization here.
+  const entries = await readdir(binDirectory);
+  return entries
+    .filter((name) => /^python3\.\d+$/.test(name))
+    .sort()
+    .at(-1);
+}
+
 async function findPythonExecutable(root) {
   const windowsPython = join(root, "python.exe");
-  const unixPython312 = join(root, "bin", "python3.12");
-  const unixPython = join(root, "bin", "python3");
   if (existsSync(windowsPython)) {
     return windowsPython;
   }
-  if (existsSync(unixPython312)) {
-    return unixPython312;
-  }
+
+  const binDirectory = join(root, "bin");
+  const unixPython = join(binDirectory, "python3");
   if (existsSync(unixPython)) {
     return unixPython;
   }
+
+  const versionedLauncher = await findVersionedUnixPythonLauncher(binDirectory);
+  if (versionedLauncher) {
+    return join(binDirectory, versionedLauncher);
+  }
+
   throw new Error(`Could not find bundled Python executable under ${root}`);
 }
 
 async function normalizeUnixPythonLaunchers(root) {
   const binDirectory = join(root, "bin");
-  const versionedLauncher = join(binDirectory, "python3.12");
-  if (!existsSync(versionedLauncher)) {
+  const versionedLauncher = await findVersionedUnixPythonLauncher(binDirectory);
+  if (!versionedLauncher) {
     return;
   }
 
   for (const launcherName of ["python", "python3"]) {
     const launcherPath = join(binDirectory, launcherName);
     await rm(launcherPath, { force: true });
-    await symlink("python3.12", launcherPath);
+    await symlink(versionedLauncher, launcherPath);
   }
 }
 

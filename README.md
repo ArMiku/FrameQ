@@ -199,6 +199,9 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 
 The `FRAMEQ_PYTHON_STANDALONE_URL` / `FRAMEQ_FFMPEG_ARCHIVE_URL` pair is used only by the Windows job. Each macOS job requires its own architecture-specific archives and does not fall back to the Windows secrets: set `FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64`, `FRAMEQ_FFMPEG_ARCHIVE_URL_MACOS_X64`, and `FRAMEQ_FFPROBE_ARCHIVE_URL_MACOS_X64` for the Intel DMG job, and `FRAMEQ_PYTHON_STANDALONE_URL_ARM64`, `FRAMEQ_FFMPEG_ARCHIVE_URL_ARM64`, and `FRAMEQ_FFPROBE_ARCHIVE_URL_ARM64` for the Apple Silicon job. Both macOS jobs use split media archives: point the `..._FFMPEG_ARCHIVE_URL_...` secret at the ffmpeg archive and the `..._FFPROBE_ARCHIVE_URL_...` secret at the ffprobe archive. A missing macOS secret fails the build instead of silently reusing Windows runtime inputs.
 
+> [!IMPORTANT]
+> `FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64` must be a **CPython 3.11 or 3.12** standalone. The Intel build pins `torch==2.2.2` (the last PyTorch release with macOS x86_64 wheels), which publishes wheels only up to CPython 3.12 (cp312). A 3.13+ standalone has no matching `torch==2.2.2` wheel, so the Intel job fails at `pip install` / the import smoke test. The installer's launcher setup is CPython-minor-agnostic, so this torch pin is the only Python-version constraint. Apple Silicon and Windows track modern torch and are not affected.
+
 Create or update a release by pushing a `v*` tag or running the workflow manually with a tag such as `v0.1.0`. Manual runs can disable `build_windows_updater`, `build_macos_x64`, or `build_macos_arm64` when patching only one release asset. Draft releases are useful for inspection, but updater clients only resolve `releases/latest/download/latest.json?frameq-updater=1` after the release is published as a non-draft, non-prerelease release.
 
 Release operators can override the default ModelScope download source:
