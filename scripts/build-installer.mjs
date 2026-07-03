@@ -3,7 +3,7 @@
 import { createWriteStream, existsSync } from "node:fs";
 import { chmod, copyFile, cp, mkdir, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -77,8 +77,6 @@ function parseArgs(argv) {
   return options;
 }
 
-const options = parseArgs(process.argv.slice(2));
-const buildRoot = join(repoRoot, "build", "installer-runtime", options.target);
 const pythonRoot = join(resourcesRoot, "python");
 const workerRoot = join(resourcesRoot, "worker");
 const binRoot = join(resourcesRoot, "bin");
@@ -335,18 +333,46 @@ function resolveTauriTargetTriple(target) {
   }
 }
 
+function hasStandalonePythonRuntimeLandmark(root) {
+  return existsSync(join(root, "Lib")) || existsSync(join(root, "lib")) || existsSync(join(root, "pyvenv.cfg"));
+}
+
+export async function findStandalonePythonRuntimeRoot(root) {
+  const candidates = [];
+  const executableNames = [];
+
+  for (const executable of await walkFiles(root)) {
+    const executableName = basename(executable);
+    if (executableName !== "python.exe" && executableName !== "python3" && !/^python3\.\d+$/.test(executableName)) {
+      continue;
+    }
+
+    executableNames.push(executable);
+    const executableParent = dirname(executable);
+    const runtimeRoot = basename(executableParent) === "bin" ? dirname(executableParent) : executableParent;
+    if (hasStandalonePythonRuntimeLandmark(runtimeRoot)) {
+      candidates.push({ executable, runtimeRoot });
+    }
+  }
+
+  if (candidates.length === 0) {
+    const preview =
+      executableNames.length > 0 ? executableNames.slice(0, 20).join(", ") : "(archive contained no Python executable)";
+    throw new Error(`Python standalone runtime root was not found in the archive. Candidate executables: ${preview}`);
+  }
+
+  candidates.sort(
+    (left, right) => left.runtimeRoot.length - right.runtimeRoot.length || left.executable.localeCompare(right.executable),
+  );
+  return candidates[0];
+}
+
 async function copyStandalonePythonFromArchive(archive, destination) {
   const extractRoot = join(dirname(archive), "python-extract");
   await resetDirectory(extractRoot);
   await expandArchiveFile(archive, extractRoot);
 
-  const pythonExe = await findFirstFile(extractRoot, ["python.exe", "python3"]);
-  if (!pythonExe) {
-    throw new Error("Python executable was not found in the standalone archive.");
-  }
-
-  const executableParent = dirname(pythonExe);
-  const runtimeRoot = basename(executableParent) === "bin" ? dirname(executableParent) : executableParent;
+  const { runtimeRoot } = await findStandalonePythonRuntimeRoot(extractRoot);
   await copyDirectoryContents(runtimeRoot, destination);
   await normalizeUnixPythonLaunchers(destination);
 }
@@ -441,7 +467,10 @@ async function pruneBundledPythonRuntime(root) {
   }
 }
 
-async function main() {
+async function main(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
+  const buildRoot = join(repoRoot, "build", "installer-runtime", options.target);
+
   if (!options.skipDownloads) {
     requireFileOrUrl(options.pythonStandaloneUrl, "PythonStandaloneUrl");
     requireFileOrUrl(options.ffmpegArchiveUrl, "FfmpegArchiveUrl");
@@ -514,7 +543,9 @@ async function main() {
   console.log(`FrameQ installer resources prepared at ${resourcesRoot}`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

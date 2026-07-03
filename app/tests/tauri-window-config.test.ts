@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 type TauriWindowConfig = {
   title: string;
@@ -209,9 +212,30 @@ describe("Tauri desktop window configuration", () => {
     expect(commandNameBody).not.toContain('name === "uv"');
   });
 
+  test("installer selects the standalone Python root instead of venv template launchers", async () => {
+    const { findStandalonePythonRuntimeRoot } = await import(pathToFileURL(installerScriptPath).href);
+    const tempRoot = await mkdtemp(join(tmpdir(), "frameq-python-root-"));
+    const runtimeRoot = join(tempRoot, "python");
+
+    try {
+      await mkdir(join(runtimeRoot, "Lib", "venv", "scripts", "nt"), { recursive: true });
+      await writeFile(join(runtimeRoot, "Lib", "venv", "scripts", "nt", "python.exe"), "");
+      await writeFile(join(runtimeRoot, "python.exe"), "");
+
+      const result = await findStandalonePythonRuntimeRoot(tempRoot);
+
+      expect(result).toEqual({
+        executable: join(runtimeRoot, "python.exe"),
+        runtimeRoot,
+      });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   test("installer script normalizes macOS Python launchers when reusing runtime resources", () => {
     const script = readFileSync(installerScriptPath, "utf8");
-    const mainScript = script.slice(script.indexOf("async function main()"));
+    const mainScript = script.slice(script.indexOf("async function main("));
     const skipDownloadsBranch =
       mainScript.match(/} else \{([\s\S]*?)\r?\n  \}\r?\n\r?\n  await resetDirectory\(buildRoot\);/)?.[1] ?? "";
 
