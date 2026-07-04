@@ -129,22 +129,66 @@ FrameQ 是一个桌面客户端：用户输入抖音视频 URL 后，本地 work
 
 ## 模块关系
 
-```text
-Desktop UI
-  -> Tauri process_video command
-  -> Python Worker
-      -> yt-dlp
-      -> ffprobe / ffmpeg
-      -> Qwen3-ASR or SenseVoice
-      -> Result JSON with video/audio/transcript paths
-      -> Desktop UI result workspace
-  -> Tauri retry_insights command after user confirmation
-  -> Python Worker embedded InsightFlow module
-      -> Mermaid mindmap and summary generation
-      -> Insight topic generation
-  -> Result JSON with summary/mindmap/insights paths
-  -> Desktop UI result workspace
+下面这张图描述一次任务在代码中的真实调用链：`app/src` 触发 Tauri command，Tauri 通过 IPC 调用 `worker/frameq_worker` 的 facade，facade 按阶段调度 `media` / `asr` / `insightflow` / 平台 fallback 模块，写入 app-local data 的 `outputs/`、`work/`、`models/`。`server/` 不在主流程调用链上，仅在 `retry_insights` 二次确认时通过 server-managed LLM checkout env 注入 LLM 配置。节点旁的 `<br/>` 标注是该模块最先要打开的 2-3 个关键文件，方便顺着图找到入口。
+
+```mermaid
+graph LR
+  subgraph "app/ (Tauri + React + TS)"
+    A1["app/src/<br/>workflow.ts<br/>settingsClient.ts<br/>historyClient.ts"]
+    A2["app/src-tauri/src/<br/>commands/*<br/>resources/"]
+  end
+
+  subgraph "worker/frameq_worker/"
+    W1["cli.py<br/>pipeline.py<br/>models.py"]
+    W2["media.py<br/>asr.py<br/>model_download.py"]
+    W3["insightflow/<br/>splitter · prompt<br/>generator · json parser"]
+    W4["llm.py<br/>config.py"]
+  end
+
+  subgraph "平台 fallback"
+    F1["douyin_fallback.py"]
+    F2["xiaohongshu_fallback.py"]
+    F3["bilibili_fallback.py"]
+  end
+
+  subgraph "app-local data (本机可写)"
+    D1["outputs/<br/>视频 · 文字稿 · 总结<br/>mindmap · 话题点"]
+    D2["work/<br/>音频 · history.json<br/>临时产物"]
+    D3["models/<br/>ASR 缓存<br/>iic/SenseVoiceSmall"]
+  end
+
+  subgraph "外部 / 独立服务"
+    S1["server/ (Fastify + SQLite)<br/>账户 · 激活码 · 配额"]
+    S2["LLM supplier<br/>server-managed checkout"]
+  end
+
+  A1 -->|Tauri invoke| A2
+  A2 -->|process_video / retry_insights JSON| W1
+  W1 --> W2
+  W1 --> W3
+  W1 --> W4
+  W1 --> F1
+  W1 --> F2
+  W1 --> F3
+  W2 -->|yt-dlp · ffprobe · ffmpeg| D1
+  W2 -->|中间音频 · history| D2
+  W2 -->|ASR 加载| D3
+  W3 -->|总结 · mindmap · 话题点| D1
+  W4 -.->|仅 retry_insights 阶段| S1
+  S1 -->|注入 LLM env| S2
+  S2 -.->|OpenAI-compatible 调用| W3
+  A2 -->|读取历史 / 写盘路径| D1
+  A2 -->|读取历史| D2
 ```
+
+阅读路径：
+
+- 改 UI 状态或历史展示：`app/src/workflow.ts` → `app/src/historyClient.ts` → `app/src-tauri/src/commands/`。
+- 改下载 / 媒体校验 / 音频提取：`worker/frameq_worker/cli.py` → `media.py` → 对应平台 fallback。
+- 改 ASR 行为或模型缓存：`worker/frameq_worker/asr.py` → `model_download.py` → `app-local data models/`。
+- 改话题点 / 总结 / mindmap：`worker/frameq_worker/insightflow/` → `llm.py`。
+- 改账户、激活码、配额或 LLM checkout：`server/`。
+
 
 ## 关键文件
 
