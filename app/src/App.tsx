@@ -29,6 +29,7 @@ import {
   getExportPath,
   getProgressSteps,
   getResultCards,
+  getToolbarNewTaskButtonState,
   getVisibleWorkflowError,
   isProcessingStage,
   mergeProgressEvent,
@@ -283,6 +284,7 @@ function App() {
   const progressSteps = useMemo(() => getProgressSteps(workflow), [workflow]);
   const resultCards = useMemo(() => getResultCards(workflow), [workflow]);
   const visibleWorkflowError = getVisibleWorkflowError(workflow);
+  const toolbarNewTaskButtonState = getToolbarNewTaskButtonState(workflow.stage);
   const {
     updateState,
     updateBusy,
@@ -556,9 +558,8 @@ function App() {
     setWorkflow(createInitialWorkflow());
   }
 
-  function resetOrCancelWorkflow() {
-    if (isProcessingStage(workflow.stage)) {
-      void cancelCurrentProcessing();
+  function startNewTaskFromToolbar() {
+    if (toolbarNewTaskButtonState.disabled) {
       return;
     }
 
@@ -1119,8 +1120,10 @@ function App() {
             <button
               className="icon-button"
               type="button"
-              onClick={resetOrCancelWorkflow}
-              aria-label="处理新 URL"
+              onClick={startNewTaskFromToolbar}
+              aria-label={toolbarNewTaskButtonState.ariaLabel}
+              title={toolbarNewTaskButtonState.title}
+              disabled={toolbarNewTaskButtonState.disabled}
             >
               <RotateCcw size={17} />
             </button>

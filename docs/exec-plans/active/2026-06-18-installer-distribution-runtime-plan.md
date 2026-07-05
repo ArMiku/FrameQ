@@ -9,24 +9,26 @@ Make FrameQ installable for ordinary Windows and macOS users without requiring P
 - Do not bundle SenseVoice Small in the ordinary-user installer; expose it as the only release ASR model and download it on first run.
 - Keep Qwen adapter code but hide Qwen from release UI until separately packaged and verified.
 - Use Tauri resource directory for read-only bundled runtime files.
-- Use Tauri app-local data directory for `.env`, default `outputs/tasks/<task_id>/`, `work/tasks/<task_id>/`, and writable model/cache data.
+- Use Tauri app-local data directory for `.env`, default `outputs/tasks/<task_id>/`, `cache/tasks/<task_id>/`, and writable model/cache data.
 - Build unsigned internal installer packages first; public release signing/notarization remains a release gate.
 - Installer builds do not require model resources; first-run model status must check app-local data for `MODEL_VERSION.txt`, SenseVoice `model.pt`, and VAD `model.pt`.
 - Default model download source is ModelScope; release operators may configure `FRAMEQ_ASR_MODEL_DOWNLOAD_URL` and `FRAMEQ_ASR_MODEL_DOWNLOAD_SHA256` for a custom archive.
 - The default ordinary-user installer dependency set excludes Qwen-only packages; `qwen-asr` remains an optional development extra while release builds explicitly install SenseVoice/FunASR runtime dependencies, including `torch`.
 - Windows NSIS packaging requires pruning non-runtime Python artifacts so the bundled resources stay under practical NSIS size limits.
+- YouTube public-link extraction may require a JavaScript runtime inside `yt-dlp`; ordinary-user packages bundle Deno in `resources/bin` so clean Windows and macOS machines do not depend on user-installed Node/Deno/Bun/QuickJS.
 
 ## Implementation Tasks
 
 - Update governance and product specs for lightweight installer plus first-run ASR model download.
-- Add tests for release runtime command construction, app-local config/task artifact paths, worker work/output env behavior, and release-visible ASR model list.
+- Add tests for release runtime command construction, app-local config/task artifact paths, worker cache/output env behavior, and release-visible ASR model list.
 - Replace Rust repo-root/`uv` worker spawning with bundled Python/resource-dir spawning.
-- Redirect config, task artifacts, work, and model cache to app-local data by default.
+- Redirect config, task artifacts, temporary cache, and model cache to app-local data by default.
 - Add first-run command/UI paths for local ASR model readiness and account/server LLM readiness guidance; desktop `.env` must not collect LLM configuration.
 - Add build-installer scripts and Tauri resource packaging entries for Windows and macOS.
 - Harden installer packaging so model resources are excluded from ordinary-user resources and macOS arm64/x64 use explicit target triples.
 - Add Tauri commands and UI for ASR model status, download progress, cancellation, and missing-model recovery.
 - Trim release Python dependencies, prune non-runtime runtime artifacts, and make external build command failures fail the installer script.
+- Add Deno to release resource preparation, require it for `--skip-downloads`, and smoke-test the bundled binary before Tauri packaging.
 - Run automated gates and document packaging checks that require clean Windows/macOS machines.
 
 ## Progress
@@ -42,6 +44,7 @@ Make FrameQ installable for ordinary Windows and macOS users without requiring P
 - [x] Previous full Windows x64 NSIS installer produced locally with real bundled runtime/model assets before the lightweight first-run-download direction replaced bundled-model distribution.
 - [x] Lightweight installer direction implemented: `resources/models` removed, first-run ASR model download command/UI added, and worker returns `ASR_MODEL_NOT_DOWNLOADED` when the cache is absent.
 - [x] Automated verification completed.
+- [x] Bundle and smoke-test Deno for clean-machine YouTube extraction.
 - [ ] Clean Windows/macOS install-machine packaging validation completed — blocked by clean VM environments and production signing/notarization credentials.
 
 ## Validation
@@ -116,3 +119,14 @@ Superseded release checks: this full-bundle installer path is no longer the ordi
 - Verified package-local Python imports `numpy 1.26.4`, `torch 2.2.2`, `torchaudio 2.2.2`, `funasr`, `modelscope`, `yt_dlp`, and `frameq_worker` directly from the mounted DMG; also verified mounted `python -m yt_dlp --version` returns `2026.06.09`.
 - Verified the mounted DMG has no `resources/models` directory and no bundled `__pycache__` files.
 - Local DMG remains unsigned and not notarized; clean-machine install and first-run model download validation remain open release gates.
+
+2026-07-05 YouTube JavaScript runtime packaging follow-up:
+
+- The macOS Apple Silicon failure screenshot showed `yt-dlp` warning that no supported JavaScript runtime was available. The worker now enables `deno`, `node`, `quickjs`, and `bun`, but the release package must bundle at least one supported runtime.
+- Planned fix: bundle Deno into `resources/bin`, make `--skip-downloads` require Deno, run `deno eval` during installer resource preparation, and verify Deno from the packaged macOS app bundle before DMG packaging.
+
+2026-07-05 Deno runtime packaging validation:
+
+- Added Deno archive resolution, extraction, `--skip-downloads` requirement, and `deno eval` smoke test to `scripts/build-installer.mjs`.
+- Added macOS x64 and arm64 app-bundle smoke checks for `resources/bin/deno` before DMG packaging in `.github/workflows/desktop-release.yml`.
+- Verified locally with `node --test scripts\tests\build-installer.test.mjs`, `node --check scripts\build-installer.mjs`, `uv run pytest worker\tests -q`, `uv run ruff check worker`, `cargo test --manifest-path app\src-tauri\Cargo.toml`, `npm --prefix app test`, `npm --prefix app run build`, `python scripts\validate_agents_docs.py --level WARN`, `git diff --check`, and `uv run python -m yt_dlp --js-runtimes deno --js-runtimes node --js-runtimes quickjs --js-runtimes bun --version`.

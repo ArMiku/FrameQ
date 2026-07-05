@@ -1,12 +1,22 @@
 # Security and Compliance
 
+## 2026-07-05 Desktop Diagnostics Log Boundary
+
+- Desktop diagnostics are written only to app-local data `logs/frameq-desktop.log`.
+- Logs may include command kind, process exit status, resource/app-local paths, task id, structured error code, and sanitized short error text.
+- Logs must not include LLM API keys, desktop session tokens, cookies, sensitive request headers, complete volatile YouTube media/CDN URLs, or Google/YouTube login material.
+- YouTube JavaScript runtime support must not introduce browser cookie import, account login automation, CAPTCHA solving, proxy bypass, remote component fetching, or private-content scraping.
+- Diagnostic logs are not uploaded to FrameQ server and are not exposed through normal result artifact actions.
+- Deno is bundled only as a local `yt-dlp` JavaScript runtime. It must not be used for browser cookie import, account login automation, CAPTCHA solving, proxy bypass, remote app-code loading, or private-content scraping.
+
 ## 2026-07-05 Task Artifact Path Boundary
 
 - Task manifests may contain local artifact paths only as relative paths under the owning task directory. Absolute paths, `..`, path traversal, remote URLs, cookies, headers, or credentials must be rejected.
 - Tauri task commands must resolve `task_id` to a manifest under the configured output root and must verify every resolved artifact path remains inside that task directory.
+- Repeated URL task reuse may read only local manifests and manifest-relative artifacts under the configured output root. It must not trust failed tasks, missing artifacts, traversal paths, remote URLs, cookies, headers, or credentials.
 - Transcript review and save commands should receive `task_id`, not arbitrary transcript/audio paths. The audio player and text editor may access only manifest-declared artifacts for that task.
-- App-local `work/tasks/<task_id>/` may store temporary or diagnostic files, but the UI should not expose it as a browseable artifact folder.
-- Old flat `outputs/` files and `work/history.json` records are not trusted task authorities after this redesign.
+- App-local `cache/tasks/<task_id>/` may store temporary or diagnostic files, but the UI should not expose it as a browseable artifact folder.
+- Legacy flat output files and legacy app-local history records are not trusted task authorities after this redesign.
 
 ## 2026-07-03 Transcript Audio Review Local File Boundary
 
@@ -17,7 +27,7 @@
 - Empty transcript saves, path traversal, non-transcript files, and unrelated local paths must fail recoverably.
 - Segment metadata is local-only review data. It must not be sent to FrameQ server unless a future product spec explicitly adds a server workflow.
 - The audio player should use Tauri-validated local paths only. Missing audio must degrade to text editing without attempting remote downloads or network lookups.
-- The Tauri asset protocol may be enabled only for reviewed audio artifacts under app-local `outputs/tasks/<task_id>/`; it must not expose `auth/`, `models/`, `.env`, update preferences, temporary `work/`, or arbitrary user directories.
+- The Tauri asset protocol may be enabled only for reviewed audio artifacts under app-local `outputs/tasks/<task_id>/`; it must not expose `auth/`, `models/`, `.env`, update preferences, temporary `cache/`, or arbitrary user directories.
 
 ## 2026-06-29 YouTube Public Video Safety Boundary
 
@@ -72,7 +82,7 @@
 - A process-local cookie jar may accept anonymous cookies naturally set by the public share page, such as `ttwid`, but those cookies must be discarded after the worker invocation and must not be written to history, logs, app-local settings, or server requests.
 - The fallback must not attempt to solve CAPTCHA, defeat login gates, bypass private content restrictions, or automate account-authenticated scraping.
 - Worker logs, history records, and UI errors must not store cookies, sensitive request headers, or full media CDN URLs when those URLs contain volatile request tokens. Logs may keep the original submitted URL, short error summaries, hostnames, stream quality labels, byte sizes, and local output paths.
-- Downloaded video, extracted audio, transcripts, summaries, mindmaps, and topic outputs remain local artifacts under the configured output/work directories; no fallback media data is sent to the FrameQ server.
+- Downloaded video, extracted audio, transcripts, summaries, mindmaps, and topic outputs remain local artifacts under the configured output/cache directories; no fallback media data is sent to the FrameQ server.
 
 ## 2026-06-23 Desktop Update Boundary
 
@@ -80,7 +90,7 @@
 - The updater public key may be bundled in `tauri.conf.json`; the private signing key and signing password must never be committed, bundled, or stored on FrameQ server runtime hosts unless that host is the intended signing environment.
 - The public update endpoint returns only release metadata and artifact URLs; it must not require desktop authentication and must not return user data, account data, LLM keys, or ASR model credentials.
 - `updates.json` may store `lastCheckedAt`, `postponedUntil`, and `skippedVersion` only. It must not store downloaded installers, signatures, private keys, session tokens, video URLs, transcripts, or model cache paths beyond generic update preferences.
-- Updating the app must preserve app-local `models/`, `outputs/`, `work/`, `auth/`, `.env`, and `updates.json`.
+- Updating the app must preserve app-local `models/`, `outputs/`, `cache/`, `auth/`, `.env`, and `updates.json`.
 - Waiving mainland China live updater testing does not relax the signature-verification requirement. It only means the GitHub Releases network path is not a v1 release blocker; unsigned or malformed updater artifacts must still be rejected by configuration and release checks.
 
 ## 2026-06-23 LLM Secret Boundary
@@ -126,12 +136,12 @@ FrameQ 涉及公开视频 URL、下载文件、本地音频、ASR 文字稿、�
 
 - `outputs/tasks/<task_id>/` 存放用户最终产物和 `frameq-task.json`，默认不提交仓库。
 - 用户可通过 `FRAMEQ_OUTPUT_DIR` 将最终任务目录写入自定义本地目录；该目录内容不由仓库管理，用户需要自行保护其中的公开视频、音频、文字稿和话题点文件。
-- `work/tasks/<task_id>/` 存放下载缓存、中间文件和调试产物，默认不提交仓库；它不得作为历史或正式产物真相源。
-- `frameq-task.json` 是任务库索引和 artifact 真相源；旧 `work/history.json` 记录不再被新版本读取或信任。
+- `cache/tasks/<task_id>/` 存放下载缓存、中间文件和调试产物，默认不提交仓库；它不得作为历史或正式产物真相源。
+- `frameq-task.json` 是任务库索引和 artifact 真相源；旧版 app-local history 记录不再被新版本读取或信任。
 - `models/` 存放模型权重缓存，默认不提交仓库。
 - `updates.json` 只存放更新检查偏好，默认不提交仓库；不得包含用户内容、账号 session、release signing private key 或下载包二进制。
 - 对外分发安装包不内置 ASR 模型权重；首启下载的核心本地 ASR 模型（首版 SenseVoice Small）和运行期可写缓存、输出、历史、`.env` 必须写入 app-local data，不得写入安装目录。
-- 取消任务会终止当前 worker 进程树；已写入的 `outputs/`、`work/` 和 `models/` 文件默认保留，不做自动清理。
+- 取消任务会终止当前 worker 进程树；已写入的 `outputs/`、`cache/` 和 `models/` 文件默认保留，不做自动清理。
 
 ## Secrets
 

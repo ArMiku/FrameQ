@@ -9,18 +9,21 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 
 const validTargets = new Set(["windows-x64", "macos-arm64", "macos-x64"]);
+const defaultDenoVersion = "v2.9.1";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const appRoot = join(repoRoot, "app");
 const tauriRoot = join(appRoot, "src-tauri");
 const resourcesRoot = join(tauriRoot, "resources");
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     target: "windows-x64",
     pythonStandaloneUrl: process.env.FRAMEQ_PYTHON_STANDALONE_URL ?? "",
     ffmpegArchiveUrl: process.env.FRAMEQ_FFMPEG_ARCHIVE_URL ?? "",
     ffprobeArchiveUrl: process.env.FRAMEQ_FFPROBE_ARCHIVE_URL ?? "",
+    denoArchiveUrl: process.env.FRAMEQ_DENO_ARCHIVE_URL ?? "",
+    denoVersion: process.env.FRAMEQ_DENO_VERSION ?? defaultDenoVersion,
     skipDownloads: false,
     skipTauriBuild: false,
   };
@@ -57,6 +60,14 @@ function parseArgs(argv) {
       case "-ffprobearchiveurl":
         options.ffprobeArchiveUrl = readValue();
         break;
+      case "--deno-archive-url":
+      case "-denoarchiveurl":
+        options.denoArchiveUrl = readValue();
+        break;
+      case "--deno-version":
+      case "-denoversion":
+        options.denoVersion = normalizeDenoVersion(readValue());
+        break;
       case "--skip-downloads":
       case "-skipdownloads":
         options.skipDownloads = true;
@@ -73,6 +84,7 @@ function parseArgs(argv) {
   if (!validTargets.has(options.target)) {
     throw new Error(`Unsupported target: ${options.target}`);
   }
+  options.denoVersion = normalizeDenoVersion(options.denoVersion);
 
   return options;
 }
@@ -90,6 +102,14 @@ function requireFileOrUrl(value, name) {
   if (!value || value.trim().length === 0) {
     throw new Error(`${name} is required. Pass the parameter or set the matching FRAMEQ_* environment variable.`);
   }
+}
+
+function normalizeDenoVersion(version) {
+  const trimmed = version.trim();
+  if (!trimmed) {
+    throw new Error("DenoVersion is required.");
+  }
+  return trimmed.startsWith("v") ? trimmed : `v${trimmed}`;
 }
 
 function commandName(name) {
@@ -302,6 +322,67 @@ function requireBundledFfmpeg(root, target) {
   }
 }
 
+export function requiredDenoBinary(target) {
+  return target === "windows-x64" ? "deno.exe" : "deno";
+}
+
+function denoArchiveAssetName(target) {
+  switch (target) {
+    case "windows-x64":
+      return "deno-x86_64-pc-windows-msvc.zip";
+    case "macos-arm64":
+      return "deno-aarch64-apple-darwin.zip";
+    case "macos-x64":
+      return "deno-x86_64-apple-darwin.zip";
+    default:
+      throw new Error(`Unsupported target: ${target}`);
+  }
+}
+
+export function defaultDenoArchiveUrl(target, version = defaultDenoVersion) {
+  const normalizedVersion = normalizeDenoVersion(version);
+  return `https://github.com/denoland/deno/releases/download/${normalizedVersion}/${denoArchiveAssetName(target)}`;
+}
+
+export function requireBundledDeno(root, target) {
+  const binaryName = requiredDenoBinary(target);
+  if (!existsSync(join(root, binaryName))) {
+    throw new Error(`Could not find bundled Deno runtime under ${root}: ${binaryName}`);
+  }
+}
+
+export async function copyDenoFromArchive(archive, destination, target) {
+  const binaryName = requiredDenoBinary(target);
+  const extractRoot = join(dirname(archive), "deno");
+  await resetDirectory(extractRoot);
+  await expandArchiveFile(archive, extractRoot);
+
+  const binary = await findFirstFile(extractRoot, [binaryName]);
+  if (!binary) {
+    const extractedNames = (await walkFiles(extractRoot)).map((file) => basename(file));
+    const preview =
+      extractedNames.length > 0 ? [...new Set(extractedNames)].slice(0, 40).join(", ") : "(archive extracted no files)";
+    throw new Error(`${binaryName} was not found in the Deno archive (${basename(archive)}). Extracted files: ${preview}`);
+  }
+
+  await mkdir(destination, { recursive: true });
+  const destinationPath = join(destination, binaryName);
+  await copyFile(binary, destinationPath);
+  if (target !== "windows-x64") {
+    await chmod(destinationPath, 0o755);
+  }
+}
+
+function smokeTestDenoRuntime(root, target, cacheRoot) {
+  const deno = join(root, requiredDenoBinary(target));
+  run(deno, ["eval", "console.log('deno runtime OK')"], "Deno runtime smoke test", {
+    env: {
+      DENO_DIR: join(cacheRoot, "deno-cache"),
+      DENO_NO_UPDATE_CHECK: "1",
+    },
+  });
+}
+
 function isMacTarget(target) {
   return target === "macos-arm64" || target === "macos-x64";
 }
@@ -477,6 +558,7 @@ async function main(argv = process.argv.slice(2)) {
   } else {
     await findPythonExecutable(pythonRoot);
     requireBundledFfmpeg(binRoot, options.target);
+    requireBundledDeno(binRoot, options.target);
     await normalizeUnixPythonLaunchers(pythonRoot);
   }
 
@@ -503,6 +585,10 @@ async function main(argv = process.argv.slice(2)) {
       ? await prepareArchiveInput(options.ffprobeArchiveUrl, buildRoot, "ffprobe.archive")
       : ffmpegArchive;
     await copyFfmpegFromArchive(ffmpegArchive, ffprobeArchive, binRoot, options.target);
+
+    const denoArchiveUrl = options.denoArchiveUrl || defaultDenoArchiveUrl(options.target, options.denoVersion);
+    const denoArchive = await prepareArchiveInput(denoArchiveUrl, buildRoot, "deno.archive");
+    await copyDenoFromArchive(denoArchive, binRoot, options.target);
   }
 
   await copyWorkerRuntime(workerRoot);
@@ -527,6 +613,7 @@ async function main(argv = process.argv.slice(2)) {
   run(pythonExe, ["-c", "import funasr, modelscope, yt_dlp; import frameq_worker"], "Python runtime smoke test", {
     env: { PYTHONDONTWRITEBYTECODE: "1", PYTHONPATH: workerRoot },
   });
+  smokeTestDenoRuntime(binRoot, options.target, buildRoot);
   await removePythonCaches(pythonRoot);
   await removePythonCaches(workerRoot);
 
