@@ -1,4 +1,6 @@
 import json
+import multiprocessing
+import queue
 from pathlib import Path
 
 from frameq_worker.insightflow import (
@@ -34,6 +36,11 @@ class FakeInsightClient:
         return self.responses[-1]
 
 
+def _split_markdown_worker(markdown: str, max_length: int, result_queue) -> None:
+    chunks = MarkdownSplitter(max_length=max_length).split(markdown)
+    result_queue.put([len(chunk.content) for chunk in chunks])
+
+
 def test_markdown_splitter_preserves_heading_context() -> None:
     chunks = MarkdownSplitter(max_length=80).split(
         "# 总标题\n\n第一段内容。\n\n## 子标题\n\n第二段内容。" * 4
@@ -42,6 +49,31 @@ def test_markdown_splitter_preserves_heading_context() -> None:
     assert chunks
     assert chunks[0].content
     assert chunks[0].summary
+
+
+def test_markdown_splitter_advances_past_sentence_separator() -> None:
+    markdown = "# Transcript\n\n" + ("a" * 40) + "\u3002" + ("b" * 180)
+    ctx = multiprocessing.get_context("spawn")
+    result_queue = ctx.Queue()
+    process = ctx.Process(
+        target=_split_markdown_worker,
+        args=(markdown, 80, result_queue),
+    )
+
+    process.start()
+    process.join(2)
+    if process.is_alive():
+        process.terminate()
+        process.join(2)
+        raise AssertionError("MarkdownSplitter did not advance past the separator.")
+
+    assert process.exitcode == 0
+    try:
+        chunk_lengths = result_queue.get_nowait()
+    except queue.Empty as exc:
+        raise AssertionError("MarkdownSplitter produced no result.") from exc
+    assert len(chunk_lengths) > 1
+    assert all(length > 0 for length in chunk_lengths)
 
 
 def test_generate_insights_from_markdown_writes_json_and_markdown(tmp_path: Path) -> None:

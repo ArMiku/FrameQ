@@ -60,12 +60,16 @@ class MarkdownSplitter:
         current = text
         while len(current) > self.max_length:
             split_at = current.rfind("\n\n", 0, self.max_length)
+            split_end = split_at + len("\n\n") if split_at != -1 else -1
             if split_at == -1:
                 split_at = current.rfind("。", 0, self.max_length)
+                split_end = split_at + len("。") if split_at != -1 else -1
             if split_at == -1:
-                split_at = self.max_length
-            parts.append(current[:split_at].strip())
-            current = current[split_at:].strip()
+                split_end = self.max_length
+            if split_end <= 0:
+                split_end = self.max_length
+            parts.append(current[:split_end].strip())
+            current = current[split_end:].strip()
         if current:
             parts.append(current)
         return parts
