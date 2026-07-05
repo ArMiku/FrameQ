@@ -1,29 +1,29 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
-use std::io::{BufRead, BufReader};
+use std::fs::{self, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, Window};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-mod window_chrome;
-mod updates;
-mod history;
 mod account;
+mod history;
 mod settings;
 mod task_manifest;
 mod transcript_detail;
+mod updates;
+mod window_chrome;
 
 use settings::{
     asr_model_source, configured_env_value, env_path, legacy_local_llm_env_removals,
     parse_dotenv_values, resolve_asr_model_value, ASR_MODEL_DOWNLOAD_SHA256_ENV,
-    ASR_MODEL_DOWNLOAD_URL_ENV, ASR_MODEL_ENV, LLM_CHECKOUT_REQUEST_ID_ENV,
-    LLM_CHECKOUT_URL_ENV, LLM_SESSION_TOKEN_ENV, LLM_SOURCE_ENV, MODELSCOPE_ENDPOINT_ENV,
-    SENSEVOICE_REVISION_ENV,
+    ASR_MODEL_DOWNLOAD_URL_ENV, ASR_MODEL_ENV, LLM_CHECKOUT_REQUEST_ID_ENV, LLM_CHECKOUT_URL_ENV,
+    LLM_SESSION_TOKEN_ENV, LLM_SOURCE_ENV, MODELSCOPE_ENDPOINT_ENV, SENSEVOICE_REVISION_ENV,
 };
 
 const PROGRESS_EVENT_NAME: &str = "worker-progress";
@@ -40,6 +40,8 @@ const MODELSCOPE_OFFLINE_ENV: &str = "MODELSCOPE_OFFLINE";
 #[cfg(target_os = "windows")]
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x08000000;
 const MODEL_VERSION_FILE_NAME: &str = "MODEL_VERSION.txt";
+const DESKTOP_LOG_DIR_NAME: &str = "logs";
+const DESKTOP_LOG_FILE_NAME: &str = "frameq-desktop.log";
 const DEFAULT_ASR_MODEL: &str = "iic/SenseVoiceSmall";
 const SENSEVOICE_VAD_MODEL: &str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch";
 const SUPPORTED_ASR_MODELS: &[&str] = &[DEFAULT_ASR_MODEL];
@@ -271,7 +273,264 @@ fn resource_dir_has_runtime(resource_dir: &Path) -> bool {
 pub(crate) fn ensure_runtime_dirs(paths: &RuntimePaths) -> Result<(), String> {
     fs::create_dir_all(paths.user_data_dir.join("outputs")).map_err(|error| error.to_string())?;
     fs::create_dir_all(paths.user_data_dir.join("work")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(paths.user_data_dir.join(DESKTOP_LOG_DIR_NAME))
+        .map_err(|error| error.to_string())?;
     fs::create_dir_all(asr_model_dir(paths)).map_err(|error| error.to_string())
+}
+
+fn desktop_log_path(paths: &RuntimePaths) -> PathBuf {
+    paths
+        .user_data_dir
+        .join(DESKTOP_LOG_DIR_NAME)
+        .join(DESKTOP_LOG_FILE_NAME)
+}
+
+fn append_desktop_log(paths: &RuntimePaths, event: &str, detail: &str) -> Result<(), String> {
+    let log_path = desktop_log_path(paths);
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|error| error.to_string())?;
+    let line = format!(
+        "{} event={} {}\n",
+        diagnostic_timestamp(),
+        sanitize_log_token(event),
+        sanitize_diagnostic_text(detail)
+    );
+    file.write_all(line.as_bytes())
+        .map_err(|error| error.to_string())
+}
+
+fn diagnostic_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| format!("unix_ms={}", duration.as_millis()))
+        .unwrap_or_else(|_| "unix_ms=unknown".to_string())
+}
+
+fn sanitize_log_token(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn sanitize_diagnostic_text(text: &str) -> String {
+    let redacted_lines = text
+        .lines()
+        .map(redact_sensitive_line)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let without_media_urls = redact_youtube_media_urls(&redacted_lines);
+    let without_cookie_cli_hints = redact_cookie_cli_hints(&without_media_urls);
+    collapse_log_whitespace(&without_cookie_cli_hints)
+}
+
+fn redact_sensitive_line(line: &str) -> String {
+    let trimmed = line.trim_start();
+    let sensitive_prefixes = [
+        "FRAMEQ_LLM_API_KEY=",
+        "FRAMEQ_LLM_SESSION_TOKEN=",
+        "Authorization:",
+        "Cookie:",
+        "Set-Cookie:",
+    ];
+
+    for prefix in sensitive_prefixes {
+        if trimmed.starts_with(prefix) {
+            let leading_len = line.len() - trimmed.len();
+            return format!("{}{}[redacted]", &line[..leading_len], prefix);
+        }
+    }
+
+    line.to_string()
+}
+
+fn redact_youtube_media_urls(text: &str) -> String {
+    text.split_whitespace()
+        .map(|token| {
+            if token.contains("googlevideo.com") || token.contains("videoplayback") {
+                "[youtube media url removed]"
+            } else {
+                token
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn redact_cookie_cli_hints(text: &str) -> String {
+    let mut output = Vec::new();
+    let mut skip_cookie_hint = false;
+
+    for token in text.split_whitespace() {
+        let normalized = token.trim_matches(|character: char| {
+            matches!(
+                character,
+                '"' | '\'' | ',' | ';' | ':' | '(' | ')' | '[' | ']'
+            )
+        });
+        if normalized.starts_with("--cookies") {
+            skip_cookie_hint = true;
+            continue;
+        }
+        if skip_cookie_hint {
+            if token.ends_with('.') || token.ends_with('|') {
+                skip_cookie_hint = false;
+            }
+            continue;
+        }
+        output.push(token);
+    }
+
+    output.join(" ")
+}
+
+fn collapse_log_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn summarize_worker_result_for_log(value: &serde_json::Value) -> String {
+    let mut parts = Vec::new();
+    parts.push(format!(
+        "status={}",
+        value
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+    ));
+
+    if let Some(task_id) = value.get("task_id").and_then(serde_json::Value::as_str) {
+        parts.push(format!("task_id={task_id}"));
+    }
+
+    if let Some(error) = value.get("error").and_then(serde_json::Value::as_object) {
+        if let Some(code) = error.get("code").and_then(serde_json::Value::as_str) {
+            parts.push(format!("error_code={code}"));
+        }
+        if let Some(stage) = error.get("stage").and_then(serde_json::Value::as_str) {
+            parts.push(format!("error_stage={stage}"));
+        }
+        if let Some(message) = error.get("message").and_then(serde_json::Value::as_str) {
+            parts.push(format!(
+                "error_message={}",
+                truncate_for_log(&sanitize_diagnostic_text(message), 500)
+            ));
+        }
+    }
+
+    parts.join(" ")
+}
+
+fn truncate_for_log(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    value
+        .chars()
+        .take(max_chars.saturating_sub(3))
+        .collect::<String>()
+        + "..."
+}
+
+fn worker_command_log_detail(spec: &WorkerCommandSpec, kind: &str) -> String {
+    let args = redact_worker_args_for_log(&spec.args).join(" ");
+    format!(
+        "kind={kind} program={} current_dir={} args={} {}",
+        path_to_env_string(&spec.program),
+        path_to_env_string(&spec.current_dir),
+        args,
+        js_runtime_diagnostics(spec)
+    )
+}
+
+fn redact_worker_args_for_log(args: &[String]) -> Vec<String> {
+    let mut redacted = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+
+    for arg in args {
+        if redact_next {
+            redacted.push("[json-payload]".to_string());
+            redact_next = false;
+            continue;
+        }
+
+        redacted.push(arg.clone());
+        if arg == "--request-json" || arg == "--retry-insights-json" {
+            redact_next = true;
+        }
+    }
+
+    redacted
+}
+
+fn worker_exit_log_detail(pid: u32, output: &Output, stderr: &str) -> String {
+    format!(
+        "pid={pid} exit={} stderr={}",
+        output
+            .status
+            .code()
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "signal".to_string()),
+        truncate_for_log(&sanitize_diagnostic_text(stderr), 1000)
+    )
+}
+
+fn js_runtime_diagnostics(spec: &WorkerCommandSpec) -> String {
+    let path_value = spec
+        .env
+        .iter()
+        .find_map(|(key, value)| (key == "PATH").then_some(value.as_str()))
+        .unwrap_or_default();
+    let runtimes = [
+        (
+            "deno",
+            executable_available_on_path(path_value, &["deno", "deno.exe"]),
+        ),
+        (
+            "node",
+            executable_available_on_path(path_value, &["node", "node.exe"]),
+        ),
+        (
+            "quickjs",
+            executable_available_on_path(path_value, &["qjs", "qjs.exe"]),
+        ),
+        (
+            "bun",
+            executable_available_on_path(path_value, &["bun", "bun.exe"]),
+        ),
+    ];
+    let summary = runtimes
+        .iter()
+        .map(|(name, available)| {
+            format!(
+                "{name}:{}",
+                if *available { "available" } else { "missing" }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("js_runtimes={summary}")
+}
+
+fn executable_available_on_path(path_value: &str, binary_names: &[&str]) -> bool {
+    std::env::split_paths(path_value).any(|directory| {
+        binary_names
+            .iter()
+            .any(|binary_name| directory.join(binary_name).is_file())
+    })
 }
 
 fn asr_model_dir(paths: &RuntimePaths) -> PathBuf {
@@ -331,10 +590,7 @@ fn build_worker_command_spec(
         ("PYTHONUTF8".to_string(), "1".to_string()),
         ("PYTHONIOENCODING".to_string(), "utf-8".to_string()),
         ("PATH".to_string(), path_value),
-        (
-            OUTPUT_DIR_ENV.to_string(),
-            path_to_env_string(output_root),
-        ),
+        (OUTPUT_DIR_ENV.to_string(), path_to_env_string(output_root)),
         (
             WORK_DIR_ENV.to_string(),
             path_to_env_string(paths.user_data_dir.join("work")),
@@ -386,7 +642,9 @@ fn build_worker_command_spec(
 fn worker_invocation_uses_server_managed_llm(invocation: &WorkerInvocation) -> bool {
     match invocation {
         WorkerInvocation::RetryInsights(_) => true,
-        WorkerInvocation::ProcessVideo(payload) => process_video_request_generates_insights(payload),
+        WorkerInvocation::ProcessVideo(payload) => {
+            process_video_request_generates_insights(payload)
+        }
     }
 }
 
@@ -544,11 +802,17 @@ fn process_video_blocking(
     }
     let request_json = serde_json::to_string(&request).map_err(|error| error.to_string())?;
     let llm_invocation = account::server_managed_llm_invocation(&paths)?;
-    let mut child = spawn_worker_command(build_worker_command_spec(
+    let spec = build_worker_command_spec(
         &paths,
         WorkerInvocation::ProcessVideo(request_json),
         llm_invocation,
-    )?)?;
+    )?;
+    let _ = append_desktop_log(
+        &paths,
+        "worker.process_video.start",
+        &worker_command_log_detail(&spec, "process_video"),
+    );
+    let mut child = spawn_worker_command(spec)?;
     let worker_pid = child.id();
     if !process_state.register(worker_pid) {
         let _ = terminate_process_tree(worker_pid);
@@ -601,8 +865,18 @@ fn process_video_blocking(
     let stderr = stderr_reader
         .join()
         .unwrap_or_else(|_| "Worker stderr reader failed.".to_string());
+    let _ = append_desktop_log(
+        &paths,
+        "worker.process_video.exit",
+        &worker_exit_log_detail(worker_pid, &output, &stderr),
+    );
 
     if was_cancelled {
+        let _ = append_desktop_log(
+            &paths,
+            "worker.process_video.cancelled",
+            &format!("pid={worker_pid}"),
+        );
         return Ok(serde_json::json!(ProcessVideoResult {
             status: "failed".to_string(),
             task_id: None,
@@ -619,7 +893,7 @@ fn process_video_blocking(
         }));
     }
 
-    parse_worker_output_or_fallback(
+    let parsed = parse_worker_output_or_fallback(
         &output,
         ProcessVideoResult {
             status: "failed".to_string(),
@@ -635,7 +909,13 @@ fn process_video_blocking(
                 stage: "video_extracting".to_string(),
             }),
         },
-    )
+    )?;
+    let _ = append_desktop_log(
+        &paths,
+        "worker.process_video.result",
+        &summarize_worker_result_for_log(&parsed),
+    );
+    Ok(parsed)
 }
 
 #[tauri::command]
@@ -657,11 +937,17 @@ fn retry_insights_blocking(
     ensure_runtime_dirs(&paths)?;
     let request_json = serde_json::to_string(&request).map_err(|error| error.to_string())?;
     let llm_invocation = account::server_managed_llm_invocation(&paths)?;
-    let child = spawn_worker_command(build_worker_command_spec(
+    let spec = build_worker_command_spec(
         &paths,
         WorkerInvocation::RetryInsights(request_json),
         llm_invocation,
-    )?)?;
+    )?;
+    let _ = append_desktop_log(
+        &paths,
+        "worker.retry_insights.start",
+        &worker_command_log_detail(&spec, "retry_insights"),
+    );
+    let child = spawn_worker_command(spec)?;
     let worker_pid = child.id();
     if !process_state.register(worker_pid) {
         let _ = terminate_process_tree(worker_pid);
@@ -691,8 +977,19 @@ fn retry_insights_blocking(
     };
     process_state.clear_current(worker_pid);
     let was_cancelled = process_state.take_cancelled(worker_pid);
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let _ = append_desktop_log(
+        &paths,
+        "worker.retry_insights.exit",
+        &worker_exit_log_detail(worker_pid, &output, &stderr),
+    );
 
     if was_cancelled {
+        let _ = append_desktop_log(
+            &paths,
+            "worker.retry_insights.cancelled",
+            &format!("pid={worker_pid} task_id={}", request.task_id),
+        );
         return Ok(serde_json::json!(ProcessVideoResult {
             status: "partial_completed".to_string(),
             task_id: Some(request.task_id),
@@ -709,7 +1006,7 @@ fn retry_insights_blocking(
         }));
     }
 
-    parse_worker_output_or_fallback(
+    let parsed = parse_worker_output_or_fallback(
         &output,
         ProcessVideoResult {
             status: "partial_completed".to_string(),
@@ -721,11 +1018,17 @@ fn retry_insights_blocking(
             insights: vec![],
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
-                message: String::from_utf8_lossy(&output.stderr).to_string(),
+                message: stderr,
                 stage: "insights_generating".to_string(),
             }),
         },
-    )
+    )?;
+    let _ = append_desktop_log(
+        &paths,
+        "worker.retry_insights.result",
+        &summarize_worker_result_for_log(&parsed),
+    );
+    Ok(parsed)
 }
 
 fn parse_worker_stdout(stdout: &[u8]) -> Result<serde_json::Value, String> {
@@ -833,8 +1136,13 @@ fn download_asr_model_blocking(
     }
 
     let config_values = parse_dotenv_values(&env_path(&paths))?;
-    let mut child =
-        spawn_worker_command(build_model_download_command_spec(&paths, &config_values)?)?;
+    let spec = build_model_download_command_spec(&paths, &config_values)?;
+    let _ = append_desktop_log(
+        &paths,
+        "worker.download_asr_model.start",
+        &worker_command_log_detail(&spec, "download_asr_model"),
+    );
+    let mut child = spawn_worker_command(spec)?;
     let download_pid = child.id();
     if !download_state.register(download_pid) {
         let _ = terminate_process_tree(download_pid);
@@ -874,8 +1182,18 @@ fn download_asr_model_blocking(
     let stderr = stderr_reader
         .join()
         .unwrap_or_else(|_| "ASR model download stderr reader failed.".to_string());
+    let _ = append_desktop_log(
+        &paths,
+        "worker.download_asr_model.exit",
+        &worker_exit_log_detail(download_pid, &output, &stderr),
+    );
 
     if was_cancelled {
+        let _ = append_desktop_log(
+            &paths,
+            "worker.download_asr_model.cancelled",
+            &format!("pid={download_pid}"),
+        );
         let _ = window.emit(
             ASR_MODEL_DOWNLOAD_EVENT_NAME,
             serde_json::json!({
@@ -902,6 +1220,11 @@ fn download_asr_model_blocking(
     }
 
     let result = parse_worker_stdout(&output.stdout)?;
+    let _ = append_desktop_log(
+        &paths,
+        "worker.download_asr_model.result",
+        &summarize_worker_result_for_log(&result),
+    );
     if result
         .get("status")
         .and_then(|status| status.as_str())
@@ -1098,20 +1421,22 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        activate_main_window_for_deep_link, apply_configured_asr_model_to_request,
-        asr_model_available, build_model_download_command_spec, build_worker_command_spec,
-        normalize_resource_dir, parse_worker_output_or_fallback, parse_worker_stdout,
-        path_to_env_string, run_blocking_worker_command, DeepLinkActivationWindow,
-        ProcessVideoRequest, ProcessVideoResult, RuntimePaths, WorkerCommandSpec, WorkerError,
-        WorkerInvocation, WorkerProcessState,
-    };
     use super::account::{
         build_activation_redeem_url, build_auth_login_url, parse_auth_callback_url,
         server_base_url, AuthCallback, ServerManagedLlmInvocation,
     };
     use super::settings::{
         load_llm_config_from_file, save_llm_config_to_file, supported_asr_models, LlmConfigInput,
+    };
+    use super::{
+        activate_main_window_for_deep_link, append_desktop_log,
+        apply_configured_asr_model_to_request, asr_model_available,
+        build_model_download_command_spec, build_worker_command_spec, desktop_log_path,
+        normalize_resource_dir, parse_worker_output_or_fallback, parse_worker_stdout,
+        path_to_env_string, run_blocking_worker_command, sanitize_diagnostic_text,
+        summarize_worker_result_for_log, DeepLinkActivationWindow, ProcessVideoRequest,
+        ProcessVideoResult, RuntimePaths, WorkerCommandSpec, WorkerError, WorkerInvocation,
+        WorkerProcessState,
     };
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -1227,6 +1552,82 @@ mod tests {
     }
 
     #[test]
+    fn desktop_log_path_lives_under_app_local_logs() {
+        let root = temp_dir("desktop_log_path_lives_under_app_local_logs");
+        let paths = RuntimePaths {
+            resource_dir: root.join("resources"),
+            user_data_dir: root.join("app-data"),
+        };
+
+        assert_eq!(
+            desktop_log_path(&paths),
+            paths.user_data_dir.join("logs").join("frameq-desktop.log")
+        );
+    }
+
+    #[test]
+    fn desktop_log_redacts_sensitive_values_before_writing() {
+        let root = temp_dir("desktop_log_redacts_sensitive_values_before_writing");
+        let paths = RuntimePaths {
+            resource_dir: root.join("resources"),
+            user_data_dir: root.join("app-data"),
+        };
+
+        append_desktop_log(
+            &paths,
+            "worker.finish",
+            "FRAMEQ_LLM_API_KEY=sk-secret\nFRAMEQ_LLM_SESSION_TOKEN=session-token\nhttps://rr1---sn.googlevideo.com/videoplayback?sig=SECRET Use --cookies cookies.txt.",
+        )
+        .expect("write desktop log");
+
+        let log = fs::read_to_string(desktop_log_path(&paths)).expect("read desktop log");
+        assert!(log.contains("worker.finish"));
+        assert!(log.contains("[redacted]"));
+        assert!(log.contains("[youtube media url removed]"));
+        assert!(!log.contains("sk-secret"));
+        assert!(!log.contains("session-token"));
+        assert!(!log.contains("sig=SECRET"));
+        assert!(!log.contains("--cookies"));
+    }
+
+    #[test]
+    fn worker_result_log_summary_includes_status_task_and_sanitized_error() {
+        let result = serde_json::json!({
+            "status": "failed",
+            "task_id": "20260705-120000-youtube-demo",
+            "error": {
+                "code": "VIDEO_DOWNLOAD_FAILED",
+                "stage": "video_extracting",
+                "message": "YOUTUBE_LOGIN_REQUIRED: https://rr1---sn.googlevideo.com/videoplayback?sig=SECRET Use --cookies cookies.txt."
+            }
+        });
+
+        let summary = summarize_worker_result_for_log(&result);
+
+        assert!(summary.contains("status=failed"));
+        assert!(summary.contains("task_id=20260705-120000-youtube-demo"));
+        assert!(summary.contains("error_code=VIDEO_DOWNLOAD_FAILED"));
+        assert!(summary.contains("error_stage=video_extracting"));
+        assert!(summary.contains("[youtube media url removed]"));
+        assert!(!summary.contains("sig=SECRET"));
+        assert!(!summary.contains("--cookies"));
+    }
+
+    #[test]
+    fn diagnostic_text_redacts_llm_and_cookie_material() {
+        let sanitized = sanitize_diagnostic_text(
+            "FRAMEQ_LLM_API_KEY=secret\nFRAMEQ_LLM_SESSION_TOKEN=token\nAuthorization: Bearer abc\nCookie: SID=1\n--cookies-from-browser chrome",
+        );
+
+        assert!(sanitized.contains("[redacted]"));
+        assert!(!sanitized.contains("secret"));
+        assert!(!sanitized.contains("token"));
+        assert!(!sanitized.contains("Bearer abc"));
+        assert!(!sanitized.contains("SID=1"));
+        assert!(!sanitized.contains("--cookies-from-browser"));
+    }
+
+    #[test]
     fn blocking_worker_command_runs_on_background_thread() {
         let caller_thread = std::thread::current().id();
 
@@ -1309,8 +1710,8 @@ Some dependency logged to stdout
             }),
         };
 
-        let parsed = parse_worker_output_or_fallback(&output, fallback)
-            .expect("fallback worker result");
+        let parsed =
+            parse_worker_output_or_fallback(&output, fallback).expect("fallback worker result");
 
         assert!(parsed.get("task_id").is_some());
         assert!(parsed.get("task_dir").is_some());
@@ -1442,8 +1843,7 @@ Some dependency logged to stdout
             resource_dir: PathBuf::from("C:/Program Files/FrameQ/resources"),
             user_data_dir: PathBuf::from("C:/Users/demo/AppData/Local/com.frameq.desktop"),
         };
-        let request_json =
-            r#"{"url":"https://www.douyin.com/video/7524373044106677544","generate_insights":true}"#;
+        let request_json = r#"{"url":"https://www.douyin.com/video/7524373044106677544","generate_insights":true}"#;
 
         let spec = build_worker_command_spec(
             &paths,
@@ -1479,8 +1879,7 @@ Some dependency logged to stdout
             resource_dir: PathBuf::from("C:/Program Files/FrameQ/resources"),
             user_data_dir: PathBuf::from("C:/Users/demo/AppData/Local/com.frameq.desktop"),
         };
-        let request_json =
-            r#"{"url":"https://www.douyin.com/video/7524373044106677544","generate_insights":false}"#;
+        let request_json = r#"{"url":"https://www.douyin.com/video/7524373044106677544","generate_insights":false}"#;
 
         let spec = build_worker_command_spec(
             &paths,
@@ -1503,8 +1902,8 @@ Some dependency logged to stdout
 
     #[test]
     fn auth_login_url_includes_state_and_redirect_scheme() {
-        let url = build_auth_login_url("https://frameq.example", "state-123456")
-            .expect("build auth url");
+        let url =
+            build_auth_login_url("https://frameq.example", "state-123456").expect("build auth url");
 
         assert_eq!(
             url,
@@ -1774,7 +2173,10 @@ Some dependency logged to stdout
         )
         .expect("parse desktop worker contract");
 
-        assert_eq!(super::PROGRESS_EVENT_NAME, contract["events"]["workerProgress"]);
+        assert_eq!(
+            super::PROGRESS_EVENT_NAME,
+            contract["events"]["workerProgress"]
+        );
         assert_eq!(
             super::ASR_MODEL_DOWNLOAD_EVENT_NAME,
             contract["events"]["asrModelDownloadProgress"]

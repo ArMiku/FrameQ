@@ -48,6 +48,7 @@ YOUTUBE_FORMAT_SELECTOR = (
     "bestvideo[height<=720]+bestaudio/"
     "best[height<=720]/best"
 )
+YOUTUBE_JS_RUNTIMES = ("deno", "node", "quickjs", "bun")
 YOUTUBE_MEDIA_URL_PATTERN = re.compile(
     r"https?://[^\s\"'<>]*(?:googlevideo\.com|videoplayback)[^\s\"'<>]*",
     re.IGNORECASE,
@@ -114,6 +115,11 @@ def build_ytdlp_command(url: str, output_dir: Path) -> list[str]:
             YOUTUBE_FORMAT_SELECTOR,
             "--merge-output-format",
             "mp4",
+            *[
+                value
+                for runtime in YOUTUBE_JS_RUNTIMES
+                for value in ("--js-runtimes", runtime)
+            ],
             "-o",
             output_template,
             url,

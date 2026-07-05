@@ -1,5 +1,12 @@
 # FrameQ Design Guidelines
 
+## 2026-07-05 Diagnostics UX
+
+- The main task workflow should not add a new diagnostic panel for normal use.
+- Failure copy remains concise and actionable in the existing result workspace.
+- Local desktop logs are support evidence, not a result tile, export action, or task artifact.
+- When a support flow asks for diagnostics later, it should point to the app-local log path rather than asking users to inspect bundled resources.
+
 ## 2026-07-05 Task Library and Artifact UX
 
 - Result tiles should represent artifacts within the current task, not independent loose files.

@@ -57,6 +57,12 @@ def test_build_ytdlp_command_uses_transcription_first_youtube_format_policy() ->
     assert "mp4" in format_selector
     assert "m4a" in format_selector
     assert command[command.index("--merge-output-format") + 1] == "mp4"
+    runtime_values = [
+        command[index + 1]
+        for index, value in enumerate(command)
+        if value == "--js-runtimes"
+    ]
+    assert runtime_values == ["deno", "node", "quickjs", "bun"]
     assert "--cookies" not in command
     assert "--cookies-from-browser" not in command
     assert "--proxy" not in command

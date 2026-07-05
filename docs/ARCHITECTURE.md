@@ -1,5 +1,13 @@
 # FrameQ Architecture
 
+## 2026-07-05 Desktop Diagnostics Boundary
+
+- The Tauri desktop layer owns app-local diagnostic logs at `logs/frameq-desktop.log`.
+- Diagnostics record desktop command lifecycle, worker exit status, task id, structured error code, and sanitized short messages.
+- Worker task diagnostics remain under app-local `work/tasks/<task_id>/` when task-specific temporary evidence is needed; desktop logs are global support evidence, not user artifacts.
+- YouTube extraction may explicitly enable local JavaScript runtimes supported by `yt-dlp` (`deno`, `node`, `quickjs`, `bun`) but must still run as a worker-owned public-link download policy.
+- Release packages bundle Deno in `resources/bin` so clean Windows and macOS machines have a local JavaScript runtime available for `yt-dlp` YouTube player evaluation.
+
 ## 2026-07-05 Task-Owned Artifact Store Boundary
 
 - A processing run is now a first-class task. The worker creates `<output_root>/tasks/<task_id>/frameq-task.json` and writes all final user artifacts under that same task directory.

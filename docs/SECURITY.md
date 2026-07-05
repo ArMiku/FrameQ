@@ -1,5 +1,14 @@
 # Security and Compliance
 
+## 2026-07-05 Desktop Diagnostics Log Boundary
+
+- Desktop diagnostics are written only to app-local data `logs/frameq-desktop.log`.
+- Logs may include command kind, process exit status, resource/app-local paths, task id, structured error code, and sanitized short error text.
+- Logs must not include LLM API keys, desktop session tokens, cookies, sensitive request headers, complete volatile YouTube media/CDN URLs, or Google/YouTube login material.
+- YouTube JavaScript runtime support must not introduce browser cookie import, account login automation, CAPTCHA solving, proxy bypass, remote component fetching, or private-content scraping.
+- Diagnostic logs are not uploaded to FrameQ server and are not exposed through normal result artifact actions.
+- Deno is bundled only as a local `yt-dlp` JavaScript runtime. It must not be used for browser cookie import, account login automation, CAPTCHA solving, proxy bypass, remote app-code loading, or private-content scraping.
+
 ## 2026-07-05 Task Artifact Path Boundary
 
 - Task manifests may contain local artifact paths only as relative paths under the owning task directory. Absolute paths, `..`, path traversal, remote URLs, cookies, headers, or credentials must be rejected.
