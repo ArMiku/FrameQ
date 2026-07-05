@@ -8,6 +8,7 @@ import {
   getExportPath,
   getProgressSteps,
   getResultCards,
+  getToolbarNewTaskButtonState,
   getVisibleWorkflowError,
   isProcessingStage,
   mergeProgressEvent,
@@ -293,6 +294,24 @@ describe("workflow state model", () => {
     expect(isProcessingStage("completed")).toBe(false);
     expect(isProcessingStage("partial_completed")).toBe(false);
     expect(isProcessingStage("waiting_input")).toBe(false);
+  });
+
+  test("toolbar new-task action is disabled only while processing", () => {
+    for (const stage of ["video_extracting", "video_transcribing", "insights_generating"] as const) {
+      expect(getToolbarNewTaskButtonState(stage)).toEqual({
+        disabled: true,
+        ariaLabel: "处理中不可开始新任务，请先取消或等待完成",
+        title: "处理中不可开始新任务，请先取消或等待完成",
+      });
+    }
+
+    for (const stage of ["waiting_input", "completed", "partial_completed", "failed"] as const) {
+      expect(getToolbarNewTaskButtonState(stage)).toEqual({
+        disabled: false,
+        ariaLabel: "开始新任务",
+        title: "开始新任务",
+      });
+    }
   });
 
   test("formats ASR readiness errors with actionable local setup guidance", () => {

@@ -12,6 +12,8 @@
 - Result tiles should represent artifacts within the current task, not independent loose files.
 - The primary locate action should reveal the task folder or the selected manifest artifact inside that folder.
 - History should read as a task library: each row represents one processed source URL, with status, preview, artifact availability, and task folder context.
+- Re-submitting the exact same URL may restore the newest usable local task immediately instead of showing another full download/transcription run.
+- During active processing, the toolbar new-task/reset button must be disabled. The task monitor cancel button is the only control that may terminate the running worker.
 - The UI should not mention or expose legacy flat output compatibility. New tasks always use the task folder layout.
 - Export/location actions should use saved manifest artifacts. Unsaved transcript edits should still prompt the user to save before locating the official transcript.
 

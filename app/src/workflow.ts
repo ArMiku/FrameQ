@@ -60,6 +60,12 @@ export type WorkerProgressEvent = {
   progress: number;
 };
 
+export type ToolbarNewTaskButtonState = {
+  disabled: boolean;
+  ariaLabel: string;
+  title: string;
+};
+
 export type WorkflowState = {
   stage: WorkflowStage;
   url: string;
@@ -314,6 +320,22 @@ export function isProcessingStage(stage: WorkflowStage): boolean {
     stage === "video_transcribing" ||
     stage === "insights_generating"
   );
+}
+
+export function getToolbarNewTaskButtonState(stage: WorkflowStage): ToolbarNewTaskButtonState {
+  if (isProcessingStage(stage)) {
+    return {
+      disabled: true,
+      ariaLabel: "处理中不可开始新任务，请先取消或等待完成",
+      title: "处理中不可开始新任务，请先取消或等待完成",
+    };
+  }
+
+  return {
+    disabled: false,
+    ariaLabel: "开始新任务",
+    title: "开始新任务",
+  };
 }
 
 export function formatWorkerError(error: WorkerErrorResult): string {
