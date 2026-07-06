@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlparse
 from frameq_worker.models import ProcessRequest, ProcessResult
 
 TASK_MANIFEST_FILE_NAME = "frameq-task.json"
-TASK_SCHEMA_VERSION = 1
+TASK_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -216,6 +216,7 @@ def result_with_task(
         text=result.text,
         summary=result.summary,
         insights=result.insights,
+        transcript=result.transcript,
         error=result.error,
     )
 
@@ -233,6 +234,7 @@ def write_task_manifest(context: TaskContext, result: ProcessResult) -> None:
         "app_version": context.app_version,
         "worker_version": context.worker_version,
         "model": context.request.model,
+        "transcript": result.transcript.to_dict() if result.transcript else None,
         "artifacts": result.artifacts,
         "error": result.error.to_dict() if result.error else None,
         "text_preview": result.text.strip()[:180],

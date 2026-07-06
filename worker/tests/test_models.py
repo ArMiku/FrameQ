@@ -1,4 +1,10 @@
-from frameq_worker.models import JobStage, ProcessRequest, ProcessResult, WorkerError
+from frameq_worker.models import (
+    JobStage,
+    ProcessRequest,
+    ProcessResult,
+    TranscriptMetadata,
+    WorkerError,
+)
 
 
 def test_process_request_uses_mvp_defaults() -> None:
@@ -29,6 +35,7 @@ def test_process_result_serializes_task_artifacts_text_and_insights() -> None:
         text="transcript",
         summary="# summary",
         insights=["question"],
+        transcript=TranscriptMetadata(source="subtitle", language="zh-Hans", engine=None),
     )
 
     assert result.to_dict() == {
@@ -48,6 +55,11 @@ def test_process_result_serializes_task_artifacts_text_and_insights() -> None:
         "text": "transcript",
         "summary": "# summary",
         "insights": ["question"],
+        "transcript": {
+            "source": "subtitle",
+            "language": "zh-Hans",
+            "engine": None,
+        },
         "error": None,
     }
 

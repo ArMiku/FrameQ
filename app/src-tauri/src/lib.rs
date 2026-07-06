@@ -78,6 +78,7 @@ struct ProcessVideoResult {
     text: String,
     summary: String,
     insights: Vec<String>,
+    transcript: Option<task_manifest::TranscriptMetadata>,
     error: Option<WorkerError>,
 }
 
@@ -821,6 +822,7 @@ fn process_video_blocking(
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "ASR_MODEL_UNSUPPORTED".to_string(),
                 message: error,
@@ -860,6 +862,7 @@ fn process_video_blocking(
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_ALREADY_RUNNING".to_string(),
                 message: "Another worker process is already running.".to_string(),
@@ -921,6 +924,7 @@ fn process_video_blocking(
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_CANCELLED".to_string(),
                 message: "Worker process was cancelled.".to_string(),
@@ -939,6 +943,7 @@ fn process_video_blocking(
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
                 message: stderr,
@@ -1015,13 +1020,14 @@ fn cached_process_result_from_manifest(
     let text = read_cached_text_artifact(task_dir, &manifest, "transcript_txt").unwrap_or_default();
     let summary = read_cached_text_artifact(task_dir, &manifest, "summary").unwrap_or_default();
     let insights = read_cached_insights_artifact(task_dir, &manifest);
+    let transcript = manifest.transcript_metadata();
     let status = manifest.status;
     let task_id = manifest.task_id;
     let created_at = manifest.created_at;
-    let error = manifest.error.map(|error| WorkerError {
-        code: error.code,
-        message: error.message,
-        stage: error.stage,
+    let error = manifest.error.as_ref().map(|error| WorkerError {
+        code: error.code.clone(),
+        message: error.message.clone(),
+        stage: error.stage.clone(),
     });
 
     let value = serde_json::json!(ProcessVideoResult {
@@ -1032,6 +1038,7 @@ fn cached_process_result_from_manifest(
         text,
         summary,
         insights,
+        transcript,
         error,
     });
     Ok(Some((created_at, value)))
@@ -1143,6 +1150,7 @@ fn retry_insights_blocking(
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_ALREADY_RUNNING".to_string(),
                 message: "Another worker process is already running.".to_string(),
@@ -1182,6 +1190,7 @@ fn retry_insights_blocking(
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_CANCELLED".to_string(),
                 message: "Worker process was cancelled.".to_string(),
@@ -1200,6 +1209,7 @@ fn retry_insights_blocking(
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
                 message: stderr,
@@ -1854,12 +1864,18 @@ mod tests {
             task_dir.join("frameq-task.json"),
             format!(
                 r#"{{
-  "schema_version": 1,
+  "schema_version": 2,
   "task_id": "{task_id}",
   "created_at": "2026-07-05T15:30:12Z",
   "source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
   "platform": "youtube",
   "status": "completed",
+  "model": "iic/SenseVoiceSmall",
+  "transcript": {{
+    "source": "subtitle",
+    "language": "zh-Hans",
+    "engine": null
+  }},
   "artifacts": {{
     "transcript_txt": "transcript/transcript.txt",
     "summary": "ai/summary.md",
@@ -1895,6 +1911,9 @@ mod tests {
         assert_eq!(cached["text"], "cached transcript");
         assert_eq!(cached["summary"], "# cached summary");
         assert_eq!(cached["insights"][0], "cached topic");
+        assert_eq!(cached["transcript"]["source"], "subtitle");
+        assert_eq!(cached["transcript"]["language"], "zh-Hans");
+        assert!(cached["transcript"]["engine"].is_null());
     }
 
     #[test]
@@ -1984,6 +2003,7 @@ Some dependency logged to stdout
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
                 message: "third-party stderr".to_string(),
@@ -2014,6 +2034,7 @@ Some dependency logged to stdout
             text: String::new(),
             summary: String::new(),
             insights: vec![],
+            transcript: None,
             error: Some(WorkerError {
                 code: "WORKER_PROCESS_FAILED".to_string(),
                 message: "worker failed before returning json".to_string(),

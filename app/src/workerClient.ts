@@ -96,6 +96,7 @@ export async function retryInsights(
       text: "",
       summary: "",
       insights: [],
+      transcript: null,
       error: {
         code: "TAURI_COMMAND_FAILED",
         message: error instanceof Error ? error.message : String(error),
@@ -148,6 +149,7 @@ function failedResult(code: string, message: string, stage: WorkflowStage): Work
     text: "",
     summary: "",
     insights: [],
+    transcript: null,
     error: {
       code,
       message,

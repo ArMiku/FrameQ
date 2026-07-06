@@ -18,6 +18,7 @@ from frameq_worker.asr import (
     transcribe_and_write,
     write_transcript_files,
 )
+from frameq_worker.models import TranscriptMetadata
 
 
 class FakeTranscriber:
@@ -44,6 +45,28 @@ def test_write_transcript_files_creates_non_empty_txt_and_markdown(tmp_path: Pat
     assert "这里是从视频语音中识别出的完整文字内容。" in markdown
     assert artifacts.txt_path.stat().st_size > 0
     assert artifacts.md_path.stat().st_size > 0
+
+
+def test_write_transcript_files_records_platform_subtitle_metadata(
+    tmp_path: Path,
+) -> None:
+    artifacts = write_transcript_files(
+        text="subtitle transcript",
+        output_dir=tmp_path,
+        output_stem="",
+        metadata=TranscriptMetadata(
+            source="subtitle",
+            language="zh-Hans",
+            engine=None,
+            source_url="https://www.youtube.com/watch?v=demo",
+        ),
+    )
+
+    markdown = artifacts.md_path.read_text(encoding="utf-8")
+    assert "- Transcript Source: Platform subtitle" in markdown
+    assert "- Subtitle Language: zh-Hans" in markdown
+    assert "- Source URL: https://www.youtube.com/watch?v=demo" in markdown
+    assert "Model:" not in markdown
 
 
 def test_transcribe_and_write_uses_transcriber_and_outputs_files(tmp_path: Path) -> None:

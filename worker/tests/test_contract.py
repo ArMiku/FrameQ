@@ -44,3 +44,4 @@ def test_worker_result_contract_includes_task_artifacts() -> None:
 
     assert "summary" in contract["workerResultKeys"]
     assert "artifacts" in contract["workerResultKeys"]
+    assert "transcript" in contract["workerResultKeys"]

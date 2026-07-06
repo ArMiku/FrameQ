@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { InvokeArgs } from "@tauri-apps/api/core";
-import type { TaskArtifacts, WorkerErrorResult, WorkerResult, WorkflowStage } from "./workflow";
+import type {
+  TaskArtifacts,
+  TranscriptMetadata,
+  WorkerErrorResult,
+  WorkerResult,
+  WorkflowStage,
+} from "./workflow";
 
 export type HistoryErrorResponse = {
   code: string;
@@ -23,6 +29,7 @@ export type HistoryItemResponse = {
   insights_count: number;
   text: string;
   summary?: string;
+  transcript?: TranscriptMetadata | null;
   insights: string[];
 };
 
@@ -40,6 +47,7 @@ export type HistoryItem = {
   insightsCount: number;
   text: string;
   summary: string;
+  transcript: TranscriptMetadata | null;
   insights: string[];
 };
 
@@ -66,6 +74,7 @@ export function historyItemToWorkerResult(item: HistoryItem): WorkerResult {
     text: item.text,
     summary: item.summary,
     insights: item.insights,
+    transcript: item.transcript,
     error: item.error,
   };
 }
@@ -85,6 +94,7 @@ function mapHistoryItemResponse(response: HistoryItemResponse): HistoryItem {
     insightsCount: response.insights_count,
     text: response.text,
     summary: response.summary ?? "",
+    transcript: response.transcript ?? null,
     insights: response.insights,
   };
 }

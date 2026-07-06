@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Literal
 
 
 class JobStage(StrEnum):
@@ -44,6 +45,21 @@ class WorkerError:
 
 
 @dataclass(frozen=True)
+class TranscriptMetadata:
+    source: Literal["asr", "subtitle"]
+    language: str | None = None
+    engine: str | None = None
+    source_url: str | None = None
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {
+            "source": self.source,
+            "language": self.language,
+            "engine": self.engine,
+        }
+
+
+@dataclass(frozen=True)
 class ProcessResult:
     status: JobStage
     task_id: str | None = None
@@ -52,6 +68,7 @@ class ProcessResult:
     text: str = ""
     summary: str = ""
     insights: list[str] = field(default_factory=list)
+    transcript: TranscriptMetadata | None = None
     error: WorkerError | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -63,5 +80,6 @@ class ProcessResult:
             "text": self.text,
             "summary": self.summary,
             "insights": self.insights,
+            "transcript": self.transcript.to_dict() if self.transcript else None,
             "error": self.error.to_dict() if self.error else None,
         }

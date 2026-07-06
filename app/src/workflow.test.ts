@@ -6,6 +6,7 @@ import {
   formatWorkerError,
   getDetailText,
   getExportPath,
+  getTranscriptSourceLabel,
   getProgressSteps,
   getResultCards,
   getToolbarNewTaskButtonState,
@@ -42,6 +43,7 @@ function workerResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
     text: "完整文字稿",
     summary: "# 要点总结",
     insights: ["第一个话题点"],
+    transcript: null,
     error: null,
     ...rest,
   };
@@ -199,6 +201,23 @@ describe("workflow state model", () => {
         action: "confirm",
       },
     ]);
+  });
+
+  test("summarizes transcript source metadata for platform subtitles", () => {
+    const state = summarizeWorkerResult(workerResult({
+      transcript: {
+        source: "subtitle",
+        language: "zh-Hans",
+        engine: null,
+      },
+    }));
+
+    expect(state.transcript).toEqual({
+      source: "subtitle",
+      language: "zh-Hans",
+      engine: null,
+    });
+    expect(getTranscriptSourceLabel(state)).toBe("来源：平台字幕（zh-Hans）");
   });
 
   test("partial worker result keeps artifacts and marks insights retryable", () => {

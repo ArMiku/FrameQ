@@ -17,6 +17,13 @@
 - The UI should not mention or expose legacy flat output compatibility. New tasks always use the task folder layout.
 - Export/location actions should use saved manifest artifacts. Unsaved transcript edits should still prompt the user to save before locating the official transcript.
 
+## 2026-07-05 Subtitle Source UX
+
+- Subtitle-first transcript reuse should be invisible in the main single-link workflow: no subtitle picker, no platform-specific tab, and no raw `.vtt` / `.srt` result card.
+- During `视频转译中`, worker progress copy may say `正在检测平台字幕`, `已检测到字幕，跳过 ASR`, or `未检测到字幕，开始 ASR` while staying inside the existing transcription stage.
+- The `完整文字稿` detail view may show a compact source line such as `来源：平台字幕（zh-Hans）` or `来源：本地 ASR`. It should not claim whether the subtitle was manual, automatic, or translated.
+- Result card order and behavior remain unchanged. Video and audio entries still locate local files; the transcript entry opens the readable transcript; AI整理 still shows summary and insights only.
+
 ## 2026-07-03 Transcript Audio Review UX
 
 - The `完整文字稿` detail tab should remove keyword search. The primary review tools are audio playback, block selection, direct editing, save, copy, and locating the saved transcript file.

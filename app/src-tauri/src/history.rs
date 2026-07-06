@@ -28,6 +28,7 @@ pub(crate) struct HistoryItemView {
     pub(crate) insights_count: usize,
     pub(crate) text: String,
     pub(crate) summary: String,
+    pub(crate) transcript: Option<task_manifest::TranscriptMetadata>,
     pub(crate) insights: Vec<String>,
 }
 
@@ -64,6 +65,7 @@ fn history_item_from_manifest_path(
     let text = read_text_artifact(&task_dir, &manifest, "transcript_txt")?.unwrap_or_default();
     let summary = read_text_artifact(&task_dir, &manifest, "summary")?.unwrap_or_default();
     let insights = read_insights_artifact(&task_dir, &manifest)?;
+    let transcript = manifest.transcript_metadata();
 
     Ok(Some(HistoryItemView {
         task_id: manifest.task_id.clone(),
@@ -84,6 +86,7 @@ fn history_item_from_manifest_path(
         insights_count: manifest.insights_count,
         text,
         summary,
+        transcript,
         insights,
     }))
 }

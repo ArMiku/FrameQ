@@ -19,7 +19,7 @@ from frameq_worker.insightflow import InsightClient
 from frameq_worker.llm import build_insight_client_from_env
 from frameq_worker.media import CommandRunner, run_command
 from frameq_worker.model_download import ModelDownloadError, download_asr_model_cache
-from frameq_worker.models import JobStage, ProcessResult, WorkerError
+from frameq_worker.models import JobStage, ProcessResult, TranscriptMetadata, WorkerError
 from frameq_worker.pipeline import (
     failed_result,
     finalize_task_result,
@@ -34,7 +34,11 @@ from frameq_worker.requests import (
     parse_retry_insights_request,
     resolve_configured_asr_model,
 )
-from frameq_worker.task_store import ensure_task_dirs, task_context_from_manifest
+from frameq_worker.task_store import (
+    ensure_task_dirs,
+    load_task_manifest,
+    task_context_from_manifest,
+)
 
 
 def run_worker_once(
@@ -135,6 +139,7 @@ def retry_insights_once(
     cache_dir = resolve_cache_dir(root, runtime_env)
     try:
         task_context = task_context_from_manifest(output_dir, cache_dir, request.task_id)
+        manifest = load_task_manifest(output_dir, request.task_id)
     except (OSError, json.JSONDecodeError) as exc:
         return ProcessResult(
             status=JobStage.PARTIAL_COMPLETED,
@@ -159,6 +164,7 @@ def retry_insights_once(
                 code="TRANSCRIPT_MARKDOWN_NOT_FOUND",
                 message="Transcript markdown file is required to regenerate insights.",
                 text=transcript_text,
+                transcript=transcript_metadata_from_manifest(manifest),
             ),
         )
         return result.to_dict()
@@ -169,6 +175,7 @@ def retry_insights_once(
         output_stem="",
         transcript_text=transcript_text,
         client=configured_insight_client,
+        transcript=transcript_metadata_from_manifest(manifest),
     )
 
     return finalize_task_result(task_context, insight_result).to_dict()
@@ -179,16 +186,42 @@ def failed_insight_retry_result(
     code: str,
     message: str,
     text: str,
+    transcript: TranscriptMetadata | None = None,
 ) -> ProcessResult:
     return ProcessResult(
         status=JobStage.PARTIAL_COMPLETED,
         text=text,
+        transcript=transcript,
         error=WorkerError(
             code=code,
             message=message,
             stage=JobStage.INSIGHTS_GENERATING,
         ),
     )
+
+
+def transcript_metadata_from_manifest(manifest: dict[str, object]) -> TranscriptMetadata | None:
+    raw_transcript = manifest.get("transcript")
+    if isinstance(raw_transcript, dict):
+        source = raw_transcript.get("source")
+        if source in {"asr", "subtitle"}:
+            language = raw_transcript.get("language")
+            engine = raw_transcript.get("engine")
+            return TranscriptMetadata(
+                source=source,
+                language=language if isinstance(language, str) else None,
+                engine=engine if isinstance(engine, str) else None,
+            )
+
+    schema_version = manifest.get("schema_version")
+    if schema_version == 1 or schema_version == "1":
+        model = manifest.get("model")
+        return TranscriptMetadata(
+            source="asr",
+            language=None,
+            engine=model if isinstance(model, str) and model.strip() else None,
+        )
+    return None
 
 
 def should_allow_real_asr(environ: dict[str, str] | None = None) -> bool:

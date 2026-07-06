@@ -1,4 +1,4 @@
-import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type ChangeEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
@@ -12,6 +12,7 @@ import {
   History as HistoryIcon,
   Lightbulb,
   LoaderCircle,
+  Pause,
   Play,
   RotateCcw,
   Settings,
@@ -29,6 +30,7 @@ import {
   getExportPath,
   getProgressSteps,
   getResultCards,
+  getTranscriptSourceLabel,
   getToolbarNewTaskButtonState,
   getVisibleWorkflowError,
   isProcessingStage,
@@ -92,6 +94,13 @@ import {
   transcriptTextFromSegments,
   updateTranscriptSegmentText,
 } from "./transcriptReviewState";
+import {
+  audioProgressPercent,
+  clampAudioTime,
+  formatAudioClock,
+  formatPlaybackRate,
+  nextPlaybackRate,
+} from "./audioReviewBarState";
 
 const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }> = {
   waiting_input: {
@@ -240,6 +249,10 @@ function App() {
   const [transcriptSaving, setTranscriptSaving] = useState(false);
   const [activeTranscriptSegmentId, setActiveTranscriptSegmentId] = useState<string | null>(null);
   const [editingTranscriptSegmentId, setEditingTranscriptSegmentId] = useState<string | null>(null);
+  const [transcriptAudioCurrentTime, setTranscriptAudioCurrentTime] = useState(0);
+  const [transcriptAudioDuration, setTranscriptAudioDuration] = useState(0);
+  const [transcriptAudioPlaying, setTranscriptAudioPlaying] = useState(false);
+  const [transcriptPlaybackRate, setTranscriptPlaybackRate] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<LlmConfigDraft>({
     outputDir: "",
@@ -703,21 +716,101 @@ function App() {
     }
 
     audio.currentTime = segment.start_ms / 1000;
+    audio.playbackRate = transcriptPlaybackRate;
+    setTranscriptAudioCurrentTime(audio.currentTime);
     try {
       await audio.play();
     } catch {
-      setActionNotice("音频无法自动播放，请手动点击播放器继续。");
+      setActionNotice("音频无法自动播放，请点击回听工具条继续。");
     }
+  }
+
+  function syncTranscriptAudioState(audio: HTMLAudioElement) {
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    setTranscriptAudioDuration(duration);
+    setTranscriptAudioCurrentTime(clampAudioTime(audio.currentTime, duration));
+  }
+
+  function handleTranscriptAudioMetadata() {
+    const audio = transcriptAudioRef.current;
+    if (!audio) {
+      return;
+    }
+    audio.playbackRate = transcriptPlaybackRate;
+    syncTranscriptAudioState(audio);
   }
 
   function handleTranscriptTimeUpdate() {
     const audio = transcriptAudioRef.current;
-    if (!audio || editingTranscriptSegmentId) {
+    if (!audio) {
       return;
     }
-    const activeId = findActiveTranscriptSegmentId(transcriptSegments, audio.currentTime);
-    if (activeId) {
-      setActiveTranscriptSegmentId(activeId);
+    syncTranscriptAudioState(audio);
+    if (!editingTranscriptSegmentId) {
+      const activeId = findActiveTranscriptSegmentId(transcriptSegments, audio.currentTime);
+      if (activeId) {
+        setActiveTranscriptSegmentId(activeId);
+      }
+    }
+  }
+
+  async function toggleTranscriptAudio() {
+    const audio = transcriptAudioRef.current;
+    if (!audio || !transcriptDetail?.audio_path) {
+      setActionNotice("当前任务没有可播放的本地音频，只能编辑文字稿。");
+      return;
+    }
+
+    if (!audio.paused) {
+      audio.pause();
+      return;
+    }
+
+    audio.playbackRate = transcriptPlaybackRate;
+    try {
+      await audio.play();
+    } catch {
+      setActionNotice("音频无法播放，请确认本地音频文件仍然存在。");
+    }
+  }
+
+  function seekTranscriptAudio(deltaSeconds: number) {
+    const audio = transcriptAudioRef.current;
+    if (!audio || !transcriptDetail?.audio_path) {
+      return;
+    }
+
+    const nextTime = clampAudioTime(audio.currentTime + deltaSeconds, transcriptAudioDuration);
+    audio.currentTime = nextTime;
+    setTranscriptAudioCurrentTime(nextTime);
+    if (!editingTranscriptSegmentId) {
+      const activeId = findActiveTranscriptSegmentId(transcriptSegments, nextTime);
+      if (activeId) {
+        setActiveTranscriptSegmentId(activeId);
+      }
+    }
+  }
+
+  function scrubTranscriptAudio(event: ChangeEvent<HTMLInputElement>) {
+    const audio = transcriptAudioRef.current;
+    const nextTime = clampAudioTime(event.currentTarget.valueAsNumber, transcriptAudioDuration);
+    if (audio) {
+      audio.currentTime = nextTime;
+    }
+    setTranscriptAudioCurrentTime(nextTime);
+    if (!editingTranscriptSegmentId) {
+      const activeId = findActiveTranscriptSegmentId(transcriptSegments, nextTime);
+      if (activeId) {
+        setActiveTranscriptSegmentId(activeId);
+      }
+    }
+  }
+
+  function cycleTranscriptPlaybackRate() {
+    const nextRate = nextPlaybackRate(transcriptPlaybackRate);
+    setTranscriptPlaybackRate(nextRate);
+    if (transcriptAudioRef.current) {
+      transcriptAudioRef.current.playbackRate = nextRate;
     }
   }
 
@@ -1032,10 +1125,25 @@ function App() {
     detailTab === "transcript" ? transcriptDraft : detailTab ? getDetailText(detailTab, workflow) : "";
   const exportPath = detailTab ? getExportPath(detailTab, workflow) : null;
   const currentTranscriptPath = getExportPath("transcript", workflow);
+  const transcriptSourceLabel = getTranscriptSourceLabel(workflow);
   const transcriptAudioSrc = transcriptDetail?.audio_path
     ? convertFileSrc(transcriptDetail.audio_path)
     : "";
+  const transcriptAudioProgress = audioProgressPercent(transcriptAudioCurrentTime, transcriptAudioDuration);
+  const transcriptAudioScrubberMax =
+    transcriptAudioDuration > 0 ? transcriptAudioDuration : Math.max(transcriptAudioCurrentTime, 1);
   const hasTranscriptSegments = transcriptSegments.length > 0;
+
+  useEffect(() => {
+    setTranscriptAudioCurrentTime(0);
+    setTranscriptAudioDuration(0);
+    setTranscriptAudioPlaying(false);
+    setTranscriptPlaybackRate(1);
+    if (transcriptAudioRef.current) {
+      transcriptAudioRef.current.playbackRate = 1;
+    }
+  }, [transcriptAudioSrc]);
+
   const accountHasActiveEntitlement =
     account.authenticated && account.entitlementStatus === "active";
   const accountChipLabel = canProcessWithAccount(account)
@@ -1172,7 +1280,7 @@ function App() {
                   {isProcessingStage(workflow.stage) ? (
                     <button className="secondary-button danger-soft" type="button" onClick={cancelCurrentProcessing}>
                       <X size={17} />
-                      <span>取消</span>
+                      <span>取消任务</span>
                     </button>
                   ) : null}
                 </div>
@@ -1399,17 +1507,68 @@ function App() {
                 )
               ) : (
                 <div className="transcript-review">
+                  {transcriptSourceLabel ? (
+                    <p className="transcript-source">{transcriptSourceLabel}</p>
+                  ) : null}
                   {transcriptLoading ? (
                     <p className="transcript-status">正在读取文字稿详情...</p>
                   ) : null}
                   {transcriptAudioSrc ? (
-                    <audio
-                      ref={transcriptAudioRef}
-                      className="transcript-audio"
-                      controls
-                      src={transcriptAudioSrc}
-                      onTimeUpdate={handleTranscriptTimeUpdate}
-                    />
+                    <>
+                      <audio
+                        ref={transcriptAudioRef}
+                        className="transcript-audio-engine"
+                        src={transcriptAudioSrc}
+                        preload="metadata"
+                        onLoadedMetadata={handleTranscriptAudioMetadata}
+                        onDurationChange={handleTranscriptAudioMetadata}
+                        onTimeUpdate={handleTranscriptTimeUpdate}
+                        onPlay={() => setTranscriptAudioPlaying(true)}
+                        onPause={() => setTranscriptAudioPlaying(false)}
+                        onEnded={() => setTranscriptAudioPlaying(false)}
+                      />
+                      <div className="audio-review-bar" aria-label="音频回听工具条">
+                        <button
+                          className="audio-play-button"
+                          type="button"
+                          onClick={() => void toggleTranscriptAudio()}
+                          aria-label={transcriptAudioPlaying ? "暂停音频" : "播放音频"}
+                        >
+                          {transcriptAudioPlaying ? <Pause size={16} /> : <Play size={16} />}
+                        </button>
+                        <div className="audio-review-timeline">
+                          <div className="audio-review-clock">
+                            <span>{formatAudioClock(transcriptAudioCurrentTime)}</span>
+                            <span>{formatAudioClock(transcriptAudioDuration)}</span>
+                          </div>
+                          <input
+                            className="audio-review-scrubber"
+                            type="range"
+                            min={0}
+                            max={transcriptAudioScrubberMax}
+                            step={0.1}
+                            value={clampAudioTime(transcriptAudioCurrentTime, transcriptAudioScrubberMax)}
+                            onChange={scrubTranscriptAudio}
+                            disabled={transcriptAudioDuration <= 0}
+                            aria-label="音频进度"
+                            aria-valuetext={`${formatAudioClock(transcriptAudioCurrentTime)}，${Math.round(
+                              transcriptAudioProgress,
+                            )}%`}
+                          />
+                        </div>
+                        <div className="audio-review-actions">
+                          <button type="button" onClick={() => seekTranscriptAudio(-5)}>
+                            -5s
+                          </button>
+                          <button type="button" onClick={() => seekTranscriptAudio(5)}>
+                            +5s
+                          </button>
+                          <button type="button" onClick={cycleTranscriptPlaybackRate}>
+                            {formatPlaybackRate(transcriptPlaybackRate)}x
+                          </button>
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <p className="transcript-status">当前任务没有可播放的本地音频。</p>
                   )}
