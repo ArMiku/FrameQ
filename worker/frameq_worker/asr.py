@@ -10,6 +10,8 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Protocol
 
+from frameq_worker.models import TranscriptMetadata
+
 QWEN_ASR_MODEL = "Qwen/Qwen3-ASR-0.6B"
 SENSEVOICE_SMALL_MODEL = "iic/SenseVoiceSmall"
 DEFAULT_ASR_MODEL = SENSEVOICE_SMALL_MODEL
@@ -338,8 +340,9 @@ def write_transcript_files(
     text: str,
     output_dir: Path,
     output_stem: str,
-    model: str,
+    model: str | None = None,
     source_url: str | None = None,
+    metadata: TranscriptMetadata | None = None,
     segments: tuple[TranscriptSegment, ...] = (),
 ) -> TranscriptArtifacts:
     cleaned_text = text.strip()
@@ -357,11 +360,16 @@ def write_transcript_files(
         segments_path = output_dir / "segments.json"
 
     txt_path.write_text(f"{cleaned_text}\n", encoding="utf-8")
+    transcript_metadata = metadata or TranscriptMetadata(
+        source="asr",
+        language=None,
+        engine=model,
+        source_url=source_url,
+    )
     md_path.write_text(
         _format_transcript_markdown(
             text=cleaned_text,
-            model=model,
-            source_url=source_url,
+            metadata=transcript_metadata,
         ),
         encoding="utf-8",
     )
@@ -630,13 +638,24 @@ def _missing_dependency_message(exc: ModuleNotFoundError, runtime_name: str) -> 
     )
 
 
-def _format_transcript_markdown(text: str, model: str, source_url: str | None) -> str:
-    source_line = f"\n- Source: {source_url}" if source_url else ""
+def _format_transcript_markdown(text: str, metadata: TranscriptMetadata) -> str:
+    if metadata.source == "subtitle":
+        source_lines = ["- Transcript Source: Platform subtitle"]
+        if metadata.language:
+            source_lines.append(f"- Subtitle Language: {metadata.language}")
+    else:
+        source_lines = ["- Transcript Source: Local ASR"]
+        if metadata.engine:
+            source_lines.append(f"- ASR Engine: {metadata.engine}")
+            source_lines.append(f"- Model: {metadata.engine}")
+    if metadata.source_url:
+        source_lines.append(f"- Source URL: {metadata.source_url}")
+    metadata_text = "\n".join(source_lines)
     return f"""# 视频文字稿
 
 ## Metadata
 
-- Model: {model}{source_line}
+{metadata_text}
 
 ## Transcript
 

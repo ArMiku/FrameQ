@@ -12,6 +12,7 @@ from frameq_worker.asr import (
     build_asr_transcriber,
     resolve_model_cache_dir,
     transcribe_and_write,
+    write_transcript_files,
 )
 from frameq_worker.desktop_contract import CACHE_DIR_ENV, OUTPUT_DIR_ENV, ProgressCallback
 from frameq_worker.insightflow import (
@@ -33,7 +34,14 @@ from frameq_worker.model_download import (
     normalize_asr_model_cache_layout,
     validate_asr_model_cache,
 )
-from frameq_worker.models import JobStage, ProcessRequest, ProcessResult, WorkerError
+from frameq_worker.models import (
+    JobStage,
+    ProcessRequest,
+    ProcessResult,
+    TranscriptMetadata,
+    WorkerError,
+)
+from frameq_worker.subtitles import find_subtitle_transcript
 from frameq_worker.task_store import (
     TaskContext,
     create_task_context,
@@ -87,6 +95,55 @@ def run_asr_transcript_step(
             ),
         },
         text=artifacts.text,
+        transcript=TranscriptMetadata(
+            source="asr",
+            language=None,
+            engine=model,
+            source_url=source_url,
+        ),
+    )
+
+
+def run_subtitle_transcript_step(
+    download_dir: Path,
+    output_dir: Path,
+    output_stem: str,
+    source_url: str,
+) -> ProcessResult | None:
+    subtitle = find_subtitle_transcript(download_dir)
+    if subtitle is None:
+        return None
+
+    metadata = TranscriptMetadata(
+        source="subtitle",
+        language=subtitle.language,
+        engine=None,
+        source_url=source_url,
+    )
+    try:
+        artifacts = write_transcript_files(
+            text=subtitle.text,
+            output_dir=output_dir,
+            output_stem=output_stem,
+            metadata=metadata,
+            segments=subtitle.segments,
+        )
+    except ASRError:
+        return None
+
+    return ProcessResult(
+        status=JobStage.VIDEO_TRANSCRIBING,
+        artifacts={
+            "transcript_txt": artifacts.txt_path.relative_to(output_dir).as_posix(),
+            "transcript_md": artifacts.md_path.relative_to(output_dir).as_posix(),
+            **(
+                {"segments": artifacts.segments_path.relative_to(output_dir).as_posix()}
+                if artifacts.segments_path
+                else {}
+            ),
+        },
+        text=artifacts.text,
+        transcript=metadata,
     )
 
 
@@ -96,11 +153,13 @@ def run_insight_generation_step(
     output_stem: str,
     transcript_text: str,
     client: InsightClient | None,
+    transcript: TranscriptMetadata | None = None,
 ) -> ProcessResult:
     if client is None:
         return ProcessResult(
             status=JobStage.PARTIAL_COMPLETED,
             text=transcript_text,
+            transcript=transcript,
             error=WorkerError(
                 code="INSIGHTFLOW_CONFIG_MISSING",
                 message="InsightFlow LLM client is not configured.",
@@ -114,6 +173,7 @@ def run_insight_generation_step(
         return ProcessResult(
             status=JobStage.PARTIAL_COMPLETED,
             text=transcript_text,
+            transcript=transcript,
             error=WorkerError(
                 code="TRANSCRIPT_MARKDOWN_NOT_FOUND",
                 message=str(exc),
@@ -175,6 +235,7 @@ def run_insight_generation_step(
             if insight_artifacts
             else []
         ),
+        transcript=transcript,
         error=WorkerError(
             code=generation_error.code,
             message=str(generation_error),
@@ -300,6 +361,64 @@ def run_worker_pipeline(
                 ),
             )
 
+    emit_progress(
+        progress_callback,
+        JobStage.VIDEO_TRANSCRIBING,
+        "正在检测平台字幕。",
+        58,
+    )
+    subtitle_result = (
+        None
+        if download_result.command and download_result.command[0] == "bilibili-fallback"
+        else run_subtitle_transcript_step(
+            download_dir=download_dir,
+            output_dir=task_context.paths.transcript_dir,
+            output_stem="",
+            source_url=request.url,
+        )
+    )
+    if subtitle_result is not None:
+        emit_progress(
+            progress_callback,
+            JobStage.VIDEO_TRANSCRIBING,
+            f"已检测到 {subtitle_result.transcript.language} 字幕，跳过 ASR。",
+            68,
+        )
+        if not request.generate_insights:
+            return finalize_task_result(
+                task_context,
+                ProcessResult(
+                    status=JobStage.COMPLETED,
+                    text=subtitle_result.text,
+                    transcript=subtitle_result.transcript,
+                ),
+            )
+
+        emit_progress(
+            progress_callback,
+            JobStage.INSIGHTS_GENERATING,
+            "正在使用配置的 LLM 生成要点总结和启发话题点，文字稿会发送到该服务。"
+            if insight_client is not None
+            else "正在生成要点总结和启发话题点。",
+            88,
+        )
+        insight_result = run_insight_generation_step(
+            transcript_path=task_context.paths.transcript_md_path,
+            output_dir=task_context.paths.ai_dir,
+            output_stem="",
+            transcript_text=subtitle_result.text,
+            client=insight_client,
+            transcript=subtitle_result.transcript,
+        )
+        return finalize_task_result(task_context, insight_result)
+
+    emit_progress(
+        progress_callback,
+        JobStage.VIDEO_TRANSCRIBING,
+        "未检测到字幕，开始 ASR。",
+        58,
+    )
+
     if transcriber is None and not allow_real_asr:
         return finalize_task_result(
             task_context,
@@ -363,7 +482,11 @@ def run_worker_pipeline(
     if not request.generate_insights:
         return finalize_task_result(
             task_context,
-            ProcessResult(status=JobStage.COMPLETED, text=transcript_result.text),
+            ProcessResult(
+                status=JobStage.COMPLETED,
+                text=transcript_result.text,
+                transcript=transcript_result.transcript,
+            ),
         )
 
     emit_progress(
@@ -380,6 +503,7 @@ def run_worker_pipeline(
         output_stem="",
         transcript_text=transcript_result.text,
         client=insight_client,
+        transcript=transcript_result.transcript,
     )
     return finalize_task_result(task_context, insight_result)
 

@@ -33,6 +33,11 @@ describe("history client", () => {
           insights_count: 2,
           text: "这是一段完整文字稿",
           summary: "# 要点总结\n\n- 历史总结",
+          transcript: {
+            source: "subtitle",
+            language: "zh-Hans",
+            engine: null,
+          },
           insights: ["第一个话题点", "第二个话题点"],
         },
       ];
@@ -64,6 +69,11 @@ describe("history client", () => {
         insightsCount: 2,
         text: "这是一段完整文字稿",
         summary: "# 要点总结\n\n- 历史总结",
+        transcript: {
+          source: "subtitle",
+          language: "zh-Hans",
+          engine: null,
+        },
         insights: ["第一个话题点", "第二个话题点"],
       },
     ]);
@@ -93,6 +103,11 @@ describe("history client", () => {
       insightsCount: 0,
       text: "已经完成的文字稿",
       summary: "# 要点总结",
+      transcript: {
+        source: "asr",
+        language: null,
+        engine: "iic/SenseVoiceSmall",
+      },
       insights: [],
     });
 
@@ -108,6 +123,11 @@ describe("history client", () => {
       },
       text: "已经完成的文字稿",
       summary: "# 要点总结",
+      transcript: {
+        source: "asr",
+        language: null,
+        engine: "iic/SenseVoiceSmall",
+      },
       insights: [],
       error: {
         code: "INSIGHTFLOW_CONFIG_MISSING",

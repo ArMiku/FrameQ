@@ -15,6 +15,15 @@ pub(crate) struct TaskManifestError {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub(crate) struct TranscriptMetadata {
+    pub(crate) source: String,
+    #[serde(default)]
+    pub(crate) language: Option<String>,
+    #[serde(default)]
+    pub(crate) engine: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct TaskManifest {
     #[serde(default)]
     pub(crate) schema_version: u64,
@@ -34,6 +43,8 @@ pub(crate) struct TaskManifest {
     #[serde(default)]
     pub(crate) model: String,
     #[serde(default)]
+    pub(crate) transcript: Option<TranscriptMetadata>,
+    #[serde(default)]
     pub(crate) artifacts: HashMap<String, String>,
     #[serde(default)]
     pub(crate) error: Option<TaskManifestError>,
@@ -41,6 +52,26 @@ pub(crate) struct TaskManifest {
     pub(crate) text_preview: String,
     #[serde(default)]
     pub(crate) insights_count: usize,
+}
+
+impl TaskManifest {
+    pub(crate) fn transcript_metadata(&self) -> Option<TranscriptMetadata> {
+        self.transcript.clone().or_else(|| {
+            if self.schema_version <= 1 {
+                Some(TranscriptMetadata {
+                    source: "asr".to_string(),
+                    language: None,
+                    engine: if self.model.trim().is_empty() {
+                        None
+                    } else {
+                        Some(self.model.clone())
+                    },
+                })
+            } else {
+                None
+            }
+        })
+    }
 }
 
 pub(crate) fn configured_output_root(paths: &RuntimePaths) -> Result<PathBuf, String> {

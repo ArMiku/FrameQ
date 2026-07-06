@@ -43,6 +43,7 @@ describe("desktop/worker contract", () => {
         text: "",
         summary: "",
         insights: [],
+        transcript: null,
         error: null,
       };
     });

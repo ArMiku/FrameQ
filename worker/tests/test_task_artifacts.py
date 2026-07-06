@@ -94,6 +94,11 @@ def test_worker_pipeline_writes_task_owned_artifacts_and_manifest(tmp_path: Path
 
     assert result["status"] == "completed"
     assert str(result["task_id"]).endswith("-douyin-7524373044106677544")
+    assert result["transcript"] == {
+        "source": "asr",
+        "language": None,
+        "engine": "iic/SenseVoiceSmall",
+    }
     assert result["artifacts"] == {
         "video": "media/video.mp4",
         "audio": "media/audio.wav",
@@ -114,13 +119,95 @@ def test_worker_pipeline_writes_task_owned_artifacts_and_manifest(tmp_path: Path
     assert not list(output_root.glob("*.mp4"))
 
     manifest = json.loads((task_dir / "frameq-task.json").read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
     assert manifest["task_id"] == result["task_id"]
     assert manifest["source_url"] == "https://www.douyin.com/video/7524373044106677544"
     assert manifest["platform"] == "douyin"
     assert manifest["status"] == "completed"
+    assert manifest["transcript"] == result["transcript"]
     assert manifest["artifacts"] == result["artifacts"]
     assert manifest["text_preview"] == "task transcript"
+
+
+def test_worker_pipeline_uses_platform_subtitle_before_asr_model_ready(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "outputs"
+    cache_root = tmp_path / "cache"
+
+    def runner(command: list[str]) -> CommandResult:
+        if "-m" in command and "yt_dlp" in command:
+            output_template = command[command.index("-o") + 1]
+            video_path = Path(output_template.replace("%(id)s.%(ext)s", "dQw4w9WgXcQ.mp4"))
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+            video_path.write_bytes(b"fake video")
+            (video_path.parent / "dQw4w9WgXcQ.zh-Hans.srt").write_text(
+                "1\n00:00:01,000 --> 00:00:02,000\n字幕第一句\n\n"
+                "2\n00:00:02,500 --> 00:00:03,000\n字幕第二句\n",
+                encoding="utf-8",
+            )
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=video_path.as_posix(),
+                stderr="",
+            )
+        if command[0] == "ffprobe":
+            return CommandResult(
+                command=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "format": {"duration": "12.3", "size": "12345"},
+                        "streams": [
+                            {"codec_type": "video", "codec_name": "h264"},
+                            {"codec_type": "audio", "codec_name": "aac"},
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        if command[0] == "ffmpeg":
+            audio_path = Path(command[-1])
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(b"fake wav")
+            return CommandResult(command=command, returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = run_worker_pipeline(
+        request=ProcessRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            generate_insights=False,
+        ),
+        project_root=tmp_path,
+        command_runner=runner,
+        transcriber=None,
+        insight_client=None,
+        allow_real_asr=False,
+        environ={
+            OUTPUT_DIR_ENV: output_root.as_posix(),
+            CACHE_DIR_ENV: cache_root.as_posix(),
+        },
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["text"] == "字幕第一句\n字幕第二句"
+    assert result["transcript"] == {
+        "source": "subtitle",
+        "language": "zh-Hans",
+        "engine": None,
+    }
+
+    task_dir = Path(str(result["task_dir"]))
+    transcript_md = (task_dir / "transcript" / "transcript.md").read_text(encoding="utf-8")
+    assert "Transcript Source: Platform subtitle" in transcript_md
+    assert "Model:" not in transcript_md
+    assert (task_dir / "media" / "audio.wav").is_file()
+
+    manifest = json.loads((task_dir / "frameq-task.json").read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 2
+    assert manifest["model"] == "iic/SenseVoiceSmall"
+    assert manifest["transcript"] == result["transcript"]
 
 
 def test_retry_insights_uses_task_manifest_and_updates_same_task(tmp_path: Path) -> None:

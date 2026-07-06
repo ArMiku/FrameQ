@@ -49,6 +49,14 @@ YOUTUBE_FORMAT_SELECTOR = (
     "best[height<=720]/best"
 )
 YOUTUBE_JS_RUNTIMES = ("deno", "node", "quickjs", "bun")
+PLATFORM_SUBTITLE_ARGS = [
+    "--write-subs",
+    "--write-auto-subs",
+    "--sub-langs",
+    "zh-Hans,zh-CN,zh-Hant,en,ja,ko",
+    "--sub-format",
+    "best",
+]
 YOUTUBE_MEDIA_URL_PATTERN = re.compile(
     r"https?://[^\s\"'<>]*(?:googlevideo\.com|videoplayback)[^\s\"'<>]*",
     re.IGNORECASE,
@@ -120,12 +128,16 @@ def build_ytdlp_command(url: str, output_dir: Path) -> list[str]:
                 for runtime in YOUTUBE_JS_RUNTIMES
                 for value in ("--js-runtimes", runtime)
             ],
+            *PLATFORM_SUBTITLE_ARGS,
             "-o",
             output_template,
             url,
         ]
 
-    return [*ytdlp_command, "--no-playlist", "-o", output_template, url]
+    subtitle_args = (
+        PLATFORM_SUBTITLE_ARGS if _contains_supported_url(url, BILIBILI_HOST_SUFFIXES) else []
+    )
+    return [*ytdlp_command, "--no-playlist", *subtitle_args, "-o", output_template, url]
 
 
 def build_ffprobe_command(media_path: Path) -> list[str]:

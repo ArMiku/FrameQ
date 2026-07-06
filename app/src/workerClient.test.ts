@@ -14,7 +14,7 @@ const TASK_ID = "20260705-153012-douyin-demo";
 const TASK_DIR = "outputs/tasks/20260705-153012-douyin-demo";
 
 function completedResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
-  const { artifacts, ...rest } = overrides;
+  const { artifacts, transcript, ...rest } = overrides;
   return {
     status: "completed",
     task_id: TASK_ID,
@@ -32,6 +32,7 @@ function completedResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
     text: "完整文字稿",
     summary: "# 要点总结",
     insights: ["为什么流程编排可能比单点模型能力更关键？"],
+    transcript: transcript ?? null,
     error: null,
     ...rest,
   };
@@ -86,6 +87,7 @@ describe("worker client", () => {
       text: "",
       summary: "",
       insights: [],
+      transcript: null,
       error: {
         code: "TAURI_COMMAND_FAILED",
         message: "worker process could not start",
@@ -181,6 +183,7 @@ describe("worker client", () => {
       text: "",
       summary: "",
       insights: [],
+      transcript: null,
       error: {
         code: "TAURI_COMMAND_FAILED",
         message: "retry worker process could not start",

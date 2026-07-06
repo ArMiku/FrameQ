@@ -37,6 +37,12 @@ export type TaskArtifactKey =
 
 export type TaskArtifacts = Partial<Record<TaskArtifactKey, string>>;
 
+export type TranscriptMetadata = {
+  source: "asr" | "subtitle";
+  language: string | null;
+  engine: string | null;
+};
+
 export type WorkerResult = {
   status: "completed" | "partial_completed" | "failed";
   task_id: string | null;
@@ -45,6 +51,7 @@ export type WorkerResult = {
   text: string;
   summary: string;
   insights: string[];
+  transcript: TranscriptMetadata | null;
   error: WorkerErrorResult | null;
 };
 
@@ -79,6 +86,7 @@ export type WorkflowState = {
   taskId: string | null;
   taskDir: string | null;
   artifacts: TaskArtifacts;
+  transcript: TranscriptMetadata | null;
   error: WorkerErrorResult | null;
 };
 
@@ -105,6 +113,7 @@ export function createInitialWorkflow(): WorkflowState {
     taskId: null,
     taskDir: null,
     artifacts: {},
+    transcript: null,
     error: null,
   };
 }
@@ -642,8 +651,19 @@ export function summarizeWorkerResult(result: WorkerResult): WorkflowState {
     taskId: result.task_id,
     taskDir: result.task_dir,
     artifacts: result.artifacts ?? {},
+    transcript: result.transcript ?? null,
     error: result.error,
   };
+}
+
+export function getTranscriptSourceLabel(state: WorkflowState): string | null {
+  if (!state.transcript) {
+    return null;
+  }
+  if (state.transcript.source === "subtitle") {
+    return `来源：平台字幕${state.transcript.language ? `（${state.transcript.language}）` : ""}`;
+  }
+  return "来源：本地 ASR";
 }
 
 export function mergeProgressEvent(

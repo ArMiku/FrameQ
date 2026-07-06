@@ -10,6 +10,15 @@
 - The desktop history panel becomes a task library built from task manifests. Old flat-output tasks and old `history.json` records are intentionally ignored by this redesign.
 - Transcript review, save, retry AI整理, copy, export, and locate actions should operate by `task_id` and manifest artifacts, not by arbitrary local transcript or audio paths.
 
+## 2026-07-05 YouTube/Bilibili Subtitle-First Transcript Source
+
+- For public YouTube and Bilibili links that complete through `yt-dlp`, FrameQ should request platform subtitle files before local ASR and reuse a valid `.vtt` or `.srt` subtitle as the official transcript when available.
+- Subtitle reuse is an optimization inside the existing single-link workflow. It does not add a subtitle picker, raw subtitle viewer, download center, platform login, cookie import, or private-content bypass.
+- When a usable subtitle is found, FrameQ should still keep the normal video artifact, audio artifact, audio review behavior, transcript result card, history row, and optional AI整理 flow. Only local ASR model loading and inference are skipped.
+- When subtitles are missing, malformed, too short, unsupported, or the Bilibili public fallback path is used, the worker should silently continue through the existing local ASR path and preserve existing recoverable error behavior.
+- `frameq-task.json` should use `schema_version: 2`, keep top-level `model` as the configured ASR fallback model, and add `transcript: { source, language, engine }` for the actual transcript source. Old schema v1 manifests without `transcript` should be interpreted as ASR-sourced.
+- `transcript.md` metadata should distinguish `Platform subtitle` from `Local ASR`. The UI may show the source and language in the transcript detail view, but it should not claim whether a subtitle was manual, automatic, or translated.
+
 ## 2026-07-03 Transcript Audio Review Editor
 
 - The `完整文字稿` detail view should become an audio review and correction surface instead of a read-only searchable text preview.
@@ -30,7 +39,7 @@
 - FrameQ should accept ordinary public YouTube single-video links in the existing single input: `youtube.com/watch?v=...`, `youtu.be/...`, and `youtube.com/shorts/...`.
 - `watch?v=...&list=...` is treated as one video only; the worker must keep `--no-playlist` and ignore playlist context.
 - Playlist pages, channel pages, handle pages, `music.youtube.com`, live-only content, private videos, member-only videos, age/login-restricted videos, and empty short links remain unsupported.
-- YouTube v1 uses the existing `yt-dlp` extractor and existing video -> audio -> local ASR -> optional AI整理 pipeline. It does not add a YouTube crawler, YouTube API integration, login flow, cookie import, proxy setup, download center, stream picker, or batch workflow.
+- YouTube v1 uses the existing `yt-dlp` extractor and existing video -> audio -> transcript -> optional AI整理 pipeline. When a usable platform subtitle is available it may become the transcript source before local ASR; otherwise the task falls back to ASR. It does not add a YouTube crawler, YouTube API integration, login flow, cookie import, proxy setup, download center, stream picker, or batch workflow.
 - The worker should use a transcription-first format policy for YouTube: prefer MP4/M4A video+audio up to 720p, with fallback to available 720p-or-below formats.
 - YouTube failures should remain top-level `VIDEO_DOWNLOAD_FAILED` while surfacing sanitized `YOUTUBE_*` cause prefixes for UI copy: login/verification required, age restricted, private/unavailable, no playable stream, or generic download failure.
 - UI recovery copy should ask the user to retry with a public accessible video and must not instruct users to provide cookies or login.
@@ -97,7 +106,7 @@
 - Worker metadata lookup should use public Bilibili Web APIs for ordinary videos: `x/web-interface/view` for title/pages/cid and `x/player/playurl` with DASH flags for video/audio stream URLs.
 - Worker stream selection should align with EasyDownload's public-video model: parse camelCase and snake_case URL fields, merge backup URLs, prefer AV1 over HEVC over H.264, choose higher bandwidth within the same codec, and choose the highest-bandwidth audio stream.
 - Download should be safe for DASH media: video/audio `.m4s` streaming `.part` writes, resume-safe range validation where available, no-progress timeout, maximum-size guardrails, backup URL retry, and existing-file preservation on failure.
-- Worker merge should use the existing bundled FFmpeg to combine the selected video and audio streams with stream copy into a normal MP4, then continue through the existing `ffprobe`, audio extraction, ASR, history, transcript, summary, mindmap, and insight pipeline without changing the worker JSON result shape.
+- Worker merge should use the existing bundled FFmpeg to combine the selected video and audio streams with stream copy into a normal MP4, then continue through the existing `ffprobe`, audio extraction, ASR, history, transcript, summary, mindmap, and insight pipeline without changing the Bilibili fallback product surface. Subtitle-first reuse applies only to Bilibili `yt-dlp` success paths in v1; public fallback continues through ASR.
 - PGC/bangumi links, login-required videos, member-only streams, DRM-protected streams, unavailable videos, malformed API responses, failed DASH downloads, or failed FFmpeg merges should produce structured recoverable `BILIBILI_*` errors with clear Chinese UI guidance.
 - The fallback must not collect, store, or request browser cookies or `SESSDATA`, must not automate login or QR login, and must not attempt to bypass CAPTCHA, private content, member-only access, or DRM.
 

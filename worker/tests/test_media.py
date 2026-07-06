@@ -63,11 +63,45 @@ def test_build_ytdlp_command_uses_transcription_first_youtube_format_policy() ->
         if value == "--js-runtimes"
     ]
     assert runtime_values == ["deno", "node", "quickjs", "bun"]
+    assert "--write-subs" in command
+    assert "--write-auto-subs" in command
+    assert command[command.index("--sub-langs") + 1] == "zh-Hans,zh-CN,zh-Hant,en,ja,ko"
+    assert command[command.index("--sub-format") + 1] == "best"
+    assert "--convert-subs" not in command
     assert "--cookies" not in command
     assert "--cookies-from-browser" not in command
     assert "--proxy" not in command
     assert "--username" not in command
     assert "--password" not in command
+
+
+def test_build_ytdlp_command_adds_subtitle_args_for_bilibili_only() -> None:
+    command = build_ytdlp_command(
+        "https://www.bilibili.com/video/BV1Aa411c7mD",
+        output_dir=Path("outputs"),
+    )
+
+    assert_ytdlp_module_prefix(command)
+    assert command[-1] == "https://www.bilibili.com/video/BV1Aa411c7mD"
+    assert command[command.index("--sub-langs") + 1] == "zh-Hans,zh-CN,zh-Hant,en,ja,ko"
+    assert "--write-subs" in command
+    assert "--write-auto-subs" in command
+    assert "--sub-format" in command
+    assert "--convert-subs" not in command
+    assert "--cookies" not in command
+    assert "--cookies-from-browser" not in command
+
+
+def test_build_ytdlp_command_does_not_add_subtitle_args_to_other_generic_urls() -> None:
+    command = build_ytdlp_command(
+        "https://www.douyin.com/video/7524373044106677544",
+        output_dir=Path("outputs"),
+    )
+
+    assert "--write-subs" not in command
+    assert "--write-auto-subs" not in command
+    assert "--sub-langs" not in command
+    assert "--sub-format" not in command
 
 
 def test_build_ffprobe_command_outputs_json_for_media_file() -> None:
