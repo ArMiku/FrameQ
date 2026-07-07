@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import { ASR_MODEL_DOWNLOAD_PROGRESS_EVENT } from "./settingsClient";
 import { processVideo, WORKER_PROGRESS_EVENT } from "./workerClient";
+import type { WorkerResult } from "./workflow";
 
 type DesktopWorkerContract = {
   events: {
@@ -12,6 +13,11 @@ type DesktopWorkerContract = {
   };
   asr: {
     defaultModel: string;
+  };
+  insightResult: {
+    schemaVersion: number;
+    itemKeys: string[];
+    preferenceSnapshotArtifact: string;
   };
 };
 
@@ -53,5 +59,21 @@ describe("desktop/worker contract", () => {
         model: contract.asr.defaultModel,
       },
     });
+  });
+
+  test("matches the structured insight result item contract", () => {
+    const contract = loadContract();
+    const insight = {
+      id: 1,
+      topic: "topic",
+      matchReason: "matched",
+      followUpQuestions: ["next"],
+      suitableUse: "content planning",
+      sourceChunkId: 1,
+    } satisfies WorkerResult["insights"][number];
+
+    expect(contract.insightResult.schemaVersion).toBe(1);
+    expect(Object.keys(insight).sort()).toEqual([...contract.insightResult.itemKeys].sort());
+    expect(contract.insightResult.preferenceSnapshotArtifact).toBe("preference_snapshot");
   });
 });

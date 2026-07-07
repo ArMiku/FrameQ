@@ -1,3 +1,7 @@
+import type { Insight } from "./insightPreferences";
+
+export type { Insight };
+
 export type WorkflowStage =
   | "waiting_input"
   | "video_extracting"
@@ -33,7 +37,8 @@ export type TaskArtifactKey =
   | "summary"
   | "mindmap"
   | "insights"
-  | "insights_md";
+  | "insights_md"
+  | "preference_snapshot";
 
 export type TaskArtifacts = Partial<Record<TaskArtifactKey, string>>;
 
@@ -50,7 +55,7 @@ export type WorkerResult = {
   artifacts: TaskArtifacts;
   text: string;
   summary: string;
-  insights: string[];
+  insights: Insight[];
   transcript: TranscriptMetadata | null;
   error: WorkerErrorResult | null;
 };
@@ -82,7 +87,7 @@ export type WorkflowState = {
   progressPercent: number;
   text: string;
   summary: string;
-  insights: string[];
+  insights: Insight[];
   taskId: string | null;
   taskDir: string | null;
   artifacts: TaskArtifacts;
@@ -775,10 +780,22 @@ export function getDetailText(tab: DetailTab, state: WorkflowState): string {
   }
 
   if (tab === "insights") {
-    return state.insights.map((insight, index) => `${index + 1}. ${insight}`).join("\n");
+    return state.insights.map(formatInsightForCopy).join("\n\n");
   }
 
   return "";
+}
+
+function formatInsightForCopy(insight: Insight, index: number): string {
+  return [
+    `${index + 1}. ${insight.topic}`,
+    `匹配理由：${insight.matchReason}`,
+    `启发问题：${insight.followUpQuestions.join("；")}`,
+    `适合用途：${insight.suitableUse}`,
+    insight.sourceChunkId === null ? "" : `来源片段：${insight.sourceChunkId}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function getExportPath(tab: DetailTab, state: WorkflowState): string | null {

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+
+from frameq_worker.models import PreferenceSnapshot
+
 
 def build_topic_plan_prompt(
     text: str,
@@ -50,6 +54,7 @@ def build_question_prompt(
     language: str = "中文",
     global_prompt: str = "",
     question_prompt: str = "",
+    preference_snapshot: PreferenceSnapshot | None = None,
 ) -> str:
     global_prompt_section = ""
     if global_prompt:
@@ -65,11 +70,23 @@ def build_question_prompt(
 {question_prompt}
 """
 
+    preference_prompt_section = ""
+    if preference_snapshot is not None:
+        preference_prompt_section = f"""
+## 个性化偏好快照
+以下 JSON 只用于生成启发话题点，不用于总结或思维导图。
+优先参考 `generationPreferences`，`labelSnapshot` 仅用于理解选项含义。
+```json
+{format_preference_snapshot_for_prompt(preference_snapshot)}
+```
+"""
+
     return f"""
 # 角色使命
 你是一位阅读思考伙伴和议题策展者。你的任务不是把文章改写成阅读理解题，
 而是从文章案例中提炼能够启发用户继续思考的开放式议题问句。
 {global_prompt_section}
+{preference_prompt_section}
 
 ## 核心任务
 根据用户提供的文本（长度：{len(text)} 字），生成不少于 {number} 个高质量问题。
@@ -101,12 +118,77 @@ def build_question_prompt(
 - JSON 数组格式必须正确
 - 输出的 JSON 数组必须严格符合以下结构：
 ```json
-["问题1", "问题2", "..."]
+[
+  {{
+    "topic": "启发话题点",
+    "matchReason": "为什么这个话题匹配文字稿和偏好",
+    "followUpQuestions": ["可以继续追问的问题"],
+    "suitableUse": "适合的使用场景"
+  }}
+]
 ```
 
 ## 待处理文本
 {text}
 """
+
+
+def format_preference_snapshot_for_prompt(snapshot: PreferenceSnapshot) -> str:
+    return json.dumps(
+        {
+            "profile": _profile_to_prompt_dict(snapshot),
+            "profileSkipped": snapshot.profile_skipped,
+            "generationPreferences": {
+                "goal": snapshot.generation_preferences.goal,
+                "scenario": snapshot.generation_preferences.scenario,
+                "angles": list(snapshot.generation_preferences.angles),
+                "audience": snapshot.generation_preferences.audience,
+                "styles": list(snapshot.generation_preferences.styles),
+                "avoid": list(snapshot.generation_preferences.avoid),
+            },
+            "labelSnapshot": {
+                "profile": [
+                    _label_snapshot_item_to_prompt_dict(item)
+                    for item in snapshot.label_snapshot.profile
+                ],
+                "generationPreferences": [
+                    _label_snapshot_item_to_prompt_dict(item)
+                    for item in snapshot.label_snapshot.generation_preferences
+                ],
+            },
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _profile_to_prompt_dict(snapshot: PreferenceSnapshot) -> dict[str, object] | None:
+    if snapshot.profile is None:
+        return None
+    return {
+        "role": snapshot.profile.role,
+        "domain": snapshot.profile.domain,
+        "stage": snapshot.profile.stage,
+        "cityContext": snapshot.profile.city_context,
+        "genderPerspective": snapshot.profile.gender_perspective,
+        "platforms": list(snapshot.profile.platforms),
+        "defaultStyles": list(snapshot.profile.default_styles),
+        "defaultAvoid": list(snapshot.profile.default_avoid),
+    }
+
+
+def _label_snapshot_item_to_prompt_dict(item) -> dict[str, object]:
+    return {
+        "field": item.field,
+        "label": item.label,
+        "values": [
+            {
+                "id": value.id,
+                "label": value.label,
+            }
+            for value in item.values
+        ],
+    }
 
 
 def build_mindmap_prompt(

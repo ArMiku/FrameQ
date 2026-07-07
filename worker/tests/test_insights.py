@@ -14,6 +14,7 @@ from frameq_worker.insightflow import (
 )
 from frameq_worker.insightflow import prompt as prompt_module
 from frameq_worker.insightflow.prompt import build_question_prompt
+from frameq_worker.requests import parse_preference_snapshot
 
 
 class FakeInsightClient:
@@ -34,6 +35,50 @@ class FakeInsightClient:
         if len(self.prompts) <= len(self.responses):
             return self.responses[len(self.prompts) - 1]
         return self.responses[-1]
+
+
+def preference_snapshot():
+    snapshot = parse_preference_snapshot(
+        {
+            "profile": {
+                "role": "content_creator",
+                "domain": "content_media",
+                "stage": "experienced_professional",
+                "cityContext": "new_tier1_city",
+                "genderPerspective": "neutral_perspective",
+                "platforms": ["douyin"],
+                "defaultStyles": ["grounded"],
+                "defaultAvoid": ["clickbait"],
+            },
+            "profileSkipped": False,
+            "generationPreferences": {
+                "goal": "content_creation",
+                "scenario": "short_video",
+                "angles": ["topic_angle"],
+                "audience": "fans_readers",
+                "styles": ["grounded"],
+                "avoid": ["clickbait"],
+            },
+            "labelSnapshot": {
+                "profile": [
+                    {
+                        "field": "role",
+                        "label": "我的角色",
+                        "values": [{"id": "content_creator", "label": "内容创作者"}],
+                    }
+                ],
+                "generationPreferences": [
+                    {
+                        "field": "goal",
+                        "label": "本次目标",
+                        "values": [{"id": "content_creation", "label": "内容创作"}],
+                    }
+                ],
+            },
+        }
+    )
+    assert snapshot is not None
+    return snapshot
 
 
 def _split_markdown_worker(markdown: str, max_length: int, result_queue) -> None:
@@ -94,8 +139,18 @@ def test_generate_insights_from_markdown_writes_json_and_markdown(tmp_path: Path
             ),
             json.dumps(
                 [
-                    "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
-                    "为什么流程编排可能比单点模型能力更关键？",
+                    {
+                        "topic": "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
+                        "matchReason": "文字稿讨论企业 AI 落地与流程编排的关系。",
+                        "followUpQuestions": ["企业如何判断 AI 是否真正进入业务流程？"],
+                        "suitableUse": "内容选题",
+                    },
+                    {
+                        "topic": "为什么流程编排可能比单点模型能力更关键？",
+                        "matchReason": "文字稿强调流程编排比单点模型能力更接近业务价值。",
+                        "followUpQuestions": ["流程编排会如何改变 AI 项目的验收标准？"],
+                        "suitableUse": "复盘拆解",
+                    },
                 ],
                 ensure_ascii=False,
             ),
@@ -109,30 +164,37 @@ def test_generate_insights_from_markdown_writes_json_and_markdown(tmp_path: Path
         client=client,
     )
 
-    assert [insight.text for insight in artifacts.insights] == [
+    assert [insight.topic for insight in artifacts.insights] == [
         "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
         "为什么流程编排可能比单点模型能力更关键？",
     ]
     assert artifacts.json_path.exists()
     assert artifacts.md_path.exists()
     assert json.loads(artifacts.json_path.read_text(encoding="utf-8")) == {
-        "file_id": "demo",
+        "schemaVersion": 1,
         "insights": [
             {
                 "id": 1,
-                "text": "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
-                "label": "",
-                "chunk_id": 1,
+                "topic": "企业级 AI 落地时，什么能力才是真正的价值分水岭？",
+                "matchReason": "文字稿讨论企业 AI 落地与流程编排的关系。",
+                "followUpQuestions": ["企业如何判断 AI 是否真正进入业务流程？"],
+                "suitableUse": "内容选题",
+                "sourceChunkId": 1,
             },
             {
                 "id": 2,
-                "text": "为什么流程编排可能比单点模型能力更关键？",
-                "label": "",
-                "chunk_id": 1,
+                "topic": "为什么流程编排可能比单点模型能力更关键？",
+                "matchReason": "文字稿强调流程编排比单点模型能力更接近业务价值。",
+                "followUpQuestions": ["流程编排会如何改变 AI 项目的验收标准？"],
+                "suitableUse": "复盘拆解",
+                "sourceChunkId": 1,
             },
         ],
     }
     assert "启发话题点" in artifacts.md_path.read_text(encoding="utf-8")
+    assert "匹配理由" in artifacts.md_path.read_text(encoding="utf-8")
+    assert "启发问题" in artifacts.md_path.read_text(encoding="utf-8")
+    assert "适合用途" in artifacts.md_path.read_text(encoding="utf-8")
     assert "话题分段规划师" in client.prompts[0]
     assert "阅读思考伙伴和议题策展者" in client.prompts[1]
     assert "读完就知道可以从哪个角度思考" in client.prompts[1]
@@ -201,8 +263,8 @@ def test_generate_insights_uses_topic_planner_before_question_generation(
     assert "组织流程" in client.prompts[1]
     assert "生成不少于 2 个高质量问题" in client.prompts[1]
     assert "上下文能力" in client.prompts[2]
-    assert [insight.chunk_id for insight in artifacts.insights] == [1, 1, 2]
-    assert [insight.text for insight in artifacts.insights] == [
+    assert [insight.source_chunk_id for insight in artifacts.insights] == [1, 1, 2]
+    assert [insight.topic for insight in artifacts.insights] == [
         "为什么流程编排可能比单点模型能力更关键？",
         "企业应该如何判断 AI 是否真正进入业务流程？",
         "上下文能力为什么会影响 Agent 的可用性？",
@@ -221,6 +283,62 @@ def test_build_question_prompt_accepts_additional_constraints() -> None:
     assert "只关注商业决策。" in prompt
     assert "## 本次问题生成附加要求" in prompt
     assert "避免技术细节题。" in prompt
+
+
+def test_build_question_prompt_includes_compact_preference_context() -> None:
+    prompt = build_question_prompt(
+        "这里是一段待处理文本。",
+        number=1,
+        preference_snapshot=preference_snapshot(),
+    )
+
+    assert "## 个性化偏好快照" in prompt
+    assert "content_creation" in prompt
+    assert "内容创作" in prompt
+    assert "profileSkipped" in prompt
+
+
+def test_generate_insights_applies_preferences_only_to_question_prompts(
+    tmp_path: Path,
+) -> None:
+    client = FakeInsightClient(
+        responses=[
+            json.dumps(
+                [
+                    {
+                        "title": "内容创作",
+                        "summary": "适合做短视频选题。",
+                        "excerpt": "这段文字讨论内容创作。",
+                        "question_count": 1,
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                [
+                    {
+                        "topic": "这段内容可以如何拆成短视频选题？",
+                        "matchReason": "符合内容创作目标。",
+                        "followUpQuestions": ["怎样开头更适合粉丝读者？"],
+                        "suitableUse": "短视频选题",
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+        ]
+    )
+
+    generate_insights_from_markdown(
+        markdown="# 文字稿\n\n这段文字讨论内容创作。",
+        output_dir=tmp_path / "outputs",
+        output_stem="demo",
+        client=client,
+        preference_snapshot=preference_snapshot(),
+    )
+
+    assert "content_creation" not in client.prompts[0]
+    assert "content_creation" in client.prompts[1]
+    assert "内容创作" in client.prompts[1]
 
 
 def test_planner_fallback_uses_one_question_per_thousand_chars(
@@ -271,7 +389,7 @@ def test_topic_planner_failure_falls_back_to_direct_generation(tmp_path: Path) -
     assert len(client.prompts) == 2
     assert "话题分段规划师" in client.prompts[0]
     assert "阅读思考伙伴和议题策展者" in client.prompts[1]
-    assert [insight.text for insight in artifacts.insights] == [
+    assert [insight.topic for insight in artifacts.insights] == [
         "为什么重试应该保留已有文字稿？"
     ]
 
@@ -321,13 +439,22 @@ def test_write_insight_files_rejects_empty_insights(tmp_path: Path) -> None:
 
 def test_write_insight_files_serializes_existing_insights(tmp_path: Path) -> None:
     artifacts = write_insight_files(
-        [Insight(id=1, text="为什么流程编排可能比单点模型能力更关键？", chunk_id=12)],
+        [
+            Insight(
+                id=1,
+                topic="为什么流程编排可能比单点模型能力更关键？",
+                match_reason="文字稿强调流程编排。",
+                follow_up_questions=("团队应该先改哪条流程？",),
+                suitable_use="团队分享",
+                source_chunk_id=12,
+            )
+        ],
         output_dir=tmp_path / "outputs",
         output_stem="demo",
     )
 
-    assert artifacts.json_path.read_text(encoding="utf-8")
-    assert artifacts.md_path.read_text(encoding="utf-8")
+    assert json.loads(artifacts.json_path.read_text(encoding="utf-8"))["schemaVersion"] == 1
+    assert "## 话题点 1" in artifacts.md_path.read_text(encoding="utf-8")
 
 
 def test_generate_summary_from_markdown_writes_summary_and_mermaid_mindmap(

@@ -31,6 +31,31 @@ class FakeInsightClient:
         return '["retry question"]'
 
 
+def valid_preference_snapshot() -> dict[str, object]:
+    return {
+        "profile": None,
+        "profileSkipped": True,
+        "generationPreferences": {
+            "goal": "content_creation",
+            "scenario": "short_video",
+            "angles": ["topic_angle"],
+            "audience": "fans_readers",
+            "styles": ["grounded"],
+            "avoid": [],
+        },
+        "labelSnapshot": {
+            "profile": [],
+            "generationPreferences": [
+                {
+                    "field": "goal",
+                    "label": "本次目标",
+                    "values": [{"id": "content_creation", "label": "内容创作"}],
+                }
+            ],
+        },
+    }
+
+
 def test_worker_pipeline_writes_task_owned_artifacts_and_manifest(tmp_path: Path) -> None:
     output_root = tmp_path / "outputs"
     cache_root = tmp_path / "cache"
@@ -105,6 +130,7 @@ def test_worker_pipeline_writes_task_owned_artifacts_and_manifest(tmp_path: Path
         "transcript_txt": "transcript/transcript.txt",
         "transcript_md": "transcript/transcript.md",
     }
+    assert "preference_snapshot" not in result["artifacts"]
 
     task_dir = Path(str(result["task_dir"]))
     assert task_dir.parent == output_root / "tasks"
@@ -248,7 +274,13 @@ def test_retry_insights_uses_task_manifest_and_updates_same_task(tmp_path: Path)
     )
 
     result = retry_insights_once(
-        json.dumps({"task_id": task_id}),
+        json.dumps(
+            {
+                "task_id": task_id,
+                "preference_snapshot": valid_preference_snapshot(),
+            },
+            ensure_ascii=False,
+        ),
         project_root=tmp_path,
         insight_client=FakeInsightClient(),
         environ={
@@ -262,11 +294,18 @@ def test_retry_insights_uses_task_manifest_and_updates_same_task(tmp_path: Path)
     assert result["artifacts"]["summary"] == "ai/summary.md"
     assert result["artifacts"]["mindmap"] == "ai/mindmap.mmd"
     assert result["artifacts"]["insights"] == "ai/insights.json"
+    assert result["artifacts"]["preference_snapshot"] == "ai/preference-snapshot.json"
     assert (task_dir / "ai" / "summary.md").is_file()
     assert (task_dir / "ai" / "mindmap.mmd").is_file()
     assert (task_dir / "ai" / "insights.json").is_file()
+    preference_snapshot = json.loads(
+        (task_dir / "ai" / "preference-snapshot.json").read_text(encoding="utf-8")
+    )
+    assert preference_snapshot["generationPreferences"]["goal"] == "content_creation"
+    assert preference_snapshot["profileSkipped"] is True
 
     manifest = json.loads((task_dir / "frameq-task.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "completed"
     assert manifest["artifacts"] == result["artifacts"]
+    assert manifest["artifacts"]["preference_snapshot"] == "ai/preference-snapshot.json"
     assert manifest["insights_count"] == 1

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Event } from "@tauri-apps/api/event";
+import type { PreferenceSnapshot } from "./insightPreferences";
 import type { WorkerProgressEvent, WorkerResult, WorkflowStage } from "./workflow";
 
 export type CancelProcessResult = {
@@ -33,6 +34,7 @@ export type ProcessVideoRequest = {
 
 export type RetryInsightsRequest = {
   task_id: string;
+  preference_snapshot?: PreferenceSnapshot;
 };
 
 const defaultWorkerRunner: WorkerCommandRunner = (command, args) => invoke(command, args);
@@ -79,11 +81,15 @@ export async function processVideo(
 
 export async function retryInsights(
   taskId: string,
+  preferenceSnapshot: PreferenceSnapshot | null = null,
   runner: WorkerCommandRunner = defaultWorkerRunner,
 ): Promise<WorkerResult> {
   const request: RetryInsightsRequest = {
     task_id: taskId,
   };
+  if (preferenceSnapshot) {
+    request.preference_snapshot = preferenceSnapshot;
+  }
 
   try {
     return await runner("retry_insights", { request });

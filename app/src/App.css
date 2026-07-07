@@ -988,6 +988,184 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.preference-flow-sheet {
+  max-height: min(720px, calc(100vh - 48px));
+  max-width: 760px;
+}
+
+.preference-flow-content,
+.preference-form {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px 18px;
+}
+
+.preference-panel,
+.preference-summary-group {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.preference-panel {
+  align-items: start;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.preference-panel > svg {
+  color: var(--primary);
+  margin-top: 2px;
+}
+
+.preference-panel strong,
+.preference-summary-group h3,
+.preference-step-header h3 {
+  color: var(--text);
+  font-size: 0.98rem;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.preference-panel p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 4px 0 0;
+}
+
+.preference-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.preference-field {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.preference-field-header,
+.preference-step-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.preference-field-header span {
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.preference-field-header small,
+.preference-step-header span {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.preference-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preference-options.large {
+  align-content: start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.preference-option {
+  background: #f5f6f9;
+  border: 1px solid rgba(60, 60, 67, 0.13);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-control);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  justify-content: flex-start;
+  min-height: 34px;
+  min-width: 0;
+  padding: 7px 10px;
+  text-align: left;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.preference-options.large .preference-option {
+  min-height: 42px;
+}
+
+.preference-option:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: rgba(10, 132, 255, 0.24);
+  box-shadow: var(--shadow-control-hover);
+  color: var(--text);
+}
+
+.preference-option:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.preference-option.selected {
+  background: #edf6ff;
+  border-color: rgba(10, 132, 255, 0.34);
+  color: #075fb6;
+  font-weight: 700;
+}
+
+.preference-option.selected svg {
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.preference-summary-group {
+  gap: 8px;
+}
+
+.preference-summary-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preference-summary-list span {
+  background: #f5f6f9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: 6px 9px;
+}
+
+.preference-confirm-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inspiration-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .modal-content {
   color: #27292e;
   flex: 1 1 auto;
@@ -1003,6 +1181,52 @@ h3 {
   gap: 12px;
   margin: 0;
   padding-left: 24px;
+}
+
+.insight-detail-list {
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.insight-detail-item {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.insight-detail-item h3 {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.insight-detail-item dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.insight-detail-item dl > div {
+  display: grid;
+  gap: 3px;
+}
+
+.insight-detail-item dt {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.insight-detail-item dd {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin: 0;
 }
 
 .transcript-review {

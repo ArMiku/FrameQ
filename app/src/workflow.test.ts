@@ -32,6 +32,22 @@ const DEFAULT_ARTIFACTS = {
   insights: "ai/insights.json",
   insights_md: "ai/insights.md",
 } satisfies WorkerResult["artifacts"];
+const DEFAULT_INSIGHT: WorkerResult["insights"][number] = {
+  id: 1,
+  topic: "第一个话题点",
+  matchReason: "匹配理由",
+  followUpQuestions: ["第一个启发问题"],
+  suitableUse: "内容选题",
+  sourceChunkId: 1,
+};
+const SECOND_INSIGHT: WorkerResult["insights"][number] = {
+  id: 2,
+  topic: "第二个话题点",
+  matchReason: "第二个匹配理由",
+  followUpQuestions: ["第二个启发问题"],
+  suitableUse: "团队分享",
+  sourceChunkId: 2,
+};
 
 function workerResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
   const { artifacts, ...rest } = overrides;
@@ -42,7 +58,7 @@ function workerResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
     artifacts: artifacts ?? DEFAULT_ARTIFACTS,
     text: "完整文字稿",
     summary: "# 要点总结",
-    insights: ["第一个话题点"],
+    insights: [DEFAULT_INSIGHT],
     transcript: null,
     error: null,
     ...rest,
@@ -142,7 +158,12 @@ describe("workflow state model", () => {
     const state = summarizeWorkerResult(workerResult({
       text: "完整文字稿",
       summary: "# 要点总结\n\n## 总览\n这是总结。",
-      insights: ["为什么流程编排可能比单点模型能力更关键？"],
+      insights: [
+        {
+          ...DEFAULT_INSIGHT,
+          topic: "为什么流程编排可能比单点模型能力更关键？",
+        },
+      ],
     }));
 
     expect(state.stage).toBe("completed");
@@ -549,19 +570,33 @@ describe("workflow state model", () => {
     const state = summarizeWorkerResult(workerResult({
       text: "完整文字稿",
       summary: "# 要点总结\n\n- 第一个要点",
-      insights: ["第一个话题点", "第二个话题点"],
+      insights: [DEFAULT_INSIGHT, SECOND_INSIGHT],
     }));
 
     expect(getDetailText("transcript", state)).toBe("完整文字稿");
     expect(getDetailText("summary", state)).toBe("# 要点总结\n\n- 第一个要点");
-    expect(getDetailText("insights", state)).toBe("1. 第一个话题点\n2. 第二个话题点");
+    expect(getDetailText("insights", state)).toBe(
+      [
+        "1. 第一个话题点",
+        "匹配理由：匹配理由",
+        "启发问题：第一个启发问题",
+        "适合用途：内容选题",
+        "来源片段：1",
+        "",
+        "2. 第二个话题点",
+        "匹配理由：第二个匹配理由",
+        "启发问题：第二个启发问题",
+        "适合用途：团队分享",
+        "来源片段：2",
+      ].join("\n"),
+    );
   });
 
   test("selects generated export path for each detail tab", () => {
     const state = summarizeWorkerResult(workerResult({
       text: "完整文字稿",
       summary: "# 要点总结",
-      insights: ["第一个话题点"],
+      insights: [DEFAULT_INSIGHT],
     }));
 
     expect(getExportPath("video", state)).toBe(`${TASK_DIR}/media/video.mp4`);

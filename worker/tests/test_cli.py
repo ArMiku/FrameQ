@@ -225,7 +225,8 @@ def test_run_worker_once_generates_ai_artifacts_in_same_task(tmp_path: Path) -> 
 
     assert result["status"] == "completed"
     assert result["summary"].startswith("#")
-    assert result["insights"] == ["desktop question"]
+    assert result["insights"][0]["topic"] == "desktop question"
+    assert result["insights"][0]["matchReason"]
     assert result["artifacts"]["summary"] == "ai/summary.md"
     assert result["artifacts"]["mindmap"] == "ai/mindmap.mmd"
     assert result["artifacts"]["insights"] == "ai/insights.json"

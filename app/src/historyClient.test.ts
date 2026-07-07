@@ -4,6 +4,24 @@ import {
   historyItemToWorkerResult,
   type HistoryCommandRunner,
 } from "./historyClient";
+import type { WorkerResult } from "./workflow";
+
+const FIRST_INSIGHT: WorkerResult["insights"][number] = {
+  id: 1,
+  topic: "第一个话题点",
+  matchReason: "第一个匹配理由",
+  followUpQuestions: ["第一个启发问题"],
+  suitableUse: "内容选题",
+  sourceChunkId: 1,
+};
+const SECOND_INSIGHT: WorkerResult["insights"][number] = {
+  id: 2,
+  topic: "第二个话题点",
+  matchReason: "第二个匹配理由",
+  followUpQuestions: ["第二个启发问题"],
+  suitableUse: "团队分享",
+  sourceChunkId: 2,
+};
 
 describe("history client", () => {
   test("loads task history from Tauri and maps result fields", async () => {
@@ -38,7 +56,7 @@ describe("history client", () => {
             language: "zh-Hans",
             engine: null,
           },
-          insights: ["第一个话题点", "第二个话题点"],
+          insights: [FIRST_INSIGHT, SECOND_INSIGHT],
         },
       ];
     };
@@ -74,7 +92,7 @@ describe("history client", () => {
           language: "zh-Hans",
           engine: null,
         },
-        insights: ["第一个话题点", "第二个话题点"],
+        insights: [FIRST_INSIGHT, SECOND_INSIGHT],
       },
     ]);
   });

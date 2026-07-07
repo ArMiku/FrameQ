@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import type {
+  Insight,
   TaskArtifacts,
   TranscriptMetadata,
   WorkerErrorResult,
@@ -30,7 +31,7 @@ export type HistoryItemResponse = {
   text: string;
   summary?: string;
   transcript?: TranscriptMetadata | null;
-  insights: string[];
+  insights: Insight[];
 };
 
 export type HistoryItem = {
@@ -48,7 +49,7 @@ export type HistoryItem = {
   text: string;
   summary: string;
   transcript: TranscriptMetadata | null;
-  insights: string[];
+  insights: Insight[];
 };
 
 export type HistoryCommandRunner = (

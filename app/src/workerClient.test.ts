@@ -8,10 +8,41 @@ import {
   type WorkerCommandRunner,
   type WorkerProgressListener,
 } from "./workerClient";
+import { buildPreferenceSnapshot } from "./insightPreferences";
+import type { PreferenceSnapshot } from "./insightPreferences";
 import type { WorkerResult } from "./workflow";
 
 const TASK_ID = "20260705-153012-douyin-demo";
 const TASK_DIR = "outputs/tasks/20260705-153012-douyin-demo";
+const DEFAULT_INSIGHT: WorkerResult["insights"][number] = {
+  id: 1,
+  topic: "为什么流程编排可能比单点模型能力更关键？",
+  matchReason: "文字稿强调流程编排与业务价值相关。",
+  followUpQuestions: ["团队应该先改造哪条流程？"],
+  suitableUse: "内容选题",
+  sourceChunkId: 1,
+};
+const PREFERENCE_SNAPSHOT: PreferenceSnapshot = buildPreferenceSnapshot({
+  profile: {
+    role: "content_creator",
+    domain: "content_media",
+    stage: "experienced_professional",
+    cityContext: "new_tier1_city",
+    genderPerspective: "neutral_perspective",
+    platforms: ["douyin"],
+    defaultStyles: ["grounded"],
+    defaultAvoid: ["clickbait"],
+  },
+  profileSkipped: false,
+  generationPreferences: {
+    goal: "content_creation",
+    scenario: "short_video",
+    angles: ["topic_angle"],
+    audience: "fans_readers",
+    styles: ["grounded"],
+    avoid: ["clickbait"],
+  },
+});
 
 function completedResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
   const { artifacts, transcript, ...rest } = overrides;
@@ -31,7 +62,7 @@ function completedResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
     },
     text: "完整文字稿",
     summary: "# 要点总结",
-    insights: ["为什么流程编排可能比单点模型能力更关键？"],
+    insights: [DEFAULT_INSIGHT],
     transcript: transcript ?? null,
     error: null,
     ...rest,
@@ -66,6 +97,7 @@ describe("worker client", () => {
         },
       },
     ]);
+    expect(calls[0]?.args).not.toHaveProperty("request.preference_snapshot");
     expect(result.status).toBe("completed");
   });
 
@@ -149,11 +181,16 @@ describe("worker client", () => {
       return completedResult({
         text: "已经完成的文字稿。",
         summary: "# 要点总结",
-        insights: ["为什么重试应该只重新生成话题点？"],
+        insights: [
+          {
+            ...DEFAULT_INSIGHT,
+            topic: "为什么重试应该只重新生成话题点？",
+          },
+        ],
       });
     };
 
-    const result = await retryInsights(TASK_ID, runner);
+    const result = await retryInsights(TASK_ID, null, runner);
 
     expect(calls).toEqual([
       {
@@ -168,12 +205,35 @@ describe("worker client", () => {
     expect(result.status).toBe("completed");
   });
 
+  test("invokes the retry command with an optional preference snapshot", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: WorkerCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return completedResult();
+    };
+
+    const result = await retryInsights(TASK_ID, PREFERENCE_SNAPSHOT, runner);
+
+    expect(calls).toEqual([
+      {
+        command: "retry_insights",
+        args: {
+          request: {
+            task_id: TASK_ID,
+            preference_snapshot: PREFERENCE_SNAPSHOT,
+          },
+        },
+      },
+    ]);
+    expect(result.status).toBe("completed");
+  });
+
   test("preserves existing transcript when the retry command fails", async () => {
     const runner: WorkerCommandRunner = async () => {
       throw new Error("retry worker process could not start");
     };
 
-    const result = await retryInsights(TASK_ID, runner);
+    const result = await retryInsights(TASK_ID, null, runner);
 
     expect(result).toEqual({
       status: "partial_completed",
