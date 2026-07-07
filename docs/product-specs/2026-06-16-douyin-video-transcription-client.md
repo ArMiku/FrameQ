@@ -36,7 +36,7 @@
 
 ## 2026-07-07 External Output Audio Playback Cache
 
-- When `FRAMEQ_OUTPUT_DIR` points outside app-local data, transcript review may use a Tauri-controlled playback copy under `$APPLOCALDATA/outputs/.frameq-audio-review/<task_id>/audio.<ext>`.
+- When `FRAMEQ_OUTPUT_DIR` points outside app-local data, transcript review may use a Tauri-controlled playback copy under `$APPLOCALDATA/cache/.frameq-audio-review/<task_id>/audio.<ext>`.
 - `audio_path` remains the original manifest-declared task audio under `<FRAMEQ_OUTPUT_DIR>/tasks/<task_id>/`; `audio_asset_path` is the player-safe path used by the frontend audio element.
 - The playback cache is rebuildable. Clearing it must not delete original task artifacts, and the next transcript detail load should recreate the playback copy from the original source audio if that source still exists.
 - Settings should add manual cache management only: show `Audio playback cache: <size>` and provide a `Clear audio playback cache` action. Automatic age-based or LRU cleanup is deferred for the first management UI.

@@ -9,6 +9,7 @@ FrameQ's app-local temporary task area should be named `cache/` because it store
 - New desktop runs create app-local `cache/` and pass it to the Python worker through `FRAMEQ_CACHE_DIR`.
 - The legacy desktop-worker temporary-dir contract is retired without compatibility fallback.
 - User-visible final artifacts remain under `<FRAMEQ_OUTPUT_DIR>/tasks/<task_id>/`.
+- Rebuildable transcript audio playback copies live under app-local `cache/.frameq-audio-review/<task_id>/`, not under `outputs/`.
 - Existing legacy temporary contents are not migrated or read as task history; the task manifest under the configured output root remains the source of truth.
 - Existing legacy app-local temporary directories are removed during runtime directory setup.
 
@@ -19,4 +20,5 @@ FrameQ's app-local temporary task area should be named `cache/` because it store
 - Worker process command construction sets `FRAMEQ_CACHE_DIR=<app-local>/cache` and does not set any legacy temporary-dir env.
 - Worker default cache resolution falls back to `<project_root>/cache` when no cache env is supplied.
 - Task download scratch files are written under `<cache_root>/tasks/<task_id>/download`.
+- Transcript review playback copies are created and cleared under app-local `cache/.frameq-audio-review`.
 - Documentation refers to app-local `cache/` for temporary task files and keeps `outputs/` as the user artifact root.

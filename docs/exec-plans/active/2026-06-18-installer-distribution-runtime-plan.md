@@ -10,6 +10,7 @@ Make FrameQ installable for ordinary Windows and macOS users without requiring P
 - Keep Qwen adapter code but hide Qwen from release UI until separately packaged and verified.
 - Use Tauri resource directory for read-only bundled runtime files.
 - Use Tauri app-local data directory for `.env`, default `outputs/tasks/<task_id>/`, `cache/tasks/<task_id>/`, and writable model/cache data.
+- Keep rebuildable transcript audio playback copies under app-local `cache/.frameq-audio-review`, separate from user-visible task outputs.
 - Build unsigned internal installer packages first; public release signing/notarization remains a release gate.
 - Installer builds do not require model resources; first-run model status must check app-local data for `MODEL_VERSION.txt`, SenseVoice `model.pt`, and VAD `model.pt`.
 - Default model download source is ModelScope; release operators may configure `FRAMEQ_ASR_MODEL_DOWNLOAD_URL` and `FRAMEQ_ASR_MODEL_DOWNLOAD_SHA256` for a custom archive.

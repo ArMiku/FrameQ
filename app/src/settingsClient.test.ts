@@ -129,22 +129,22 @@ describe("settings client", () => {
       if (command === "get_audio_review_cache_usage") {
         return {
           size_bytes: 1_572_864,
-          cache_path: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\outputs\\.frameq-audio-review",
+          cache_path: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\cache\\.frameq-audio-review",
         };
       }
       return {
         size_bytes: 0,
-        cache_path: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\outputs\\.frameq-audio-review",
+        cache_path: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\cache\\.frameq-audio-review",
       };
     };
 
     await expect(getAudioReviewCacheUsage(runner)).resolves.toEqual({
       sizeBytes: 1_572_864,
-      cachePath: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\outputs\\.frameq-audio-review",
+      cachePath: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\cache\\.frameq-audio-review",
     });
     await expect(clearAudioReviewCache(runner)).resolves.toEqual({
       sizeBytes: 0,
-      cachePath: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\outputs\\.frameq-audio-review",
+      cachePath: "C:\\Users\\demo\\AppData\\Local\\FrameQ\\cache\\.frameq-audio-review",
     });
 
     expect(calls).toEqual([

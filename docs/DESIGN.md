@@ -34,6 +34,7 @@
 - Old tasks without segment timing should show a full-text editor and audio player when possible, with click-to-seek affordances hidden or disabled.
 - If audio is unavailable, show a quiet local-file status while preserving text editing and save actions.
 - Copy should use the current draft text. Export/location should use the saved official transcript and, when unsaved changes exist, prompt the user to save first.
+- Settings should describe audio playback copies as a rebuildable app-local cache and keep them separate from user-visible task output folders.
 
 ## 2026-06-29 YouTube Download UX
 

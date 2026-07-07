@@ -6,7 +6,7 @@ use tauri::AppHandle;
 
 use crate::{
     ensure_runtime_dirs, path_to_env_string, resolve_runtime_paths, RuntimePaths,
-    AUDIO_REVIEW_CACHE_DIR_NAME,
+    AUDIO_REVIEW_CACHE_DIR_NAME, CACHE_DIR_NAME,
 };
 
 pub(crate) const DOTENV_FILE_NAME: &str = ".env";
@@ -95,7 +95,7 @@ pub(crate) fn get_audio_review_cache_usage(
 ) -> Result<AudioReviewCacheUsageView, String> {
     let paths = resolve_runtime_paths(&app)?;
     ensure_runtime_dirs(&paths)?;
-    audio_review_cache_usage_from_outputs(&paths.user_data_dir.join("outputs"))
+    audio_review_cache_usage_from_cache(&paths.user_data_dir.join(CACHE_DIR_NAME))
 }
 
 #[tauri::command]
@@ -104,7 +104,7 @@ pub(crate) fn clear_audio_review_cache(
 ) -> Result<AudioReviewCacheUsageView, String> {
     let paths = resolve_runtime_paths(&app)?;
     ensure_runtime_dirs(&paths)?;
-    clear_audio_review_cache_from_outputs(&paths.user_data_dir.join("outputs"))
+    clear_audio_review_cache_from_cache(&paths.user_data_dir.join(CACHE_DIR_NAME))
 }
 
 pub(crate) fn load_llm_config_from_file(path: &Path) -> Result<LlmConfigView, String> {
@@ -149,22 +149,22 @@ pub(crate) fn env_path(paths: &RuntimePaths) -> PathBuf {
     paths.user_data_dir.join(DOTENV_FILE_NAME)
 }
 
-pub(crate) fn audio_review_cache_usage_from_outputs(
-    outputs_root: &Path,
+pub(crate) fn audio_review_cache_usage_from_cache(
+    cache_root: &Path,
 ) -> Result<AudioReviewCacheUsageView, String> {
-    let outputs_root = ensure_canonical_dir(outputs_root, "app-local outputs directory")?;
-    let cache_dir = audio_review_cache_dir(&outputs_root);
+    let cache_root = ensure_canonical_dir(cache_root, "app-local cache directory")?;
+    let cache_dir = audio_review_cache_dir(&cache_root);
     Ok(AudioReviewCacheUsageView {
         size_bytes: directory_size_bytes(&cache_dir)?,
         cache_path: path_to_env_string(cache_dir),
     })
 }
 
-pub(crate) fn clear_audio_review_cache_from_outputs(
-    outputs_root: &Path,
+pub(crate) fn clear_audio_review_cache_from_cache(
+    cache_root: &Path,
 ) -> Result<AudioReviewCacheUsageView, String> {
-    let outputs_root = ensure_canonical_dir(outputs_root, "app-local outputs directory")?;
-    let cache_dir = audio_review_cache_dir(&outputs_root);
+    let cache_root = ensure_canonical_dir(cache_root, "app-local cache directory")?;
+    let cache_dir = audio_review_cache_dir(&cache_root);
     if cache_dir.exists() {
         let metadata = fs::symlink_metadata(&cache_dir)
             .map_err(|error| format!("Failed to inspect audio playback cache: {error}"))?;
@@ -174,9 +174,9 @@ pub(crate) fn clear_audio_review_cache_from_outputs(
         let canonical_cache = cache_dir
             .canonicalize()
             .map_err(|error| format!("Failed to resolve audio playback cache: {error}"))?;
-        if canonical_cache == outputs_root || !canonical_cache.starts_with(&outputs_root) {
+        if canonical_cache == cache_root || !canonical_cache.starts_with(&cache_root) {
             return Err(
-                "Refusing to clear audio playback cache outside app-local outputs.".to_string(),
+                "Refusing to clear audio playback cache outside app-local cache.".to_string(),
             );
         }
         if metadata.is_dir() {
@@ -187,11 +187,11 @@ pub(crate) fn clear_audio_review_cache_from_outputs(
                 .map_err(|error| format!("Failed to clear audio playback cache file: {error}"))?;
         }
     }
-    audio_review_cache_usage_from_outputs(&outputs_root)
+    audio_review_cache_usage_from_cache(&cache_root)
 }
 
-fn audio_review_cache_dir(outputs_root: &Path) -> PathBuf {
-    outputs_root.join(AUDIO_REVIEW_CACHE_DIR_NAME)
+fn audio_review_cache_dir(cache_root: &Path) -> PathBuf {
+    cache_root.join(AUDIO_REVIEW_CACHE_DIR_NAME)
 }
 
 fn ensure_canonical_dir(path: &Path, label: &str) -> Result<PathBuf, String> {
@@ -387,15 +387,17 @@ fn sanitize_optional_env_value(value: String, label: &str) -> Result<String, Str
 
 #[cfg(test)]
 mod tests {
-    use super::{audio_review_cache_usage_from_outputs, clear_audio_review_cache_from_outputs};
+    use super::{audio_review_cache_usage_from_cache, clear_audio_review_cache_from_cache};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn audio_review_cache_usage_and_clear_only_touch_playback_cache() {
-        let outputs_root = temp_dir("audio_review_cache_usage_and_clear");
-        let cache_dir = outputs_root.join(".frameq-audio-review");
+        let app_root = temp_dir("audio_review_cache_usage_and_clear");
+        let cache_root = app_root.join("cache");
+        let outputs_root = app_root.join("outputs");
+        let cache_dir = cache_root.join(".frameq-audio-review");
         let task_audio = outputs_root
             .join("tasks")
             .join("task-1")
@@ -410,13 +412,12 @@ mod tests {
             .expect("write cache metadata");
         fs::write(&task_audio, [3_u8; 11]).expect("write original task audio");
 
-        let usage = audio_review_cache_usage_from_outputs(&outputs_root).expect("read cache usage");
+        let usage = audio_review_cache_usage_from_cache(&cache_root).expect("read cache usage");
 
         assert_eq!(usage.size_bytes, 12);
-        assert!(usage.cache_path.ends_with("outputs/.frameq-audio-review"));
+        assert!(usage.cache_path.ends_with("cache/.frameq-audio-review"));
 
-        let cleared =
-            clear_audio_review_cache_from_outputs(&outputs_root).expect("clear audio cache");
+        let cleared = clear_audio_review_cache_from_cache(&cache_root).expect("clear audio cache");
 
         assert_eq!(cleared.size_bytes, 0);
         assert!(!cache_dir.exists());
@@ -431,9 +432,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system time")
             .as_nanos();
-        let dir = std::env::temp_dir()
-            .join(format!("frameq-{test_name}-{unique}"))
-            .join("outputs");
+        let dir = std::env::temp_dir().join(format!("frameq-{test_name}-{unique}"));
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
     }

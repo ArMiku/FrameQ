@@ -2094,7 +2094,7 @@ function App() {
                     <section id="settings-storage" className="sheet-form-section audio-cache-settings-section">
                     <div className="form-section-heading">
                       <h3>存储与缓存</h3>
-                      <p>临时播放缓存保存在 app-local cache；清理不会删除原始任务音频。</p>
+                      <p>临时播放缓存保存在 app-local cache/.frameq-audio-review；清理不会删除原始任务音频。</p>
                     </div>
                     <div className="config-file-row audio-cache-row">
                       <code title={audioReviewCacheUsage?.cachePath ?? ""}>

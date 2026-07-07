@@ -1,4 +1,4 @@
-use crate::{ensure_runtime_dirs, resolve_runtime_paths, task_manifest};
+use crate::{ensure_runtime_dirs, resolve_runtime_paths, task_manifest, CACHE_DIR_NAME};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -58,7 +58,12 @@ pub(crate) fn load_transcript_detail(
     let paths = resolve_runtime_paths(&app)?;
     ensure_runtime_dirs(&paths)?;
     let output_root = task_manifest::configured_output_root(&paths)?;
-    load_transcript_detail_from_roots(&output_root, &paths.user_data_dir.join("outputs"), request)
+    load_transcript_detail_from_roots(
+        &output_root,
+        &paths.user_data_dir.join("outputs"),
+        &paths.user_data_dir.join(CACHE_DIR_NAME),
+        request,
+    )
 }
 
 #[tauri::command]
@@ -77,12 +82,18 @@ pub(crate) fn load_transcript_detail_from_output_root(
     output_root: &Path,
     request: LoadTranscriptDetailRequest,
 ) -> Result<TranscriptDetailView, String> {
-    load_transcript_detail_from_roots(output_root, output_root, request)
+    load_transcript_detail_from_roots(
+        output_root,
+        output_root,
+        &output_root.join("cache"),
+        request,
+    )
 }
 
 pub(crate) fn load_transcript_detail_from_roots(
     output_root: &Path,
-    audio_asset_root: &Path,
+    direct_audio_root: &Path,
+    playback_cache_root: &Path,
     request: LoadTranscriptDetailRequest,
 ) -> Result<TranscriptDetailView, String> {
     let (manifest, task_dir) = task_manifest::load_task_manifest(output_root, &request.task_id)?;
@@ -98,7 +109,13 @@ pub(crate) fn load_transcript_detail_from_roots(
     let segments_path = task_manifest::artifact_path(&task_dir, &manifest, "segments")?
         .unwrap_or_else(|| default_segments_path(&task_dir));
     let segments = read_segments_sidecar(&task_dir, &segments_path)?;
-    let audio_paths = load_audio_paths(&task_dir, &manifest, audio_asset_root, &manifest.task_id)?;
+    let audio_paths = load_audio_paths(
+        &task_dir,
+        &manifest,
+        direct_audio_root,
+        playback_cache_root,
+        &manifest.task_id,
+    )?;
     let (audio_path, audio_asset_path) = audio_paths
         .map(|paths| (Some(paths.source_path), Some(paths.asset_path)))
         .unwrap_or((None, None));
@@ -189,7 +206,8 @@ struct AudioPlaybackPaths {
 fn load_audio_paths(
     task_dir: &Path,
     manifest: &task_manifest::TaskManifest,
-    audio_asset_root: &Path,
+    direct_audio_root: &Path,
+    playback_cache_root: &Path,
     task_id: &str,
 ) -> Result<Option<AudioPlaybackPaths>, String> {
     let Some(audio_path) = task_manifest::artifact_path(task_dir, manifest, "audio")? else {
@@ -203,7 +221,12 @@ fn load_audio_paths(
     let source_path = audio_path
         .canonicalize()
         .map_err(|error| format!("Failed to resolve audio: {error}"))?;
-    let asset_path = ensure_audio_asset_path(&source_path, audio_asset_root, task_id)?;
+    let asset_path = ensure_audio_asset_path(
+        &source_path,
+        direct_audio_root,
+        playback_cache_root,
+        task_id,
+    )?;
     Ok(Some(AudioPlaybackPaths {
         source_path: task_manifest::path_to_frontend_string(source_path),
         asset_path: task_manifest::path_to_frontend_string(asset_path),
@@ -212,20 +235,23 @@ fn load_audio_paths(
 
 fn ensure_audio_asset_path(
     source_path: &Path,
-    audio_asset_root: &Path,
+    direct_audio_root: &Path,
+    playback_cache_root: &Path,
     task_id: &str,
 ) -> Result<PathBuf, String> {
-    let audio_asset_root = ensure_canonical_dir(audio_asset_root, "audio playback asset root")?;
-    if source_path.starts_with(&audio_asset_root) {
+    let direct_audio_root = ensure_canonical_dir(direct_audio_root, "direct audio asset root")?;
+    if source_path.starts_with(&direct_audio_root) {
         return Ok(source_path.to_path_buf());
     }
+    let playback_cache_root =
+        ensure_canonical_dir(playback_cache_root, "audio playback cache root")?;
 
     let extension = source_path
         .extension()
         .and_then(|extension| extension.to_str())
         .ok_or_else(|| "Audio artifact has no extension.".to_string())?
         .to_ascii_lowercase();
-    let asset_dir = audio_asset_root
+    let asset_dir = playback_cache_root
         .join(crate::AUDIO_REVIEW_CACHE_DIR_NAME)
         .join(task_id);
     fs::create_dir_all(&asset_dir)
@@ -233,15 +259,13 @@ fn ensure_audio_asset_path(
     let asset_dir = asset_dir
         .canonicalize()
         .map_err(|error| format!("Failed to resolve audio playback directory: {error}"))?;
-    if !asset_dir.starts_with(&audio_asset_root) {
-        return Err(
-            "Refusing to create audio playback asset outside app-local outputs.".to_string(),
-        );
+    if !asset_dir.starts_with(&playback_cache_root) {
+        return Err("Refusing to create audio playback asset outside app-local cache.".to_string());
     }
 
     let asset_path = asset_dir.join(format!("audio.{extension}"));
     copy_audio_asset(source_path, &asset_dir, &asset_path, &extension)?;
-    validate_audio_asset_path(&asset_path, &audio_asset_root)
+    validate_audio_asset_path(&asset_path, &playback_cache_root)
 }
 
 fn copy_audio_asset(
@@ -293,7 +317,7 @@ fn prepare_audio_asset_path(asset_path: &Path) -> Result<(), String> {
 
 fn validate_audio_asset_path(
     asset_path: &Path,
-    audio_asset_root: &Path,
+    playback_cache_root: &Path,
 ) -> Result<PathBuf, String> {
     let metadata = fs::symlink_metadata(asset_path)
         .map_err(|error| format!("Failed to inspect audio playback asset: {error}"))?;
@@ -307,10 +331,10 @@ fn validate_audio_asset_path(
     let asset_path = asset_path
         .canonicalize()
         .map_err(|error| format!("Failed to resolve audio playback asset: {error}"))?;
-    if asset_path.starts_with(audio_asset_root) {
+    if asset_path.starts_with(playback_cache_root) {
         Ok(asset_path)
     } else {
-        Err("Refusing to expose audio playback asset outside app-local outputs.".to_string())
+        Err("Refusing to expose audio playback asset outside app-local cache.".to_string())
     }
 }
 
@@ -568,7 +592,9 @@ mod tests {
     #[test]
     fn load_detail_copies_external_output_audio_to_app_local_playback_path() {
         let output_root = temp_dir("load_detail_external_output_root");
-        let app_local_outputs = temp_dir("load_detail_app_local_outputs");
+        let app_local_root = temp_dir("load_detail_app_local");
+        let app_local_outputs = app_local_root.join("outputs");
+        let app_local_cache = app_local_root.join("cache");
         let task_id = "20260705-153012-douyin-7645505408425004329";
         let task_dir = create_task(&output_root, task_id);
         let source_audio_path = task_dir.join("media").join("audio.wav");
@@ -583,6 +609,7 @@ mod tests {
         let detail = load_transcript_detail_from_roots(
             &output_root,
             &app_local_outputs,
+            &app_local_cache,
             LoadTranscriptDetailRequest {
                 task_id: task_id.to_string(),
             },
@@ -593,15 +620,15 @@ mod tests {
         let audio_asset_path = detail.audio_asset_path.expect("audio asset path");
         assert!(audio_path.ends_with("media/audio.wav"));
         assert!(audio_asset_path.ends_with(
-            ".frameq-audio-review/20260705-153012-douyin-7645505408425004329/audio.wav"
+            "cache/.frameq-audio-review/20260705-153012-douyin-7645505408425004329/audio.wav"
         ));
         assert_ne!(audio_path, audio_asset_path);
-        let app_local_outputs = app_local_outputs
+        let app_local_cache = app_local_cache
             .canonicalize()
-            .expect("resolve app-local outputs")
+            .expect("resolve app-local cache")
             .to_string_lossy()
             .replace('\\', "/");
-        assert!(audio_asset_path.starts_with(&app_local_outputs));
+        assert!(audio_asset_path.starts_with(&app_local_cache));
         assert_eq!(
             fs::read(audio_asset_path).expect("read copied audio"),
             b"fake wav"
@@ -611,7 +638,9 @@ mod tests {
     #[test]
     fn load_detail_replaces_existing_cache_link_without_overwriting_link_target() {
         let output_root = temp_dir("load_detail_replaces_cache_link_output");
-        let app_local_outputs = temp_dir("load_detail_replaces_cache_link_app_local");
+        let app_local_root = temp_dir("load_detail_replaces_cache_link_app_local");
+        let app_local_outputs = app_local_root.join("outputs");
+        let app_local_cache = app_local_root.join("cache");
         let outside_dir = temp_dir("load_detail_replaces_cache_link_outside");
         let task_id = "20260705-153012-douyin-7645505408425004329";
         let task_dir = create_task(&output_root, task_id);
@@ -624,7 +653,7 @@ mod tests {
         fs::write(&source_audio_path, b"fake wav").expect("write audio");
         write_manifest(&task_dir, task_id, false);
 
-        let asset_dir = app_local_outputs
+        let asset_dir = app_local_cache
             .join(crate::AUDIO_REVIEW_CACHE_DIR_NAME)
             .join(task_id);
         fs::create_dir_all(&asset_dir).expect("create asset dir");
@@ -636,6 +665,7 @@ mod tests {
         let detail = load_transcript_detail_from_roots(
             &output_root,
             &app_local_outputs,
+            &app_local_cache,
             LoadTranscriptDetailRequest {
                 task_id: task_id.to_string(),
             },
@@ -646,7 +676,7 @@ mod tests {
             .audio_asset_path
             .expect("audio asset path")
             .ends_with(
-                ".frameq-audio-review/20260705-153012-douyin-7645505408425004329/audio.wav"
+                "cache/.frameq-audio-review/20260705-153012-douyin-7645505408425004329/audio.wav"
             ));
         assert_eq!(
             fs::read(&outside_target).expect("read outside target"),
@@ -661,7 +691,9 @@ mod tests {
     #[test]
     fn load_detail_rejects_symlinked_audio_cache_target_before_copying() {
         let output_root = temp_dir("load_detail_rejects_symlinked_cache_output");
-        let app_local_outputs = temp_dir("load_detail_rejects_symlinked_cache_app_local");
+        let app_local_root = temp_dir("load_detail_rejects_symlinked_cache_app_local");
+        let app_local_outputs = app_local_root.join("outputs");
+        let app_local_cache = app_local_root.join("cache");
         let outside_dir = temp_dir("load_detail_rejects_symlinked_cache_outside");
         let task_id = "20260705-153012-douyin-7645505408425004329";
         let task_dir = create_task(&output_root, task_id);
@@ -674,7 +706,7 @@ mod tests {
         fs::write(&source_audio_path, b"fake wav").expect("write audio");
         write_manifest(&task_dir, task_id, false);
 
-        let asset_dir = app_local_outputs
+        let asset_dir = app_local_cache
             .join(crate::AUDIO_REVIEW_CACHE_DIR_NAME)
             .join(task_id);
         fs::create_dir_all(&asset_dir).expect("create asset dir");
@@ -689,6 +721,7 @@ mod tests {
         let error = load_transcript_detail_from_roots(
             &output_root,
             &app_local_outputs,
+            &app_local_cache,
             LoadTranscriptDetailRequest {
                 task_id: task_id.to_string(),
             },

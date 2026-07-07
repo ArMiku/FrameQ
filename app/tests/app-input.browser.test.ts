@@ -815,13 +815,13 @@ describe("App desktop sheet structure", () => {
                 if (command === "get_audio_review_cache_usage") {
                   return {
                     size_bytes: 1572864,
-                    cache_path: "C:/Users/demo/AppData/Local/FrameQ/outputs/.frameq-audio-review"
+                    cache_path: "C:/Users/demo/AppData/Local/FrameQ/cache/.frameq-audio-review"
                   };
                 }
                 if (command === "clear_audio_review_cache") {
                   return {
                     size_bytes: 0,
-                    cache_path: "C:/Users/demo/AppData/Local/FrameQ/outputs/.frameq-audio-review"
+                    cache_path: "C:/Users/demo/AppData/Local/FrameQ/cache/.frameq-audio-review"
                   };
                 }
                 if (command === "check_first_run") {

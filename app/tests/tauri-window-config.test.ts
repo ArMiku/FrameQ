@@ -119,7 +119,7 @@ describe("Tauri desktop window configuration", () => {
 
     expect(config.app.security?.assetProtocol).toEqual({
       enable: true,
-      scope: ["$APPLOCALDATA/outputs/**"],
+      scope: ["$APPLOCALDATA/outputs/**", "$APPLOCALDATA/cache/.frameq-audio-review/**"],
     });
     expect(manifest).toContain('tauri = { version = "2", features = ["protocol-asset"] }');
   });
