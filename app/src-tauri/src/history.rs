@@ -29,7 +29,7 @@ pub(crate) struct HistoryItemView {
     pub(crate) text: String,
     pub(crate) summary: String,
     pub(crate) transcript: Option<task_manifest::TranscriptMetadata>,
-    pub(crate) insights: Vec<String>,
+    pub(crate) insights: Vec<task_manifest::InsightView>,
 }
 
 #[tauri::command]
@@ -108,7 +108,7 @@ fn read_text_artifact(
 fn read_insights_artifact(
     task_dir: &Path,
     manifest: &task_manifest::TaskManifest,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<task_manifest::InsightView>, String> {
     let Some(path) = task_manifest::artifact_path(task_dir, manifest, "insights")? else {
         return Ok(vec![]);
     };
@@ -131,13 +131,7 @@ fn read_insights_artifact(
 
     Ok(insights
         .iter()
-        .filter_map(|item| {
-            item.as_str().map(str::to_string).or_else(|| {
-                item.get("text")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string)
-            })
-        })
+        .filter_map(task_manifest::parse_insight_view)
         .collect())
 }
 
@@ -160,7 +154,7 @@ mod tests {
         fs::write(task_dir.join("ai").join("summary.md"), "# summary\n").expect("write summary");
         fs::write(
             task_dir.join("ai").join("insights.json"),
-            r#"{"insights":[{"text":"first topic"}]}"#,
+            r#"{"schemaVersion":1,"insights":[{"id":1,"topic":"first topic","matchReason":"matched","followUpQuestions":["next question"],"suitableUse":"content planning","sourceChunkId":7}]}"#,
         )
         .expect("write insights");
         fs::write(
@@ -196,7 +190,13 @@ mod tests {
         );
         assert_eq!(history[0].text, "full transcript");
         assert_eq!(history[0].summary, "# summary");
-        assert_eq!(history[0].insights, vec!["first topic"]);
+        assert_eq!(history[0].insights[0].topic, "first topic");
+        assert_eq!(history[0].insights[0].match_reason, "matched");
+        assert_eq!(
+            history[0].insights[0].follow_up_questions,
+            vec!["next question"]
+        );
+        assert_eq!(history[0].insights[0].source_chunk_id, Some(7));
         assert_eq!(history[0].artifacts["summary"], "ai/summary.md");
     }
 

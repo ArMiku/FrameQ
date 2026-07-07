@@ -713,6 +713,7 @@ describe("App desktop sheet structure", () => {
             groupedSections: document.querySelectorAll('.sheet-form-section').length,
             hasConfigFileSection: Boolean(document.querySelector('.settings-config-file-section')),
             hasUpdateSection: Boolean(document.querySelector('.update-settings-section')),
+            hasInspirationSection: Boolean(document.querySelector('.inspiration-settings-section')),
             hasLocateConfigButton: Boolean(document.querySelector('.config-file-row button')),
             hasPrivacyCallout: Boolean(document.querySelector('.privacy-callout')),
             hasStickyFooter: Boolean(document.querySelector('.sheet-footer')),
@@ -724,9 +725,10 @@ describe("App desktop sheet structure", () => {
 
       expect(sheet.result.value).toEqual({
         hasSheetPanel: true,
-        groupedSections: 3,
+        groupedSections: 4,
         hasConfigFileSection: true,
         hasUpdateSection: true,
+        hasInspirationSection: true,
         hasLocateConfigButton: true,
         hasPrivacyCallout: true,
         hasStickyFooter: true,

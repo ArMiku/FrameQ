@@ -1,0 +1,155 @@
+import { describe, expect, test } from "vitest";
+import {
+  advanceGenerationStep,
+  backGenerationStep,
+  createInsightPreferenceFlow,
+  selectGenerationOption,
+  skipProfileSetupInFlow,
+  startProfileSetupInFlow,
+  startGenerationPreferenceEditing,
+  useDefaultGenerationPreferences,
+} from "./insightPreferenceFlow";
+import type { GenerationPreferences, InspirationProfile } from "./insightPreferences";
+import type { InsightPreferenceState } from "./insightPreferencesClient";
+
+const PROFILE: InspirationProfile = {
+  role: "marketing_sales",
+  domain: "marketing_sales",
+  stage: "manager",
+  cityContext: "new_tier1_city",
+  genderPerspective: "unspecified",
+  platforms: ["douyin"],
+  defaultStyles: ["direct_sharp"],
+  defaultAvoid: [],
+};
+
+const DEFAULT_GENERATION: GenerationPreferences = {
+  goal: "content_creation",
+  scenario: "short_video",
+  angles: ["topic_angle"],
+  audience: "beginners",
+  styles: ["direct_sharp"],
+  avoid: [],
+};
+
+describe("insight preference flow", () => {
+  test("starts with profile setup when no valid profile or skip state exists", () => {
+    const flow = createInsightPreferenceFlow(preferenceState({
+      profile: null,
+      profileSkipped: false,
+      profileStatus: "missing",
+      defaultGenerationPreferences: null,
+    }));
+
+    expect(flow.screen).toBe("profile_intro");
+    expect(flow.profileResetRequired).toBe(false);
+  });
+
+  test("marks invalid profiles as reset-required before generation can continue", () => {
+    const flow = createInsightPreferenceFlow(preferenceState({
+      profile: null,
+      profileSkipped: false,
+      profileStatus: "invalid",
+      profileError: "灵感档案需要重新设置",
+      defaultGenerationPreferences: DEFAULT_GENERATION,
+    }));
+
+    expect(flow.screen).toBe("profile_intro");
+    expect(flow.profileResetRequired).toBe(true);
+    expect(flow.generationPreferences).toEqual(DEFAULT_GENERATION);
+  });
+
+  test("shows default summary for returning users with valid defaults", () => {
+    const flow = createInsightPreferenceFlow(preferenceState({
+      profile: PROFILE,
+      profileSkipped: false,
+      profileStatus: "valid",
+      defaultGenerationPreferences: DEFAULT_GENERATION,
+    }));
+
+    expect(flow.screen).toBe("default_summary");
+    expect(useDefaultGenerationPreferences(flow).screen).toBe("confirmation");
+  });
+
+  test("skipping profile setup moves directly to the six-step preference flow", () => {
+    const flow = createInsightPreferenceFlow(preferenceState({
+      profile: null,
+      profileSkipped: false,
+      profileStatus: "missing",
+      defaultGenerationPreferences: null,
+    }));
+
+    const skipped = skipProfileSetupInFlow(flow);
+
+    expect(skipped.screen).toBe("generation_step");
+    expect(skipped.profileSkipped).toBe(true);
+    expect(skipped.currentStep).toBe("goal");
+  });
+
+  test("can enter profile setup form from the intro screen", () => {
+    const flow = createInsightPreferenceFlow(preferenceState({
+      profile: null,
+      profileSkipped: false,
+      profileStatus: "missing",
+      defaultGenerationPreferences: null,
+    }));
+
+    expect(startProfileSetupInFlow(flow).screen).toBe("profile_form");
+  });
+
+  test("requires selections before advancing required generation steps", () => {
+    const flow = startGenerationPreferenceEditing(
+      createInsightPreferenceFlow(preferenceState({
+        profile: null,
+        profileSkipped: true,
+        profileStatus: "skipped",
+        defaultGenerationPreferences: null,
+      })),
+    );
+
+    expect(flow.currentStep).toBe("goal");
+    expect(flow.canAdvance).toBe(false);
+
+    const withGoal = selectGenerationOption(flow, "goal", "content_creation");
+    expect(withGoal.canAdvance).toBe(true);
+
+    const scenarioStep = advanceGenerationStep(withGoal);
+    expect(scenarioStep.screen).toBe("generation_step");
+    expect(scenarioStep.currentStep).toBe("scenario");
+    expect(scenarioStep.canAdvance).toBe(false);
+    expect(backGenerationStep(scenarioStep).currentStep).toBe("goal");
+  });
+
+  test("allows avoid step to finish without any selected avoid options", () => {
+    let flow = startGenerationPreferenceEditing(
+      createInsightPreferenceFlow(preferenceState({
+        profile: PROFILE,
+        profileSkipped: false,
+        profileStatus: "valid",
+        defaultGenerationPreferences: null,
+      })),
+    );
+
+    flow = advanceGenerationStep(selectGenerationOption(flow, "goal", "content_creation"));
+    flow = advanceGenerationStep(selectGenerationOption(flow, "scenario", "short_video"));
+    flow = advanceGenerationStep(selectGenerationOption(flow, "angles", "topic_angle"));
+    flow = advanceGenerationStep(selectGenerationOption(flow, "audience", "beginners"));
+    flow = advanceGenerationStep(selectGenerationOption(flow, "styles", "direct_sharp"));
+
+    expect(flow.currentStep).toBe("avoid");
+    expect(flow.canAdvance).toBe(true);
+    expect(advanceGenerationStep(flow).screen).toBe("confirmation");
+  });
+});
+
+function preferenceState(overrides: Partial<InsightPreferenceState>): InsightPreferenceState {
+  return {
+    profile: null,
+    profileSkipped: false,
+    profileStatus: "missing",
+    profileError: null,
+    defaultGenerationPreferences: null,
+    preferencesPath: "",
+    ...overrides,
+  };
+}

@@ -11,6 +11,15 @@ The user-visible result is a desktop utility flow, not a marketing-style onboard
 ## Progress
 
 - [x] 2026-07-07: Product spec, current active/completed ExecPlan state, frontend workflow, Tauri commands, worker contracts, and insight generation code were reviewed before implementation planning. Validation: `python scripts\validate_agents_docs.py --level WARN` passed with 0 errors and 0 warnings; `git diff --check` reported CRLF normalization warnings only and no whitespace errors.
+- [x] 2026-07-07: Task 1 created the frontend insight preference registry, TypeScript models, validation helpers, summaries, and preference snapshot builder with TDD coverage. Validation: `npm --prefix app test -- insightPreferences.test.ts` passed with 6 tests; `npm --prefix app test` passed with 127 tests across 21 files; `npm --prefix app run build` passed.
+- [x] 2026-07-07: Task 2 added Tauri app-local `insight-preferences.json` storage, profile save/skip/clear commands, default generation preference save command, Rust-side option-id validation, invalid-profile reset state, and invalid-default clearing. Validation: `cargo test --manifest-path app\src-tauri\Cargo.toml insight_preferences` passed with 6 focused tests; `cargo test --manifest-path app\src-tauri\Cargo.toml` passed with 49 tests.
+- [x] 2026-07-07: Task 3 added the frontend preference client, flow state model, first-use profile setup/skip, default summary, six-step per-run preference wizard, confirmation sheet, settings edit/clear entry points, compact desktop styling, and browser structure test updates for the new settings section. Validation: `npm --prefix app test -- insightPreferences.test.ts insightPreferencesClient.test.ts insightPreferenceFlow.test.ts` passed with 15 tests; `npm --prefix app test` passed with 136 tests across 23 files; `npm --prefix app run build` passed.
+- [x] 2026-07-07: Task 4 passed optional preference snapshots through the `retry_insights` command boundary only, kept `process_video` transcript-only payloads unchanged, added Rust JSON round-trip support, and added Python retry parser dataclasses plus option-id validation. Validation: `npm --prefix app test -- workerClient.test.ts` passed with 8 tests; `cargo test --manifest-path app\src-tauri\Cargo.toml retry_insights_request_round_trips_preference_snapshot_payload` passed; `uv run pytest worker\tests\test_requests.py` passed with 3 tests.
+- [x] 2026-07-07: Task 5 replaced the insight result schema end to end with structured `Insight` objects across Python worker models, generated JSON/Markdown, task manifests, Rust cache/history parsing, TypeScript workflow/history state, detail rendering, and copy text. Validation: `uv run pytest worker\tests` passed with 141 tests; `cargo test --manifest-path app\src-tauri\Cargo.toml` passed with 50 tests; `npm --prefix app test` passed with 138 tests across 23 files.
+- [x] 2026-07-07: Task 6 scoped personalization to insight question generation only by passing the optional preference snapshot into `generate_insights_from_markdown` / `build_question_prompt`, while summary and Mermaid prompt builders remain generic. Validation: worker prompt and pipeline assertions passed inside `uv run pytest worker\tests`.
+- [x] 2026-07-07: Task 7 added task-local `ai/preference-snapshot.json` support, manifest artifact mapping, exact snapshot serialization, and retry-time snapshot writing without restoring historical snapshots into global preferences. Validation: `uv run pytest worker\tests` passed with 141 tests.
+- [x] 2026-07-07: Task 8 updated the structured insight UX with grouped detail rows, readable copy text, preserved `ai/insights.md` export behavior, and a `换个方向` action that reopens only the six-step per-run preference flow before confirmation. Validation: `npm --prefix app test` passed with 138 tests; `npm --prefix app run build` passed.
+- [x] 2026-07-07: Task 9 updated the desktop-worker contract and tests for structured insights plus optional preference snapshots. Packaged worker sync was inspected and skipped because `app/src-tauri/resources/worker/frameq_worker` does not exist in this worktree. Validation: `uv run pytest worker\tests`, `cargo test --manifest-path app\src-tauri\Cargo.toml`, and `npm --prefix app test` passed.
 
 ## Surprises & Discoveries
 
@@ -19,6 +28,8 @@ The user-visible result is a desktop utility flow, not a marketing-style onboard
 - Evidence: `worker/frameq_worker/insightflow/generator.py` writes `{"file_id": ..., "insights": [{"id","text","label","chunk_id"}]}` and Markdown as a simple numbered list. This conflicts with the new required `schemaVersion: 1` and structured `topic`, `matchReason`, `followUpQuestions`, `suitableUse`, `sourceChunkId` schema.
 - Evidence: `app/src/App.tsx` currently opens a single AI整理 confirmation sheet and `app/src/workerClient.ts` sends only `{ task_id }` to `retry_insights`. There is no preference snapshot payload or local profile lifecycle yet.
 - Evidence: `worker/frameq_worker/pipeline.py` calls `generate_summary_from_markdown` and `generate_insights_from_markdown` separately. This gives a clean seam for passing preferences only into insight generation while keeping summary and mindmap prompts unchanged.
+- Evidence: `app/src-tauri/resources/worker` has no `frameq_worker` mirror in this worktree, so changed worker source files did not need a packaged-resource copy for this task.
+- Evidence: `git diff --name-only -- server` returned no files, confirming this implementation did not add server-side preference, transcript, or insight persistence changes.
 
 ## Decision Log
 
@@ -30,9 +41,11 @@ The user-visible result is a desktop utility flow, not a marketing-style onboard
 
 ## Outcomes & Retrospective
 
-Not complete yet. The expected outcome is an end-to-end personalized insight flow with local profile storage, six-step per-run preferences, explicit AI整理 confirmation, structured insight results, and no server-side preference storage.
+The source implementation now provides an end-to-end personalized insight flow with local profile storage, six-step per-run preferences, explicit AI整理 confirmation, structured insight results, task-local preference snapshots, and no server-side preference storage.
 
-Residual risk: this touches a wide contract surface across React state, Tauri serialization, Python worker models, task manifest/history reading, and insight prompt parsing. The implementation should proceed in small test-backed slices and update this section with final command outputs before archiving.
+Automated validation passed on 2026-07-07: `npm --prefix app test` (138 tests), `npm --prefix app run build`, `uv run pytest worker\tests` (141 tests), `uv run ruff check worker`, and `cargo test --manifest-path app\src-tauri\Cargo.toml` (50 tests).
+
+Residual risk: the manual quota-consuming desktop regression was not run in this session because it requires a real completed transcript task plus an authenticated quota checkout path. Packaged worker mirroring was inspected and skipped because the mirror directory is absent.
 
 ## Context and Orientation
 

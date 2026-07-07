@@ -36,6 +36,7 @@ from frameq_worker.model_download import (
 )
 from frameq_worker.models import (
     JobStage,
+    PreferenceSnapshot,
     ProcessRequest,
     ProcessResult,
     TranscriptMetadata,
@@ -154,6 +155,7 @@ def run_insight_generation_step(
     transcript_text: str,
     client: InsightClient | None,
     transcript: TranscriptMetadata | None = None,
+    preference_snapshot: PreferenceSnapshot | None = None,
 ) -> ProcessResult:
     if client is None:
         return ProcessResult(
@@ -201,6 +203,7 @@ def run_insight_generation_step(
             output_dir=output_dir,
             output_stem=output_stem,
             client=client,
+            preference_snapshot=preference_snapshot,
         )
     except InsightGenerationError as exc:
         if generation_error is None:
@@ -230,11 +233,7 @@ def run_insight_generation_step(
         },
         text=transcript_text,
         summary=summary_artifacts.summary if summary_artifacts else "",
-        insights=(
-            [insight.text for insight in insight_artifacts.insights]
-            if insight_artifacts
-            else []
-        ),
+        insights=insight_artifacts.insights if insight_artifacts else [],
         transcript=transcript,
         error=WorkerError(
             code=generation_error.code,

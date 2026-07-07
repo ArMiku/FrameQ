@@ -1,4 +1,5 @@
 from frameq_worker.models import (
+    Insight,
     JobStage,
     ProcessRequest,
     ProcessResult,
@@ -34,7 +35,16 @@ def test_process_result_serializes_task_artifacts_text_and_insights() -> None:
         },
         text="transcript",
         summary="# summary",
-        insights=["question"],
+        insights=[
+            Insight(
+                id=1,
+                topic="question",
+                match_reason="matches the transcript",
+                follow_up_questions=("follow up?",),
+                suitable_use="content planning",
+                source_chunk_id=1,
+            )
+        ],
         transcript=TranscriptMetadata(source="subtitle", language="zh-Hans", engine=None),
     )
 
@@ -54,7 +64,16 @@ def test_process_result_serializes_task_artifacts_text_and_insights() -> None:
         },
         "text": "transcript",
         "summary": "# summary",
-        "insights": ["question"],
+        "insights": [
+            {
+                "id": 1,
+                "topic": "question",
+                "matchReason": "matches the transcript",
+                "followUpQuestions": ["follow up?"],
+                "suitableUse": "content planning",
+                "sourceChunkId": 1,
+            }
+        ],
         "transcript": {
             "source": "subtitle",
             "language": "zh-Hans",

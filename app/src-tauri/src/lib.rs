@@ -13,6 +13,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 mod account;
 mod history;
+mod insight_preferences;
 mod settings;
 mod task_manifest;
 mod transcript_detail;
@@ -60,6 +61,8 @@ struct ProcessVideoRequest {
 #[derive(Debug, Deserialize, Serialize)]
 struct RetryInsightsRequest {
     task_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preference_snapshot: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,7 +80,7 @@ struct ProcessVideoResult {
     artifacts: HashMap<String, String>,
     text: String,
     summary: String,
-    insights: Vec<String>,
+    insights: Vec<task_manifest::InsightView>,
     transcript: Option<task_manifest::TranscriptMetadata>,
     error: Option<WorkerError>,
 }
@@ -1079,7 +1082,7 @@ fn read_cached_text_artifact(
 fn read_cached_insights_artifact(
     task_dir: &Path,
     manifest: &task_manifest::TaskManifest,
-) -> Vec<String> {
+) -> Vec<task_manifest::InsightView> {
     let Some(content) = read_cached_text_artifact(task_dir, manifest, "insights") else {
         return vec![];
     };
@@ -1095,13 +1098,7 @@ fn read_cached_insights_artifact(
 
     insights
         .iter()
-        .filter_map(|item| {
-            item.as_str().map(str::to_string).or_else(|| {
-                item.get("text")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string)
-            })
-        })
+        .filter_map(task_manifest::parse_insight_view)
         .collect()
 }
 
@@ -1586,6 +1583,11 @@ pub fn run() {
             cancel_process,
             settings::get_llm_config,
             settings::save_llm_config,
+            insight_preferences::get_insight_preferences,
+            insight_preferences::save_inspiration_profile,
+            insight_preferences::skip_inspiration_profile,
+            insight_preferences::clear_inspiration_profile,
+            insight_preferences::save_default_generation_preferences,
             history::get_history,
             transcript_detail::load_transcript_detail,
             transcript_detail::save_transcript_edit,
@@ -1630,8 +1632,8 @@ mod tests {
         normalize_resource_dir, parse_worker_output_or_fallback, parse_worker_stdout,
         path_to_env_string, run_blocking_worker_command, sanitize_diagnostic_text,
         summarize_worker_result_for_log, DeepLinkActivationWindow, ProcessVideoRequest,
-        ProcessVideoResult, RuntimePaths, WorkerCommandSpec, WorkerError, WorkerInvocation,
-        WorkerProcessState,
+        ProcessVideoResult, RetryInsightsRequest, RuntimePaths, WorkerCommandSpec, WorkerError,
+        WorkerInvocation, WorkerProcessState,
     };
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -1857,7 +1859,7 @@ mod tests {
             .expect("write summary");
         fs::write(
             task_dir.join("ai").join("insights.json"),
-            r#"{"insights":[{"text":"cached topic"}]}"#,
+            r#"{"schemaVersion":1,"insights":[{"id":1,"topic":"cached topic","matchReason":"matched","followUpQuestions":["next question"],"suitableUse":"content planning","sourceChunkId":3}]}"#,
         )
         .expect("write insights");
         fs::write(
@@ -1910,7 +1912,9 @@ mod tests {
         );
         assert_eq!(cached["text"], "cached transcript");
         assert_eq!(cached["summary"], "# cached summary");
-        assert_eq!(cached["insights"][0], "cached topic");
+        assert_eq!(cached["insights"][0]["topic"], "cached topic");
+        assert_eq!(cached["insights"][0]["matchReason"], "matched");
+        assert_eq!(cached["insights"][0]["sourceChunkId"], 3);
         assert_eq!(cached["transcript"]["source"], "subtitle");
         assert_eq!(cached["transcript"]["language"], "zh-Hans");
         assert!(cached["transcript"]["engine"].is_null());
@@ -1974,7 +1978,7 @@ mod tests {
     fn parse_worker_stdout_uses_last_json_result_when_stdout_contains_logs() {
         let stdout = r##"[funasr] loading model cache
 Some dependency logged to stdout
-{"status":"completed","task_id":"20260705-153012-douyin-demo","task_dir":"D:/FrameQ/outputs/tasks/20260705-153012-douyin-demo","artifacts":{"transcript_txt":"transcript/transcript.txt","summary":"ai/summary.md","mindmap":"ai/mindmap.mmd","insights":"ai/insights.json"},"text":"ok","summary":"# summary","insights":["topic"],"error":null}
+{"status":"completed","task_id":"20260705-153012-douyin-demo","task_dir":"D:/FrameQ/outputs/tasks/20260705-153012-douyin-demo","artifacts":{"transcript_txt":"transcript/transcript.txt","summary":"ai/summary.md","mindmap":"ai/mindmap.mmd","insights":"ai/insights.json"},"text":"ok","summary":"# summary","insights":[{"id":1,"topic":"topic","matchReason":"matched","followUpQuestions":["next"],"suitableUse":"content planning","sourceChunkId":1}],"error":null}
 "##;
 
         let parsed = parse_worker_stdout(stdout.as_bytes()).expect("parse worker result");
@@ -1985,7 +1989,7 @@ Some dependency logged to stdout
         assert_eq!(parsed["summary"], "# summary");
         assert_eq!(parsed["artifacts"]["summary"], "ai/summary.md");
         assert_eq!(parsed["artifacts"]["mindmap"], "ai/mindmap.mmd");
-        assert_eq!(parsed["insights"][0], "topic");
+        assert_eq!(parsed["insights"][0]["topic"], "topic");
     }
 
     #[test]
@@ -2230,6 +2234,39 @@ Some dependency logged to stdout
         assert_eq!(env.get("FRAMEQ_LLM_CHECKOUT_URL"), None);
         assert_eq!(env.get("FRAMEQ_LLM_SESSION_TOKEN"), None);
         assert_eq!(env.get("FRAMEQ_LLM_CHECKOUT_REQUEST_ID"), None);
+    }
+
+    #[test]
+    fn retry_insights_request_round_trips_preference_snapshot_payload() {
+        let payload = serde_json::json!({
+            "task_id": "20260705-153012-douyin-demo",
+            "preference_snapshot": {
+                "profile": null,
+                "profileSkipped": true,
+                "generationPreferences": {
+                    "goal": "content_creation",
+                    "scenario": "short_video",
+                    "angles": ["topic_angle"],
+                    "audience": "fans_readers",
+                    "styles": ["grounded"],
+                    "avoid": []
+                },
+                "labelSnapshot": {
+                    "profile": [],
+                    "generationPreferences": []
+                }
+            }
+        });
+
+        let request: RetryInsightsRequest =
+            serde_json::from_value(payload).expect("deserialize retry request");
+        let serialized = serde_json::to_value(&request).expect("serialize retry request");
+
+        assert_eq!(
+            serialized["preference_snapshot"]["generationPreferences"]["goal"],
+            "content_creation"
+        );
+        assert_eq!(serialized["preference_snapshot"]["profileSkipped"], true);
     }
 
     #[test]

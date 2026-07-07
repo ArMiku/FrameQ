@@ -11,7 +11,7 @@ from frameq_worker.cli import (
     OUTPUT_DIR_ENV,
     PROGRESS_EVENT_PREFIX,
 )
-from frameq_worker.models import JobStage, ProcessResult
+from frameq_worker.models import Insight, JobStage, ProcessResult
 
 
 def load_contract() -> dict[str, object]:
@@ -45,3 +45,21 @@ def test_worker_result_contract_includes_task_artifacts() -> None:
     assert "summary" in contract["workerResultKeys"]
     assert "artifacts" in contract["workerResultKeys"]
     assert "transcript" in contract["workerResultKeys"]
+
+
+def test_structured_insight_contract_keys_match_worker_model() -> None:
+    contract = load_contract()
+    insight = Insight(
+        id=1,
+        topic="topic",
+        match_reason="matched",
+        follow_up_questions=("next",),
+        suitable_use="content planning",
+        source_chunk_id=1,
+    )
+
+    insight_contract = contract["insightResult"]
+    assert isinstance(insight_contract, dict)
+    assert insight_contract["schemaVersion"] == 1
+    assert set(insight.to_dict().keys()) == set(insight_contract["itemKeys"])
+    assert insight_contract["preferenceSnapshotArtifact"] == "preference_snapshot"

@@ -14,11 +14,11 @@
 
 ## 待办
 
-- [ ] 实现启发话题点个性化偏好流程（2026-07-06）— 按 `docs/product-specs/2026-07-06-personalized-insight-preferences.md` 增加本地 `我的灵感档案`、本次 6 步生成偏好、AI整理确认摘要、偏好快照和个性化话题点 prompt；保持选项输入、本地优先、server 不保存用户偏好。✅ 验收：首次设置可跳过、长期档案不重复询问、本次 6 步全为选项、确认页展示云端 LLM 提示、生成结果包含匹配理由、清空档案后新生成不再使用旧档案。
 - [ ] 完成干净 Windows VM 与 macOS arm64/x64 真实安装包验证 — 使用轻量 runtime 资源产出安装包，在无 Python/uv/ffmpeg 的干净机器完成首启模型下载、URL → 下载 → ASR 文字稿，并记录签名/公证发布门禁状态。✅ 验收：干净机器安装、首启模型下载、公开视频转写、app-local 数据保留和签名/公证状态记录完成。⚠️ 需真实 VM 环境和生产签名证书。
 - [x] 桌面端一键升级 GitHub updater 真实下载/安装测试豁免（2026-06-27）— 因中国境内访问 GitHub Releases 速度过慢，本项目 v1 不再把旧版到新版的 GitHub updater 实测作为验收或发布阻塞项。✅ 验收口径：自动化门禁、manifest/artifact 生成、Tauri 签名校验配置和直接分发新版安装包路径成立；未声明国内 GitHub 网络真实升级链路已实测通过。
 
 ## 已完成
+- [x] 实现启发话题点个性化偏好流程（2026-07-06）✅ 增加本地 `我的灵感档案`、本次 6 步生成偏好、AI整理确认摘要、偏好快照和个性化话题点 prompt；偏好只进入 `retry_insights` 并只影响启发话题点生成，summary/Mermaid 保持通用；结果改为结构化话题点并展示匹配理由、启发问题和适合用途；偏好快照作为任务本地产物保存，server 无新增偏好/文字稿/话题点持久化。✅ 自动化门禁通过：app 138、worker 141、Rust 50、ruff、前端 build；真实额度消耗的桌面手工回归未在本会话执行。
 - [x] 增加 YouTube/Bilibili 字幕优先 + ASR 兜底（2026-07-05）✅ 公开视频 `yt-dlp` 成功路径会优先复用 YouTube/Bilibili 平台字幕生成正式文字稿，保留视频/音频产物和音频回听；字幕缺失、解析失败或 Bilibili public fallback 路径静默降级到本地 ASR；manifest、历史记录和文字稿 metadata 记录来源，UI 只显示文字稿来源提示，不展示原始字幕文件；不引入登录、Cookie、绕过或下载中心。✅ worker/parser/manifest/Rust/frontend 自动化门禁通过；真实公网字幕样本 smoke 未在本会话执行，保留外部平台可用性残余风险。
 - [x] 增加 YouTube 公开视频下载能力（2026-06-29）✅ 支持 watch、youtu.be 和 Shorts 单视频链接，复用现有 yt-dlp → ffprobe → audio → ASR → AI整理流程；新增 720p 转写优先格式策略、`YOUTUBE_*` 失败文案和签名 media URL/cookie 提示脱敏；不做登录、Cookie、playlist 批量、live、会员/年龄/私有绕过或下载中心。✅ worker/app/Rust/build/docs/diff gates 通过；真实 YouTube live smoke 未执行，保留外部平台可用性残余风险。
 - [x] 完成 Bilibili 公开视频 fallback（2026-06-27）✅ 支持普通 BV/av 链接、有效 `b23.tv` 短链、`?p=N` 单分 P 选择、公开 `x/web-interface/view` 元数据、`x/player/playurl` DASH 流选择、视频/音频 `.m4s` 安全下载、备选 URL 重试、FFmpeg 合并和 `BILIBILI_*` UI 错误文案；保持转写优先，不做登录、SESSDATA、番剧/PGC、会员内容、DRM、批量下载或下载中心。✅ worker/app/Rust/build/docs/diff 门禁通过；真实公网 Bilibili BV/av/b23.tv smoke 未在本会话执行，保留平台可用性残余风险。

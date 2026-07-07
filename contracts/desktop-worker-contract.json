@@ -23,5 +23,17 @@
     "insights",
     "transcript",
     "error"
-  ]
+  ],
+  "insightResult": {
+    "schemaVersion": 1,
+    "itemKeys": [
+      "id",
+      "topic",
+      "matchReason",
+      "followUpQuestions",
+      "suitableUse",
+      "sourceChunkId"
+    ],
+    "preferenceSnapshotArtifact": "preference_snapshot"
+  }
 }

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from frameq_worker.models import ProcessRequest, ProcessResult
+from frameq_worker.models import PreferenceSnapshot, ProcessRequest, ProcessResult
 
 TASK_MANIFEST_FILE_NAME = "frameq-task.json"
 TASK_SCHEMA_VERSION = 2
@@ -87,6 +87,10 @@ class TaskPaths:
     @property
     def insights_md_path(self) -> Path:
         return self.ai_dir / "insights.md"
+
+    @property
+    def preference_snapshot_path(self) -> Path:
+        return self.ai_dir / "preference-snapshot.json"
 
 
 @dataclass(frozen=True)
@@ -193,6 +197,7 @@ def task_artifacts_for_existing_files(paths: TaskPaths) -> dict[str, str]:
         "mindmap": paths.mindmap_path,
         "insights": paths.insights_json_path,
         "insights_md": paths.insights_md_path,
+        "preference_snapshot": paths.preference_snapshot_path,
     }
     return {
         key: path.relative_to(paths.task_dir).as_posix()
@@ -242,6 +247,17 @@ def write_task_manifest(context: TaskContext, result: ProcessResult) -> None:
     }
     context.paths.manifest_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_preference_snapshot_artifact(
+    paths: TaskPaths,
+    snapshot: PreferenceSnapshot,
+) -> None:
+    paths.ai_dir.mkdir(parents=True, exist_ok=True)
+    paths.preference_snapshot_path.write_text(
+        json.dumps(snapshot.to_dict(), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 

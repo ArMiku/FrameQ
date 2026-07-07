@@ -26,8 +26,129 @@ class ProcessRequest:
 
 
 @dataclass(frozen=True)
+class InspirationProfile:
+    role: str
+    domain: str
+    stage: str
+    city_context: str
+    gender_perspective: str
+    platforms: tuple[str, ...] = ()
+    default_styles: tuple[str, ...] = ()
+    default_avoid: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "role": self.role,
+            "domain": self.domain,
+            "stage": self.stage,
+            "cityContext": self.city_context,
+            "genderPerspective": self.gender_perspective,
+            "platforms": list(self.platforms),
+            "defaultStyles": list(self.default_styles),
+            "defaultAvoid": list(self.default_avoid),
+        }
+
+
+@dataclass(frozen=True)
+class GenerationPreferences:
+    goal: str
+    scenario: str
+    angles: tuple[str, ...]
+    audience: str
+    styles: tuple[str, ...]
+    avoid: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "goal": self.goal,
+            "scenario": self.scenario,
+            "angles": list(self.angles),
+            "audience": self.audience,
+            "styles": list(self.styles),
+            "avoid": list(self.avoid),
+        }
+
+
+@dataclass(frozen=True)
+class PreferenceLabelValue:
+    id: str
+    label: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "id": self.id,
+            "label": self.label,
+        }
+
+
+@dataclass(frozen=True)
+class PreferenceLabelSnapshotItem:
+    field: str
+    label: str
+    values: tuple[PreferenceLabelValue, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "field": self.field,
+            "label": self.label,
+            "values": [value.to_dict() for value in self.values],
+        }
+
+
+@dataclass(frozen=True)
+class PreferenceLabelSnapshot:
+    profile: tuple[PreferenceLabelSnapshotItem, ...]
+    generation_preferences: tuple[PreferenceLabelSnapshotItem, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "profile": [item.to_dict() for item in self.profile],
+            "generationPreferences": [
+                item.to_dict() for item in self.generation_preferences
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class PreferenceSnapshot:
+    profile: InspirationProfile | None
+    profile_skipped: bool
+    generation_preferences: GenerationPreferences
+    label_snapshot: PreferenceLabelSnapshot
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "profile": self.profile.to_dict() if self.profile else None,
+            "profileSkipped": self.profile_skipped,
+            "generationPreferences": self.generation_preferences.to_dict(),
+            "labelSnapshot": self.label_snapshot.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class RetryInsightsRequest:
     task_id: str
+    preference_snapshot: PreferenceSnapshot | None = None
+
+
+@dataclass(frozen=True)
+class Insight:
+    id: int
+    topic: str
+    match_reason: str
+    follow_up_questions: tuple[str, ...]
+    suitable_use: str
+    source_chunk_id: int | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "topic": self.topic,
+            "matchReason": self.match_reason,
+            "followUpQuestions": list(self.follow_up_questions),
+            "suitableUse": self.suitable_use,
+            "sourceChunkId": self.source_chunk_id,
+        }
 
 
 @dataclass(frozen=True)
@@ -67,7 +188,7 @@ class ProcessResult:
     artifacts: dict[str, str] = field(default_factory=dict)
     text: str = ""
     summary: str = ""
-    insights: list[str] = field(default_factory=list)
+    insights: list[Insight] = field(default_factory=list)
     transcript: TranscriptMetadata | None = None
     error: WorkerError | None = None
 
@@ -79,7 +200,7 @@ class ProcessResult:
             "artifacts": self.artifacts,
             "text": self.text,
             "summary": self.summary,
-            "insights": self.insights,
+            "insights": [insight.to_dict() for insight in self.insights],
             "transcript": self.transcript.to_dict() if self.transcript else None,
             "error": self.error.to_dict() if self.error else None,
         }

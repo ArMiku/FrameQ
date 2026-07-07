@@ -10,7 +10,6 @@ import {
   FileText,
   FolderOpen,
   History as HistoryIcon,
-  Lightbulb,
   LoaderCircle,
   Pause,
   Play,
@@ -80,6 +79,7 @@ import {
 import { AccountSheet } from "./features/account/AccountSheet";
 import { ModelGuideSheet } from "./features/asrModel/ModelGuideSheet";
 import { useAsrModelDownload } from "./features/asrModel/useAsrModelDownload";
+import { InsightPreferenceFlow } from "./features/insightPreferences/InsightPreferenceFlow";
 import { ResultWorkspace } from "./features/results/ResultWorkspace";
 import { useAppUpdateController } from "./features/updates/useAppUpdateController";
 import {
@@ -101,6 +101,26 @@ import {
   formatPlaybackRate,
   nextPlaybackRate,
 } from "./audioReviewBarState";
+import {
+  clearInspirationProfile,
+  getInsightPreferences,
+  saveDefaultGenerationPreferences,
+  saveInspirationProfile,
+  skipInspirationProfile,
+} from "./insightPreferencesClient";
+import {
+  createInsightPreferenceFlow,
+  skipProfileSetupInFlow,
+  startGenerationPreferenceEditing,
+  startProfileSetupInFlow,
+  type InsightPreferenceFlowState,
+} from "./insightPreferenceFlow";
+import {
+  buildPreferenceSnapshot,
+  type GenerationPreferences,
+  type InspirationProfile,
+  type PreferenceSnapshot,
+} from "./insightPreferences";
 
 const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }> = {
   waiting_input: {
@@ -239,7 +259,9 @@ function updateStatusLabel(state: UpdateState): string {
 function App() {
   const [workflow, setWorkflow] = useState(createInitialWorkflow);
   const [detailTab, setDetailTab] = useState<DetailTab | null>(null);
-  const [insightConfirmOpen, setInsightConfirmOpen] = useState(false);
+  const [insightPreferenceFlow, setInsightPreferenceFlow] =
+    useState<InsightPreferenceFlowState | null>(null);
+  const [insightPreferenceBusy, setInsightPreferenceBusy] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
   const [transcriptDetail, setTranscriptDetail] = useState<TranscriptDetailResponse | null>(null);
   const [transcriptDraft, setTranscriptDraft] = useState("");
@@ -331,8 +353,8 @@ function App() {
         return;
       }
 
-      if (insightConfirmOpen) {
-        setInsightConfirmOpen(false);
+      if (insightPreferenceFlow) {
+        setInsightPreferenceFlow(null);
         return;
       }
 
@@ -348,7 +370,7 @@ function App() {
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [detailTab, historyOpen, insightConfirmOpen, settingsOpen, modelGuideOpen, modelDownloadActive]);
+  }, [detailTab, historyOpen, insightPreferenceFlow, settingsOpen, modelGuideOpen, modelDownloadActive]);
 
   useEffect(() => {
     let cancelled = false;
@@ -566,7 +588,7 @@ function App() {
   function resetWorkflow() {
     operationIdRef.current += 1;
     setDetailTab(null);
-    setInsightConfirmOpen(false);
+    setInsightPreferenceFlow(null);
     setActionNotice("");
     setWorkflow(createInitialWorkflow());
   }
@@ -582,7 +604,7 @@ function App() {
   async function cancelCurrentProcessing() {
     operationIdRef.current += 1;
     setDetailTab(null);
-    setInsightConfirmOpen(false);
+    setInsightPreferenceFlow(null);
     setActionNotice("");
     setWorkflow((current) => cancelProcessing(current));
     await cancelProcess();
@@ -602,7 +624,7 @@ function App() {
 
     if (card.action === "confirm") {
       setActionNotice("");
-      setInsightConfirmOpen(true);
+      void openInsightPreferenceFlow();
     }
   }
 
@@ -621,12 +643,123 @@ function App() {
     }
   }
 
-  function confirmInsightGeneration() {
-    setInsightConfirmOpen(false);
-    void retryInsightGeneration();
+  async function openInsightPreferenceFlow() {
+    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
+      setActionNotice("文字稿生成后才能继续 AI 整理。");
+      return;
+    }
+
+    setInsightPreferenceBusy(true);
+    setActionNotice("");
+    try {
+      const preferences = await getInsightPreferences();
+      setInsightPreferenceFlow(createInsightPreferenceFlow(preferences));
+    } catch (error) {
+      setActionNotice(`无法读取本地偏好：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setInsightPreferenceBusy(false);
+    }
   }
 
-  async function retryInsightGeneration() {
+  async function openProfileEditorFromSettings() {
+    setSettingsOpen(false);
+    setInsightPreferenceBusy(true);
+    setActionNotice("");
+    try {
+      const preferences = await getInsightPreferences();
+      setInsightPreferenceFlow(startProfileSetupInFlow(createInsightPreferenceFlow(preferences)));
+    } catch (error) {
+      setActionNotice(`无法读取本地偏好：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setInsightPreferenceBusy(false);
+    }
+  }
+
+  async function openDirectionEditorFromDetail() {
+    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
+      setActionNotice("文字稿生成后才能重新选择方向。");
+      return;
+    }
+
+    setDetailTab(null);
+    setInsightPreferenceBusy(true);
+    setActionNotice("");
+    try {
+      const preferences = await getInsightPreferences();
+      setInsightPreferenceFlow(startGenerationPreferenceEditing(createInsightPreferenceFlow(preferences)));
+    } catch (error) {
+      setActionNotice(`无法读取本地偏好：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setInsightPreferenceBusy(false);
+    }
+  }
+
+  async function clearProfileFromSettings() {
+    setSettingsSaving(true);
+    setSettingsNotice("");
+    try {
+      await clearInspirationProfile();
+      setSettingsNotice("已清空灵感档案；下次生成启发话题点时会重新询问。");
+    } catch (error) {
+      setSettingsNotice(`清空失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function skipCurrentProfileSetup() {
+    if (!insightPreferenceFlow) {
+      return;
+    }
+    setInsightPreferenceBusy(true);
+    try {
+      await skipInspirationProfile();
+      setInsightPreferenceFlow(skipProfileSetupInFlow(insightPreferenceFlow));
+    } catch (error) {
+      setActionNotice(`保存跳过状态失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setInsightPreferenceBusy(false);
+    }
+  }
+
+  async function saveCurrentProfile(profile: InspirationProfile) {
+    setInsightPreferenceBusy(true);
+    try {
+      const preferences = await saveInspirationProfile(profile);
+      setInsightPreferenceFlow(startGenerationPreferenceEditing(createInsightPreferenceFlow(preferences)));
+    } catch (error) {
+      setActionNotice(`保存灵感档案失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setInsightPreferenceBusy(false);
+    }
+  }
+
+  async function confirmInsightPreferences(preferences: GenerationPreferences) {
+    if (!canProcessWithAccount(account)) {
+      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结和启发话题点"));
+      return;
+    }
+
+    setInsightPreferenceBusy(true);
+    try {
+      const preferenceSnapshot = insightPreferenceFlow
+        ? buildPreferenceSnapshot({
+            profile: insightPreferenceFlow.profile,
+            profileSkipped: insightPreferenceFlow.profileSkipped,
+            generationPreferences: preferences,
+          })
+        : null;
+      await saveDefaultGenerationPreferences(preferences);
+      setInsightPreferenceFlow(null);
+      await retryInsightGeneration(preferenceSnapshot);
+    } catch (error) {
+      setActionNotice(`启动 AI 整理失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setInsightPreferenceBusy(false);
+    }
+  }
+
+  async function retryInsightGeneration(preferenceSnapshot: PreferenceSnapshot | null = null) {
     if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
       return;
     }
@@ -642,7 +775,7 @@ function App() {
     setActionNotice("");
     setWorkflow((current) => startInsightRetry(current));
 
-    const result = await retryInsights(taskId);
+    const result = await retryInsights(taskId, preferenceSnapshot);
     if (operationIdRef.current !== operationId) {
       return;
     }
@@ -1361,58 +1494,19 @@ function App() {
         onCancelDownload={cancelCurrentAsrModelDownload}
       />
 
-      {insightConfirmOpen ? (
-        <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={() => setInsightConfirmOpen(false)}>
-          <section
-            className="sheet-panel detail-modal insight-confirm-modal insight-confirm-sheet"
-            aria-label="生成要点总结和启发话题点"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="modal-header sheet-header">
-              <div>
-                <p className="section-label">AI organize</p>
-                <h2>生成要点总结和启发话题点</h2>
-              </div>
-              <button className="icon-button" type="button" onClick={() => setInsightConfirmOpen(false)} aria-label="关闭确认面板">
-                <X size={18} />
-              </button>
-            </header>
-            <div className="insight-confirm-content">
-              <p className="settings-warning privacy-callout">
-                <ShieldCheck size={16} />
-                <span>确认后会使用管理员配置的云端 LLM 生成要点总结和启发话题点，文字稿片段会发送到该服务，并消耗 1 次话题点额度。</span>
-              </p>
-              <div className="confirm-summary">
-                <div>
-                  <span className="account-status-label">当前文字稿</span>
-                  <strong>{workflow.text ? `${workflow.text.length.toLocaleString("zh-CN")} 字` : "等待文字稿"}</strong>
-                  <small>{currentTranscriptPath || "文字稿文件生成后才能继续。"}</small>
-                </div>
-                <div>
-                  <span className="account-status-label">账号额度</span>
-                  <strong>{account.llmQuotaRemaining} 次可用</strong>
-                  <small>生成开始时扣除 1 次；视频、音频和文字稿不会重新处理。</small>
-                </div>
-              </div>
-            </div>
-            <div className="settings-actions sheet-footer">
-              <button type="button" className="secondary-button" onClick={() => setInsightConfirmOpen(false)}>
-                <span>取消</span>
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={confirmInsightGeneration}
-                disabled={!workflow.taskId || !workflow.artifacts.transcript_txt || isProcessingStage(workflow.stage)}
-              >
-                <Lightbulb size={16} />
-                <span>确认</span>
-              </button>
-            </div>
-          </section>
-        </div>
+      {insightPreferenceFlow ? (
+        <InsightPreferenceFlow
+          flow={insightPreferenceFlow}
+          busy={insightPreferenceBusy || isProcessingStage(workflow.stage)}
+          accountQuotaRemaining={account.llmQuotaRemaining}
+          transcriptLength={workflow.text.length}
+          transcriptPath={currentTranscriptPath}
+          onFlowChange={setInsightPreferenceFlow}
+          onSkipProfile={skipCurrentProfileSetup}
+          onSaveProfile={saveCurrentProfile}
+          onConfirm={confirmInsightPreferences}
+          onCancel={() => setInsightPreferenceFlow(null)}
+        />
       ) : null}
 
       {detailTab ? (
@@ -1485,6 +1579,12 @@ function App() {
                     <span>{transcriptSaving ? "保存中" : "保存"}</span>
                   </button>
                 ) : null}
+                {detailTab === "insights" ? (
+                  <button type="button" onClick={openDirectionEditorFromDetail} disabled={!workflow.taskId || !workflow.artifacts.transcript_txt}>
+                    <RotateCcw size={16} />
+                    <span>换个方向</span>
+                  </button>
+                ) : null}
                 <button type="button" onClick={exportDetail} disabled={!exportPath}>
                   <Download size={16} />
                   <span>导出</span>
@@ -1497,9 +1597,31 @@ function App() {
                 <p>{workflow.summary || "要点总结生成后将在这里显示。"}</p>
               ) : detailTab === "insights" ? (
                 workflow.insights.length > 0 ? (
-                  <ol>
+                  <ol className="insight-detail-list">
                     {workflow.insights.map((insight) => (
-                      <li key={insight}>{insight}</li>
+                      <li className="insight-detail-item" key={insight.id}>
+                        <h3>{insight.topic}</h3>
+                        <dl>
+                          <div>
+                            <dt>匹配理由</dt>
+                            <dd>{insight.matchReason}</dd>
+                          </div>
+                          <div>
+                            <dt>启发问题</dt>
+                            <dd>{insight.followUpQuestions.join("；")}</dd>
+                          </div>
+                          <div>
+                            <dt>适合用途</dt>
+                            <dd>{insight.suitableUse}</dd>
+                          </div>
+                          {insight.sourceChunkId === null ? null : (
+                            <div>
+                              <dt>来源片段</dt>
+                              <dd>{insight.sourceChunkId}</dd>
+                            </div>
+                          )}
+                        </dl>
+                      </li>
                     ))}
                   </ol>
                 ) : (
@@ -1767,6 +1889,33 @@ function App() {
                     disabled={settingsLoading || settingsSaving}
                   />
                 </label>
+              </section>
+
+              <section className="sheet-form-section inspiration-settings-section">
+                <div className="form-section-heading">
+                  <h3>灵感档案</h3>
+                  <p>只保存在本机，用于后续启发话题点生成。</p>
+                </div>
+                <div className="inspiration-settings-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={openProfileEditorFromSettings}
+                    disabled={settingsLoading || settingsSaving}
+                  >
+                    <UserRound size={15} />
+                    <span>编辑灵感档案</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={clearProfileFromSettings}
+                    disabled={settingsLoading || settingsSaving}
+                  >
+                    <X size={15} />
+                    <span>清空灵感档案</span>
+                  </button>
+                </div>
               </section>
 
               <section className="sheet-form-section settings-config-file-section">

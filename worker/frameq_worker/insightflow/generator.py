@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from frameq_worker.insightflow.prompt import build_question_prompt, build_topic_plan_prompt
 from frameq_worker.insightflow.splitter import MarkdownSplitter
 from frameq_worker.insightflow.utils import extract_json_from_llm_output
+from frameq_worker.models import Insight, PreferenceSnapshot
 
 QUESTION_GENERATION_LENGTH = 1000
 MAX_TOPIC_PLANS = 8
@@ -28,14 +29,6 @@ class InsightClient(Protocol):
 
 
 @dataclass(frozen=True)
-class Insight:
-    id: int
-    text: str
-    label: str = ""
-    chunk_id: int = 1
-
-
-@dataclass(frozen=True)
 class InsightArtifacts:
     insights: list[Insight]
     json_path: Path
@@ -51,20 +44,29 @@ class TopicPlan:
     question_count: int
 
 
+@dataclass(frozen=True)
+class InsightDraft:
+    topic: str
+    match_reason: str
+    follow_up_questions: tuple[str, ...]
+    suitable_use: str
+
+
 def generate_insights_from_markdown(
     markdown: str,
     output_dir: Path,
     output_stem: str,
     client: InsightClient,
     splitter: MarkdownSplitter | None = None,
+    preference_snapshot: PreferenceSnapshot | None = None,
 ) -> InsightArtifacts:
     chunks = (splitter or MarkdownSplitter()).split(markdown)
     if not chunks:
         raise InsightGenerationError("INSIGHTFLOW_EMPTY_TRANSCRIPT", "Transcript is empty.")
 
-    insights = _generate_questions_from_topic_plan(markdown, client)
+    insights = _generate_questions_from_topic_plan(markdown, client, preference_snapshot)
     if not insights:
-        insights = _generate_questions_from_chunks(chunks, client)
+        insights = _generate_questions_from_chunks(chunks, client, preference_snapshot)
 
     return write_insight_files(insights, output_dir=output_dir, output_stem=output_stem)
 
@@ -72,6 +74,7 @@ def generate_insights_from_markdown(
 def _generate_questions_from_topic_plan(
     markdown: str,
     client: InsightClient,
+    preference_snapshot: PreferenceSnapshot | None,
 ) -> list[Insight]:
     plan_prompt = build_topic_plan_prompt(
         markdown,
@@ -90,12 +93,13 @@ def _generate_questions_from_topic_plan(
             _format_topic_plan_text(topic),
             number=topic.question_count,
             question_prompt="请只围绕当前话题段生成问题，不要扩展到其他话题段。",
+            preference_snapshot=preference_snapshot,
         )
         parsed = extract_json_from_llm_output(client.generate(prompt))
-        _append_unique_questions(
+        _append_unique_insights(
             insights,
             seen,
-            _normalize_questions(parsed),
+            _normalize_insight_drafts(parsed),
             chunk_id=topic.id,
         )
         if len(insights) >= MAX_INSIGHTS:
@@ -107,6 +111,7 @@ def _generate_questions_from_topic_plan(
 def _generate_questions_from_chunks(
     chunks: list[object],
     client: InsightClient,
+    preference_snapshot: PreferenceSnapshot | None,
 ) -> list[Insight]:
     insights: list[Insight] = []
     seen: set[str] = set()
@@ -115,12 +120,16 @@ def _generate_questions_from_chunks(
         if not content:
             continue
         number = calculate_question_count(content)
-        prompt = build_question_prompt(content, number=number)
+        prompt = build_question_prompt(
+            content,
+            number=number,
+            preference_snapshot=preference_snapshot,
+        )
         parsed = extract_json_from_llm_output(client.generate(prompt))
-        _append_unique_questions(
+        _append_unique_insights(
             insights,
             seen,
-            _normalize_questions(parsed),
+            _normalize_insight_drafts(parsed),
             chunk_id=int(getattr(chunk, "id", len(insights) + 1)),
         )
         if len(insights) >= MAX_INSIGHTS:
@@ -218,8 +227,8 @@ def write_insight_files(
         md_path = output_dir / "insights.md"
 
     payload = {
-        "file_id": output_stem,
-        "insights": [asdict(insight) for insight in insights],
+        "schemaVersion": 1,
+        "insights": [insight.to_dict() for insight in insights],
     }
     json_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -230,43 +239,117 @@ def write_insight_files(
     return InsightArtifacts(insights=insights, json_path=json_path, md_path=md_path)
 
 
-def _normalize_questions(parsed: object | None) -> list[str]:
+def _normalize_insight_drafts(parsed: object | None) -> list[InsightDraft]:
     if not isinstance(parsed, list):
         return []
 
-    questions: list[str] = []
+    drafts: list[InsightDraft] = []
     for item in parsed:
         if isinstance(item, str):
             text = item.strip()
+            if text:
+                drafts.append(
+                    InsightDraft(
+                        topic=text,
+                        match_reason="来自文字稿相关片段。",
+                        follow_up_questions=(text,),
+                        suitable_use="启发话题延展",
+                    )
+                )
         elif isinstance(item, dict):
-            text = str(item.get("question") or item.get("text") or "").strip()
-        else:
-            text = ""
-        if text:
-            questions.append(text)
-    return questions
+            topic = str(
+                item.get("topic")
+                or item.get("question")
+                or item.get("text")
+                or ""
+            ).strip()
+            if not topic:
+                continue
+            match_reason = str(
+                item.get("matchReason")
+                or item.get("match_reason")
+                or "来自文字稿相关片段。"
+            ).strip()
+            suitable_use = str(
+                item.get("suitableUse")
+                or item.get("suitable_use")
+                or item.get("label")
+                or "启发话题延展"
+            ).strip()
+            follow_up_questions = _normalize_follow_up_questions(
+                item.get("followUpQuestions")
+                or item.get("follow_up_questions")
+                or item.get("questions")
+                or []
+            )
+            drafts.append(
+                InsightDraft(
+                    topic=topic,
+                    match_reason=match_reason or "来自文字稿相关片段。",
+                    follow_up_questions=follow_up_questions or (topic,),
+                    suitable_use=suitable_use or "启发话题延展",
+                )
+            )
+    return drafts
 
 
-def _append_unique_questions(
+def _normalize_follow_up_questions(raw_value: object) -> tuple[str, ...]:
+    if not isinstance(raw_value, list):
+        return ()
+    questions = tuple(
+        question.strip()
+        for question in raw_value
+        if isinstance(question, str) and question.strip()
+    )
+    return questions[:3]
+
+
+def _append_unique_insights(
     insights: list[Insight],
     seen: set[str],
-    questions: list[str],
+    drafts: list[InsightDraft],
     chunk_id: int,
 ) -> None:
-    for question in questions:
+    for draft in drafts:
         if len(insights) >= MAX_INSIGHTS:
             break
-        dedupe_key = question.strip()
+        dedupe_key = draft.topic.strip()
         if dedupe_key and dedupe_key not in seen:
             seen.add(dedupe_key)
             insights.append(
-                Insight(id=len(insights) + 1, text=dedupe_key, chunk_id=chunk_id)
+                Insight(
+                    id=len(insights) + 1,
+                    topic=dedupe_key,
+                    match_reason=draft.match_reason,
+                    follow_up_questions=draft.follow_up_questions,
+                    suitable_use=draft.suitable_use,
+                    source_chunk_id=chunk_id,
+                )
             )
 
 
 def _format_insights_markdown(insights: list[Insight]) -> str:
     lines = ["# 启发话题点", ""]
     for insight in insights:
-        lines.append(f"{insight.id}. {insight.text}")
+        lines.extend(
+            [
+                f"## 话题点 {insight.id}",
+                "",
+                "### 话题点",
+                insight.topic,
+                "",
+                "### 匹配理由",
+                insight.match_reason,
+                "",
+                "### 启发问题",
+                *[f"- {question}" for question in insight.follow_up_questions],
+                "",
+                "### 适合用途",
+                insight.suitable_use,
+            ]
+        )
+        if insight.source_chunk_id is not None:
+            lines.extend(["", f"来源片段：{insight.source_chunk_id}"])
+        lines.append("")
     lines.append("")
     return "\n".join(lines)

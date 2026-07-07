@@ -38,6 +38,7 @@ from frameq_worker.task_store import (
     ensure_task_dirs,
     load_task_manifest,
     task_context_from_manifest,
+    write_preference_snapshot_artifact,
 )
 
 
@@ -151,6 +152,11 @@ def retry_insights_once(
             ),
         ).to_dict()
     ensure_task_dirs(task_context.paths)
+    if request.preference_snapshot is not None:
+        write_preference_snapshot_artifact(
+            task_context.paths,
+            request.preference_snapshot,
+        )
 
     transcript_text = (
         task_context.paths.transcript_txt_path.read_text(encoding="utf-8").strip()
@@ -176,6 +182,7 @@ def retry_insights_once(
         transcript_text=transcript_text,
         client=configured_insight_client,
         transcript=transcript_metadata_from_manifest(manifest),
+        preference_snapshot=request.preference_snapshot,
     )
 
     return finalize_task_result(task_context, insight_result).to_dict()

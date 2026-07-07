@@ -24,6 +24,17 @@ pub(crate) struct TranscriptMetadata {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InsightView {
+    pub(crate) id: u64,
+    pub(crate) topic: String,
+    pub(crate) match_reason: String,
+    pub(crate) follow_up_questions: Vec<String>,
+    pub(crate) suitable_use: String,
+    pub(crate) source_chunk_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct TaskManifest {
     #[serde(default)]
     pub(crate) schema_version: u64,
@@ -52,6 +63,51 @@ pub(crate) struct TaskManifest {
     pub(crate) text_preview: String,
     #[serde(default)]
     pub(crate) insights_count: usize,
+}
+
+pub(crate) fn parse_insight_view(value: &serde_json::Value) -> Option<InsightView> {
+    let id = value.get("id").and_then(serde_json::Value::as_u64)?;
+    let topic = value
+        .get("topic")
+        .and_then(serde_json::Value::as_str)?
+        .trim()
+        .to_string();
+    if topic.is_empty() {
+        return None;
+    }
+
+    let follow_up_questions = value
+        .get("followUpQuestions")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(InsightView {
+        id,
+        topic,
+        match_reason: value
+            .get("matchReason")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        follow_up_questions,
+        suitable_use: value
+            .get("suitableUse")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        source_chunk_id: value
+            .get("sourceChunkId")
+            .and_then(serde_json::Value::as_u64),
+    })
 }
 
 impl TaskManifest {
