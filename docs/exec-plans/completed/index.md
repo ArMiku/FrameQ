@@ -2,6 +2,7 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-07-per-llm-call-quota-plan.md` | Aligned server-managed LLM quota accounting with the per-cloud-LLM-API-call quota definition. |
 | `2026-07-05-subtitle-first-asr-fallback-plan.md` | Reused public YouTube/Bilibili `yt-dlp` subtitle files as transcript source before local ASR, with ASR fallback and source metadata. |
 | `2026-07-05-task-owned-artifact-layout-plan.md` | Replaced flat output/history paths with task-owned artifact directories and manifest-driven desktop history. |
 | `2026-07-03-transcript-audio-review-editor-plan.md` | Added transcript audio review/editing with optional ASR time segments, safe local Tauri IO, audio playback, block highlight, and save semantics. |
