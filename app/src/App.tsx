@@ -187,6 +187,20 @@ const stageSummary: Record<WorkflowState["stage"], string> = {
   failed: "处理未完成，请查看原因",
 };
 
+type SettingsCategory = "basic" | "inspiration" | "storage" | "updates" | "advanced";
+
+const settingsNavItems: Array<{
+  id: SettingsCategory;
+  label: string;
+  description: string;
+}> = [
+  { id: "basic", label: "基础", description: "模型与输出" },
+  { id: "inspiration", label: "灵感", description: "档案与偏好" },
+  { id: "storage", label: "缓存", description: "本机临时区" },
+  { id: "updates", label: "更新", description: "版本维护" },
+  { id: "advanced", label: "高级", description: "配置文件" },
+];
+
 function formatHistoryDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -313,7 +327,11 @@ function settingsProfileSummaryLines(state: InsightPreferenceState | null, loadi
   }
 
   if (state.profileStatus === "valid") {
-    return summarizeInspirationProfile(state.profile);
+    const summary = summarizeInspirationProfile(state.profile);
+    if (summary.length > 3) {
+      return [...summary.slice(0, 3), `还有 ${summary.length - 3} 项，编辑时可查看`];
+    }
+    return summary;
   }
 
   return ["未设置灵感档案"];
@@ -328,7 +346,8 @@ function settingsGenerationPreferenceLines(state: InsightPreferenceState | null,
     return ["尚未保存默认生成偏好"];
   }
 
-  return summarizeGenerationPreferences(state.defaultGenerationPreferences);
+  const summary = summarizeGenerationPreferences(state.defaultGenerationPreferences);
+  return [`已保存默认生成偏好（${summary.length} 项）`];
 }
 
 function App() {
@@ -351,6 +370,7 @@ function App() {
   const [transcriptAudioPlaying, setTranscriptAudioPlaying] = useState(false);
   const [transcriptPlaybackRate, setTranscriptPlaybackRate] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("basic");
   const [settingsDraft, setSettingsDraft] = useState<LlmConfigDraft>({
     outputDir: "",
     asrModel: "iic/SenseVoiceSmall",
@@ -1129,6 +1149,7 @@ function App() {
   }
 
   async function openSettings() {
+    setSettingsCategory("basic");
     setSettingsOpen(true);
     await loadSettings();
   }
@@ -1942,28 +1963,21 @@ function App() {
               </button>
             </header>
             <form id="settings-form" className="settings-form" onSubmit={submitSettings}>
-              <div className="settings-layout">
+              <div className="settings-layout" data-active-settings-category={settingsCategory}>
                 <nav className="settings-nav" aria-label="设置分类">
-                  <a href="#settings-basic">
-                    <span>基础</span>
-                    <small>模型与输出</small>
-                  </a>
-                  <a href="#settings-inspiration">
-                    <span>灵感</span>
-                    <small>档案与偏好</small>
-                  </a>
-                  <a href="#settings-storage">
-                    <span>缓存</span>
-                    <small>本机临时区</small>
-                  </a>
-                  <a href="#settings-updates">
-                    <span>更新</span>
-                    <small>版本维护</small>
-                  </a>
-                  <a href="#settings-advanced">
-                    <span>高级</span>
-                    <small>配置文件</small>
-                  </a>
+                  {settingsNavItems.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      className={`settings-nav-item ${settingsCategory === item.id ? "selected" : ""}`}
+                      onClick={() => setSettingsCategory(item.id)}
+                      aria-current={settingsCategory === item.id ? "page" : undefined}
+                      data-settings-category={item.id}
+                    >
+                      <span>{item.label}</span>
+                      <small>{item.description}</small>
+                    </button>
+                  ))}
                 </nav>
 
                 <div className="settings-sections">
@@ -1974,7 +1988,8 @@ function App() {
                     </span>
                   </p>
 
-                  <section id="settings-basic" className="sheet-form-section">
+                  {settingsCategory === "basic" ? (
+                    <section id="settings-basic" className="sheet-form-section">
                     <div className="form-section-heading">
                       <h3>模型与输出</h3>
                       <p>这些设置只影响后续任务。</p>
@@ -2019,9 +2034,11 @@ function App() {
                         disabled={settingsLoading || settingsSaving}
                       />
                     </label>
-                  </section>
+                    </section>
+                  ) : null}
 
-                  <section id="settings-inspiration" className="sheet-form-section inspiration-settings-section">
+                  {settingsCategory === "inspiration" ? (
+                    <section id="settings-inspiration" className="sheet-form-section inspiration-settings-section">
                     <div className="form-section-heading">
                       <h3>灵感档案</h3>
                       <p>只保存在本机，用于后续启发话题点生成。</p>
@@ -2041,7 +2058,7 @@ function App() {
                       <div className="inspiration-settings-actions">
                         <button
                           type="button"
-                          className="secondary-button"
+                          className="secondary-button profile-edit-button"
                           onClick={openProfileEditorFromSettings}
                           disabled={settingsLoading || settingsSaving}
                         >
@@ -2050,12 +2067,12 @@ function App() {
                         </button>
                         <button
                           type="button"
-                          className="secondary-button"
+                          className="secondary-button profile-clear-button"
                           onClick={clearProfileFromSettings}
                           disabled={settingsLoading || settingsSaving}
                         >
                           <X size={15} />
-                          <span>清空灵感档案</span>
+                          <span>清空档案</span>
                         </button>
                       </div>
                     </div>
@@ -2070,9 +2087,11 @@ function App() {
                         </div>
                       </div>
                     </div>
-                  </section>
+                    </section>
+                  ) : null}
 
-                  <section id="settings-storage" className="sheet-form-section audio-cache-settings-section">
+                  {settingsCategory === "storage" ? (
+                    <section id="settings-storage" className="sheet-form-section audio-cache-settings-section">
                     <div className="form-section-heading">
                       <h3>存储与缓存</h3>
                       <p>临时播放缓存保存在 app-local cache；清理不会删除原始任务音频。</p>
@@ -2091,9 +2110,11 @@ function App() {
                         <span>清理播放缓存</span>
                       </button>
                     </div>
-                  </section>
+                    </section>
+                  ) : null}
 
-                  <section id="settings-updates" className="sheet-form-section update-settings-section">
+                  {settingsCategory === "updates" ? (
+                    <section id="settings-updates" className="sheet-form-section update-settings-section">
                     <div className="form-section-heading">
                       <h3>应用更新</h3>
                       <p>FrameQ 会升级桌面端和内置 worker；模型缓存和本机产物保持在 app-local data。</p>
@@ -2177,9 +2198,11 @@ function App() {
                         </button>
                       )}
                     </div>
-                  </section>
+                    </section>
+                  ) : null}
 
-                  <section id="settings-advanced" className="sheet-form-section settings-config-file-section">
+                  {settingsCategory === "advanced" ? (
+                    <section id="settings-advanced" className="sheet-form-section settings-config-file-section">
                     <div className="form-section-heading">
                       <h3>本机配置文件</h3>
                       <p>高级本机设置保存在 app-local data 的 .env 文件中，LLM 配置仍由服务端统一管理。</p>
@@ -2196,7 +2219,8 @@ function App() {
                         <span>定位文件</span>
                       </button>
                     </div>
-                  </section>
+                    </section>
+                  ) : null}
 
                   {settingsNotice ? <p className="action-notice inline-notice">{settingsNotice}</p> : null}
                 </div>

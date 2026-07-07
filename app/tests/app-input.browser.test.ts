@@ -711,11 +711,14 @@ describe("App desktop sheet structure", () => {
           expression: `({
             hasSheetPanel: Boolean(document.querySelector('.sheet-panel.settings-sheet')),
             groupedSections: document.querySelectorAll('.sheet-form-section').length,
+            activeCategory: document.querySelector('.settings-layout')?.getAttribute('data-active-settings-category'),
+            hasBasicSection: Boolean(document.querySelector('#settings-basic')),
             hasConfigFileSection: Boolean(document.querySelector('.settings-config-file-section')),
             hasUpdateSection: Boolean(document.querySelector('.update-settings-section')),
             hasInspirationSection: Boolean(document.querySelector('.inspiration-settings-section')),
             hasSettingsLayout: Boolean(document.querySelector('.settings-layout')),
             hasSettingsNav: Boolean(document.querySelector('.settings-nav')),
+            selectedNavCount: document.querySelectorAll('.settings-nav-item.selected').length,
             hasLocateConfigButton: Boolean(document.querySelector('.config-file-row button')),
             hasPrivacyCallout: Boolean(document.querySelector('.privacy-callout')),
             hasStickyFooter: Boolean(document.querySelector('.sheet-footer')),
@@ -727,16 +730,56 @@ describe("App desktop sheet structure", () => {
 
       expect(sheet.result.value).toEqual({
         hasSheetPanel: true,
-        groupedSections: 5,
-        hasConfigFileSection: true,
-        hasUpdateSection: true,
-        hasInspirationSection: true,
+        groupedSections: 1,
+        activeCategory: "basic",
+        hasBasicSection: true,
+        hasConfigFileSection: false,
+        hasUpdateSection: false,
+        hasInspirationSection: false,
         hasSettingsLayout: true,
         hasSettingsNav: true,
-        hasLocateConfigButton: true,
+        selectedNavCount: 1,
+        hasLocateConfigButton: false,
         hasPrivacyCallout: true,
         hasStickyFooter: true,
         hasScrollableBody: true,
+      });
+
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('[data-settings-category=\"inspiration\"]').click()",
+      });
+      await waitForRuntimeCondition(page, "Boolean(document.querySelector('#settings-inspiration'))");
+
+      const switchedSheet = await page.send<{ result: { value: Record<string, unknown> } }>(
+        "Runtime.evaluate",
+        {
+          expression: `({
+            activeCategory: document.querySelector('.settings-layout')?.getAttribute('data-active-settings-category'),
+            groupedSections: document.querySelectorAll('.sheet-form-section').length,
+            hasBasicSection: Boolean(document.querySelector('#settings-basic')),
+            hasInspirationSection: Boolean(document.querySelector('#settings-inspiration')),
+            selectedNavText: document.querySelector('.settings-nav-item.selected')?.textContent ?? '',
+            actionDisplay: getComputedStyle(document.querySelector('.inspiration-settings-actions')).display,
+            actionWrap: getComputedStyle(document.querySelector('.inspiration-settings-actions')).flexWrap,
+            clearButtonColor: getComputedStyle(document.querySelector('.profile-clear-button')).color,
+            actionsSameRow: Math.abs(
+              document.querySelector('.profile-edit-button').getBoundingClientRect().top -
+              document.querySelector('.profile-clear-button').getBoundingClientRect().top
+            ) < 2
+          })`,
+          returnByValue: true,
+        },
+      );
+
+      expect(switchedSheet.result.value).toMatchObject({
+        activeCategory: "inspiration",
+        groupedSections: 1,
+        hasBasicSection: false,
+        hasInspirationSection: true,
+        actionDisplay: "flex",
+        actionWrap: "nowrap",
+        clearButtonColor: "rgb(52, 54, 59)",
+        actionsSameRow: true,
       });
     } finally {
       page.close();
@@ -833,6 +876,10 @@ describe("App desktop sheet structure", () => {
 
       await page.send("Runtime.evaluate", {
         expression: "document.querySelector('button[aria-label=\"应用设置\"]').click()",
+      });
+      await waitForRuntimeCondition(page, "Boolean(document.querySelector('[data-settings-category=\"storage\"]'))");
+      await page.send("Runtime.evaluate", {
+        expression: "document.querySelector('[data-settings-category=\"storage\"]').click()",
       });
       await waitForRuntimeCondition(
         page,
