@@ -843,7 +843,7 @@ h3 {
 
 .settings-modal,
 .settings-sheet {
-  max-width: 660px;
+  max-width: 860px;
 }
 
 .history-modal,
@@ -1786,6 +1786,62 @@ h3 {
 .settings-form {
   display: grid;
   flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-nav {
+  align-content: start;
+  background: rgba(247, 248, 251, 0.58);
+  border-right: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+
+.settings-nav a {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  display: grid;
+  gap: 2px;
+  min-height: 50px;
+  padding: 9px 10px;
+  text-decoration: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.settings-nav a:hover,
+.settings-nav a:focus-visible {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: var(--border);
+  color: var(--text);
+  outline: none;
+}
+
+.settings-nav span {
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.settings-nav small {
+  color: var(--text-soft);
+  font-size: 0.76rem;
+}
+
+.settings-sections {
+  display: grid;
   gap: 14px;
   min-height: 0;
   overflow: auto;
@@ -1812,6 +1868,7 @@ h3 {
   display: grid;
   gap: 12px;
   padding: 14px;
+  scroll-margin-top: 16px;
 }
 
 .form-section-heading {
@@ -1857,6 +1914,50 @@ h3 {
   padding: 9px 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-status-card {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel-quiet);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.settings-status-card.quiet {
+  background: rgba(248, 249, 252, 0.72);
+  box-shadow: none;
+}
+
+.settings-status-card > div {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.settings-status-card strong {
+  color: var(--text);
+  font-size: 0.96rem;
+}
+
+.settings-summary-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-summary-list span {
+  background: #f5f6f9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 6px 9px;
 }
 
 .settings-actions,
@@ -1950,6 +2051,29 @@ h3 {
   .result-grid,
   .account-quota-grid,
   .field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    border-bottom: 1px solid var(--border);
+    border-right: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-nav a {
+    min-height: 48px;
+  }
+
+  .settings-sections {
+    padding: 14px;
+  }
+
+  .model-settings-row,
+  .config-file-row {
     grid-template-columns: 1fr;
   }
 

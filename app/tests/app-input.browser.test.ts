@@ -714,10 +714,12 @@ describe("App desktop sheet structure", () => {
             hasConfigFileSection: Boolean(document.querySelector('.settings-config-file-section')),
             hasUpdateSection: Boolean(document.querySelector('.update-settings-section')),
             hasInspirationSection: Boolean(document.querySelector('.inspiration-settings-section')),
+            hasSettingsLayout: Boolean(document.querySelector('.settings-layout')),
+            hasSettingsNav: Boolean(document.querySelector('.settings-nav')),
             hasLocateConfigButton: Boolean(document.querySelector('.config-file-row button')),
             hasPrivacyCallout: Boolean(document.querySelector('.privacy-callout')),
             hasStickyFooter: Boolean(document.querySelector('.sheet-footer')),
-            hasScrollableBody: getComputedStyle(document.querySelector('.settings-form')).overflowY === 'auto'
+            hasScrollableBody: getComputedStyle(document.querySelector('.settings-sections')).overflowY === 'auto'
           })`,
           returnByValue: true,
         },
@@ -729,6 +731,8 @@ describe("App desktop sheet structure", () => {
         hasConfigFileSection: true,
         hasUpdateSection: true,
         hasInspirationSection: true,
+        hasSettingsLayout: true,
+        hasSettingsNav: true,
         hasLocateConfigButton: true,
         hasPrivacyCallout: true,
         hasStickyFooter: true,
@@ -970,13 +974,18 @@ describe("App result detail modal layout", () => {
                 '<section class="detail-modal settings-modal" role="dialog">' +
                   '<header class="modal-header"><h2>应用设置</h2><button class="icon-button">x</button></header>' +
                   '<form class="settings-form">' +
+                    '<div class="settings-layout">' +
+                      '<nav class="settings-nav"><a href="#settings-basic"><span>基础</span><small>模型与输出</small></a></nav>' +
+                      '<div class="settings-sections">' +
                     '<p class="settings-warning">这里管理本机 ASR、输出目录和配置文件位置。</p>' +
                     fields +
+                      '</div>' +
+                    '</div>' +
                     '<div class="settings-actions"><button>保存配置</button></div>' +
                   '</form>' +
                 '</section>' +
               '</div>';
-            const form = document.querySelector('.settings-form');
+            const form = document.querySelector('.settings-sections');
             form.scrollTop = 240;
             return {
               formClientHeight: form.clientHeight,

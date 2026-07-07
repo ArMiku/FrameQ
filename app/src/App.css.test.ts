@@ -94,4 +94,22 @@ describe("App result workspace layout styles", () => {
     expect(webkitThumbRule).toContain("height: 10px;");
     expect(webkitThumbRule).toContain("width: 10px;");
   });
+
+  test("keeps the settings sheet grouped and scannable", () => {
+    const settingsModalRule = getRuleBody([".settings-modal", ".settings-sheet"]);
+    const layoutRule = getRuleBody([".settings-layout"]);
+    const navRule = getRuleBody([".settings-nav"]);
+    const sectionsRule = getRuleBody([".settings-sections"]);
+    const summaryListRule = getRuleBody([".settings-summary-list"]);
+
+    expect(appTsx).toContain('className="settings-layout"');
+    expect(appTsx).toContain('className="settings-nav"');
+    expect(appTsx).toContain('id="settings-inspiration"');
+    expect(appTsx).toContain('className="settings-summary-list"');
+    expect(settingsModalRule).toContain("max-width: 860px;");
+    expect(layoutRule).toContain("grid-template-columns: 176px minmax(0, 1fr);");
+    expect(navRule).toContain("border-right: 1px solid var(--border);");
+    expect(sectionsRule).toContain("overflow: auto;");
+    expect(summaryListRule).toContain("flex-wrap: wrap;");
+  });
 });
