@@ -10,7 +10,20 @@ def build_topic_plan_prompt(
     max_topics: int = 8,
     max_questions: int = 12,
     language: str = "中文",
+    preference_snapshot: PreferenceSnapshot | None = None,
 ) -> str:
+    preference_prompt_section = ""
+    if preference_snapshot is not None:
+        preference_prompt_section = f"""
+## 个性化偏好快照
+以下 JSON 只用于启发话题点的选段、排序和 question_count 分配，不用于总结或思维导图。
+优先参考 `generationPreferences` 判断哪些话题段更贴近本次目标、场景、关注角度和受众；
+`labelSnapshot` 仅用于理解选项含义。
+```json
+{format_preference_snapshot_for_prompt(preference_snapshot)}
+```
+"""
+
     return f"""
 # 角色使命
 你是一位话题分段规划师。你的任务不是生成问题，而是先把一整段可能没有自然分段的 ASR 文字稿，
@@ -19,10 +32,13 @@ def build_topic_plan_prompt(
 ## 核心任务
 根据用户提供的文字稿（长度：{len(text)} 字），提炼最多 {max_topics} 个高价值话题段。
 所有输出必须使用：{language}。
+{preference_prompt_section}
 
 ## 规划原则
 - 忽略寒暄、重复、口头禅、无信息铺垫和单纯转场。
 - 优先保留有观点、方法、冲突、经验、决策、行业判断或技术落地价值的内容。
+- 个性化偏好只能调整话题段优先级、排序和 `question_count`，不得补充文字稿没有的事实或观点。
+- 当偏好与文字稿事实冲突时，以文字稿事实为准。
 - 每个话题段只聚焦一个主要议题，避免把多个不相关主题混在一起。
 - `excerpt` 必须来自原文字稿或忠实贴近原文表达，用于给后续问题生成提供上下文。
 - `question_count` 必须根据话题密度设置为 1 到 3 之间的整数。

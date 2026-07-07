@@ -1089,17 +1089,7 @@ fn read_cached_insights_artifact(
     let Ok(payload) = serde_json::from_str::<serde_json::Value>(&content) else {
         return vec![];
     };
-    let Some(insights) = payload
-        .get("insights")
-        .and_then(serde_json::Value::as_array)
-    else {
-        return vec![];
-    };
-
-    insights
-        .iter()
-        .filter_map(task_manifest::parse_insight_view)
-        .collect()
+    task_manifest::parse_insights_payload(&payload)
 }
 
 fn normalize_cache_source_url(value: &str) -> String {
@@ -1918,6 +1908,69 @@ mod tests {
         assert_eq!(cached["transcript"]["source"], "subtitle");
         assert_eq!(cached["transcript"]["language"], "zh-Hans");
         assert!(cached["transcript"]["engine"].is_null());
+    }
+
+    #[test]
+    fn cached_process_result_ignores_insights_without_v1_schema() {
+        let output_root = temp_dir("cached_process_result_ignores_insights_without_schema");
+        let task_id = "20260705-153012-youtube-dQw4w9WgXcQ";
+        let task_dir = output_root.join("tasks").join(task_id);
+        fs::create_dir_all(task_dir.join("transcript")).expect("create transcript dir");
+        fs::create_dir_all(task_dir.join("ai")).expect("create ai dir");
+        fs::write(
+            task_dir.join("transcript").join("transcript.txt"),
+            "cached transcript\n",
+        )
+        .expect("write transcript");
+        fs::write(task_dir.join("ai").join("summary.md"), "# cached summary\n")
+            .expect("write summary");
+        fs::write(
+            task_dir.join("ai").join("insights.json"),
+            r#"{"insights":[{"id":1,"topic":"cached topic","matchReason":"matched","followUpQuestions":["next question"],"suitableUse":"content planning","sourceChunkId":3}]}"#,
+        )
+        .expect("write insights");
+        fs::write(
+            task_dir.join("frameq-task.json"),
+            format!(
+                r#"{{
+  "schema_version": 2,
+  "task_id": "{task_id}",
+  "created_at": "2026-07-05T15:30:12Z",
+  "source_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "platform": "youtube",
+  "status": "completed",
+  "artifacts": {{
+    "transcript_txt": "transcript/transcript.txt",
+    "summary": "ai/summary.md",
+    "insights": "ai/insights.json"
+  }},
+  "error": null,
+  "text_preview": "cached transcript",
+  "insights_count": 1
+}}"#
+            ),
+        )
+        .expect("write manifest");
+
+        let request = ProcessVideoRequest {
+            url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_string(),
+            language: "Chinese".to_string(),
+            output_formats: vec!["txt".to_string(), "md".to_string()],
+            model: "iic/SenseVoiceSmall".to_string(),
+            generate_insights: true,
+            insightflow_mode: "embedded".to_string(),
+        };
+
+        let cached = cached_process_result_for_request(&output_root, &request)
+            .expect("read cached result")
+            .expect("same URL should reuse cached task");
+
+        assert_eq!(cached["status"], "completed");
+        assert_eq!(cached["text"], "cached transcript");
+        assert!(cached["insights"]
+            .as_array()
+            .expect("insights array")
+            .is_empty());
     }
 
     #[test]

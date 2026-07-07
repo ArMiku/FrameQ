@@ -159,7 +159,7 @@ def test_run_insight_generation_step_returns_task_style_artifacts(tmp_path: Path
     }
 
 
-def test_run_insight_generation_step_scopes_preferences_to_question_prompt(
+def test_run_insight_generation_step_scopes_preferences_to_insight_prompts(
     tmp_path: Path,
 ) -> None:
     transcript_path = tmp_path / "task" / "transcript" / "transcript.md"
@@ -178,7 +178,7 @@ def test_run_insight_generation_step_scopes_preferences_to_question_prompt(
 
     assert "content_creation" not in client.prompts[0]
     assert "content_creation" not in client.prompts[1]
-    assert "content_creation" not in client.prompts[2]
+    assert "content_creation" in client.prompts[2]
     assert "content_creation" in client.prompts[3]
 
 

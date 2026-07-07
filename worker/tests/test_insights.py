@@ -298,7 +298,7 @@ def test_build_question_prompt_includes_compact_preference_context() -> None:
     assert "profileSkipped" in prompt
 
 
-def test_generate_insights_applies_preferences_only_to_question_prompts(
+def test_generate_insights_applies_preferences_to_planner_and_question_prompts(
     tmp_path: Path,
 ) -> None:
     client = FakeInsightClient(
@@ -336,7 +336,8 @@ def test_generate_insights_applies_preferences_only_to_question_prompts(
         preference_snapshot=preference_snapshot(),
     )
 
-    assert "content_creation" not in client.prompts[0]
+    assert "content_creation" in client.prompts[0]
+    assert "内容创作" in client.prompts[0]
     assert "content_creation" in client.prompts[1]
     assert "内容创作" in client.prompts[1]
 

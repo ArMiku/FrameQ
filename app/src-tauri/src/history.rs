@@ -122,17 +122,7 @@ fn read_insights_artifact(
     let Ok(payload) = serde_json::from_str::<serde_json::Value>(&content) else {
         return Ok(vec![]);
     };
-    let Some(insights) = payload
-        .get("insights")
-        .and_then(serde_json::Value::as_array)
-    else {
-        return Ok(vec![]);
-    };
-
-    Ok(insights
-        .iter()
-        .filter_map(task_manifest::parse_insight_view)
-        .collect())
+    Ok(task_manifest::parse_insights_payload(&payload))
 }
 
 #[cfg(test)]
@@ -225,6 +215,67 @@ mod tests {
         .expect("write manifest");
 
         assert!(load_history_from_output_root(&output_root).is_err());
+    }
+
+    #[test]
+    fn load_history_ignores_insights_without_v1_schema() {
+        let output_root = temp_dir("history_ignores_insights_without_schema");
+        let task_id = "20260705-153012-source-demo";
+        write_task_with_insights_payload(
+            &output_root,
+            task_id,
+            r#"{"insights":[{"id":1,"topic":"first topic","matchReason":"matched","followUpQuestions":["next question"],"suitableUse":"content planning","sourceChunkId":7}]}"#,
+        );
+
+        let history = load_history_from_output_root(&output_root).expect("load history");
+
+        assert_eq!(history.len(), 1);
+        assert!(history[0].insights.is_empty());
+    }
+
+    #[test]
+    fn load_history_ignores_insights_when_any_item_is_invalid() {
+        let output_root = temp_dir("history_ignores_invalid_insight_item");
+        let task_id = "20260705-153012-source-demo";
+        write_task_with_insights_payload(
+            &output_root,
+            task_id,
+            r#"{"schemaVersion":1,"insights":[{"id":1,"topic":"first topic","matchReason":"matched","followUpQuestions":["next question"],"suitableUse":"content planning","sourceChunkId":7},{"id":2,"topic":"second topic","followUpQuestions":["next question"],"suitableUse":"content planning","sourceChunkId":8}]}"#,
+        );
+
+        let history = load_history_from_output_root(&output_root).expect("load history");
+
+        assert_eq!(history.len(), 1);
+        assert!(history[0].insights.is_empty());
+    }
+
+    fn write_task_with_insights_payload(
+        output_root: &PathBuf,
+        task_id: &str,
+        insights_payload: &str,
+    ) {
+        let task_dir = output_root.join("tasks").join(task_id);
+        fs::create_dir_all(task_dir.join("ai")).expect("create ai dir");
+        fs::write(task_dir.join("ai").join("insights.json"), insights_payload)
+            .expect("write insights");
+        fs::write(
+            task_dir.join("frameq-task.json"),
+            format!(
+                r#"{{
+  "schema_version": 1,
+  "task_id": "{task_id}",
+  "created_at": "2026-07-05T15:30:12Z",
+  "source_url": "https://example.test/video",
+  "platform": "douyin",
+  "status": "completed",
+  "artifacts": {{"insights": "ai/insights.json"}},
+  "error": null,
+  "text_preview": "",
+  "insights_count": 1
+}}"#
+            ),
+        )
+        .expect("write manifest");
     }
 
     fn temp_dir(name: &str) -> PathBuf {

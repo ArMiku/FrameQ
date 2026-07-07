@@ -67,47 +67,68 @@ pub(crate) struct TaskManifest {
 
 pub(crate) fn parse_insight_view(value: &serde_json::Value) -> Option<InsightView> {
     let id = value.get("id").and_then(serde_json::Value::as_u64)?;
-    let topic = value
-        .get("topic")
-        .and_then(serde_json::Value::as_str)?
-        .trim()
-        .to_string();
-    if topic.is_empty() {
-        return None;
-    }
-
+    let topic = required_trimmed_string(value, "topic")?;
+    let match_reason = required_trimmed_string(value, "matchReason")?;
     let follow_up_questions = value
         .get("followUpQuestions")
-        .and_then(serde_json::Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(serde_json::Value::as_str)
+        .and_then(serde_json::Value::as_array)?
+        .iter()
+        .map(|item| {
+            item.as_str()
                 .map(str::trim)
                 .filter(|text| !text.is_empty())
                 .map(str::to_string)
-                .collect()
         })
-        .unwrap_or_default();
+        .collect::<Option<Vec<_>>>()?;
+    if follow_up_questions.is_empty() {
+        return None;
+    }
+    let suitable_use = required_trimmed_string(value, "suitableUse")?;
+    let source_chunk_id = match value.get("sourceChunkId")? {
+        serde_json::Value::Null => None,
+        raw => Some(raw.as_u64()?),
+    };
 
     Some(InsightView {
         id,
         topic,
-        match_reason: value
-            .get("matchReason")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_string(),
+        match_reason,
         follow_up_questions,
-        suitable_use: value
-            .get("suitableUse")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        source_chunk_id: value
-            .get("sourceChunkId")
-            .and_then(serde_json::Value::as_u64),
+        suitable_use,
+        source_chunk_id,
     })
+}
+
+pub(crate) fn parse_insights_payload(payload: &serde_json::Value) -> Vec<InsightView> {
+    if payload
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        return vec![];
+    }
+
+    let Some(items) = payload
+        .get("insights")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return vec![];
+    };
+
+    items
+        .iter()
+        .map(parse_insight_view)
+        .collect::<Option<Vec<_>>>()
+        .unwrap_or_default()
+}
+
+fn required_trimmed_string(value: &serde_json::Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
 }
 
 impl TaskManifest {
@@ -298,4 +319,66 @@ fn has_forbidden_component(path: &Path) -> bool {
             Component::ParentDir | Component::RootDir | Component::Prefix(_)
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_insight_view;
+    use serde_json::json;
+
+    #[test]
+    fn parse_insight_view_rejects_missing_required_fields() {
+        let value = json!({
+            "id": 1,
+            "topic": "topic",
+            "followUpQuestions": ["next"],
+            "suitableUse": "content planning",
+            "sourceChunkId": 7
+        });
+
+        assert!(parse_insight_view(&value).is_none());
+    }
+
+    #[test]
+    fn parse_insight_view_rejects_blank_required_fields() {
+        let value = json!({
+            "id": 1,
+            "topic": "topic",
+            "matchReason": " ",
+            "followUpQuestions": ["next"],
+            "suitableUse": "content planning",
+            "sourceChunkId": 7
+        });
+
+        assert!(parse_insight_view(&value).is_none());
+    }
+
+    #[test]
+    fn parse_insight_view_requires_source_chunk_id_key() {
+        let value = json!({
+            "id": 1,
+            "topic": "topic",
+            "matchReason": "matched",
+            "followUpQuestions": ["next"],
+            "suitableUse": "content planning"
+        });
+
+        assert!(parse_insight_view(&value).is_none());
+    }
+
+    #[test]
+    fn parse_insight_view_accepts_explicit_null_source_chunk_id() {
+        let value = json!({
+            "id": 1,
+            "topic": "topic",
+            "matchReason": "matched",
+            "followUpQuestions": ["next"],
+            "suitableUse": "content planning",
+            "sourceChunkId": null
+        });
+
+        let insight = parse_insight_view(&value).expect("parse insight");
+
+        assert_eq!(insight.source_chunk_id, None);
+    }
 }

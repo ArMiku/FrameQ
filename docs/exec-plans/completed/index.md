@@ -2,6 +2,7 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-07-personalized-insight-preferences-plan.md` | Add local inspiration profile, six-step per-run generation preferences, confirmation snapshot, and structured personalized insight-topic results without server-side preference storage. |
 | `2026-07-07-per-llm-call-quota-plan.md` | Aligned server-managed LLM quota accounting with the per-cloud-LLM-API-call quota definition. |
 | `2026-07-05-subtitle-first-asr-fallback-plan.md` | Reused public YouTube/Bilibili `yt-dlp` subtitle files as transcript source before local ASR, with ASR fallback and source metadata. |
 | `2026-07-05-task-owned-artifact-layout-plan.md` | Replaced flat output/history paths with task-owned artifact directories and manifest-driven desktop history. |

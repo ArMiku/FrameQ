@@ -80,6 +80,7 @@ def _generate_questions_from_topic_plan(
         markdown,
         max_topics=MAX_TOPIC_PLANS,
         max_questions=MAX_INSIGHTS,
+        preference_snapshot=preference_snapshot,
     )
     parsed = extract_json_from_llm_output(client.generate(plan_prompt))
     topic_plans = _normalize_topic_plans(parsed)
