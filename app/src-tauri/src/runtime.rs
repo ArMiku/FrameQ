@@ -1,4 +1,3 @@
-use crate::asr_model_dir;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -60,7 +59,7 @@ pub(crate) fn ensure_runtime_dirs(paths: &RuntimePaths) -> Result<(), String> {
     fs::create_dir_all(paths.user_data_dir.join(DESKTOP_LOG_DIR_NAME))
         .map_err(|error| error.to_string())?;
     remove_legacy_app_local_temp_dir(paths)?;
-    fs::create_dir_all(asr_model_dir(paths)).map_err(|error| error.to_string())
+    fs::create_dir_all(paths.user_data_dir.join("models")).map_err(|error| error.to_string())
 }
 
 fn remove_legacy_app_local_temp_dir(paths: &RuntimePaths) -> Result<(), String> {
