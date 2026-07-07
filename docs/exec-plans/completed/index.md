@@ -2,6 +2,9 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-05-subtitle-first-asr-fallback-plan.md` | Reused public YouTube/Bilibili `yt-dlp` subtitle files as transcript source before local ASR, with ASR fallback and source metadata. |
+| `2026-07-05-task-owned-artifact-layout-plan.md` | Replaced flat output/history paths with task-owned artifact directories and manifest-driven desktop history. |
+| `2026-07-03-transcript-audio-review-editor-plan.md` | Added transcript audio review/editing with optional ASR time segments, safe local Tauri IO, audio playback, block highlight, and save semantics. |
 | `2026-07-05-macos-youtube-runtime-diagnostics-plan.md` | Added explicit YouTube JavaScript runtime selection and sanitized app-local desktop diagnostics for macOS runtime debugging. |
 | `2026-06-29-youtube-public-video-support-plan.md` | Added public YouTube watch/short/Shorts support through existing yt-dlp pipeline with 720p transcription-first policy, sanitized `YOUTUBE_*` failures, and no login/cookie/playlist behavior. |
 | `2026-06-27-bilibili-public-video-fallback-plan.md` | Completed Bilibili ordinary public-video fallback with BV/av/b23.tv input acceptance, public API metadata/playurl parsing, DASH video/audio safe download, FFmpeg merge, backup URL retry, and `BILIBILI_*` UI guidance. |

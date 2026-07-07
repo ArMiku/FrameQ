@@ -7,6 +7,10 @@
 - `2026-06-21-activation-code-authorization.md` - Account login with administrator-issued activation codes for 31-day monthly pass access.
 - `2026-06-21-account-billing.md` - Retired self-serve WeChat purchase draft; current visible unlock path is administrator-issued activation-code monthly passes while WeChat purchase is paused.
 
+## AI Insight Spec
+
+- `2026-07-06-personalized-insight-preferences.md` - Option-based inspiration profile and per-run six-step generation preferences for more personalized insight topics.
+
 ## Distribution Spec
 
 - `2026-07-05-processing-toolbar-new-task-guard.md` - Disable the toolbar new-task/reset action while a video task is actively processing.

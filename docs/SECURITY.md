@@ -1,5 +1,15 @@
 # Security and Compliance
 
+## 2026-07-06 Insight Preference Privacy Boundary
+
+- `我的灵感档案` and per-run generation preferences are local desktop data by default and must not be uploaded to FrameQ server.
+- The inspiration profile should be stored under app-local data as a constrained JSON file, not in app-local `.env`, because it is product data rather than runtime configuration.
+- A skipped inspiration profile may be represented locally by a marker such as `profileSkipped: true`, but skipped means `no profile / unspecified`; the app must not synthesize, log, upload, or send a default persona in its place.
+- AI整理 confirmation must state that transcript snippets will be sent to the administrator-configured cloud LLM supplier for AI整理 outputs, while the selected preference snapshot is sent only with the `启发话题点` generation request and must not be sent with `要点总结` or Mermaid mindmap requests.
+- Logs, diagnostics, UI errors, server requests, and quota checkout metadata must not include full inspiration profiles, full generation preferences, complete prompts, transcripts, or generated insight content.
+- The account service must not add API fields for storing profiles, generation preferences, transcripts, insight topics, or local task manifest contents.
+- Users must be able to clear the local inspiration profile. Clearing it affects future generation only and must not delete existing local task artifacts.
+
 ## 2026-07-05 Desktop Diagnostics Log Boundary
 
 - Desktop diagnostics are written only to app-local data `logs/frameq-desktop.log`.

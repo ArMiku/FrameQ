@@ -1,5 +1,17 @@
 # FrameQ Architecture
 
+## 2026-07-06 Personalized Insight Preferences Boundary
+
+- The desktop UI owns the inspiration-profile setup flow, the per-run six-step generation-preference wizard, confirmation summaries, and result-detail actions such as `换个方向`.
+- Tauri owns app-local persistence for the inspiration profile. The profile should be stored as a constrained local JSON file, not in app-local `.env`, and Tauri commands must validate the file path under app-local data.
+- If the user skips profile setup, Tauri persists a local skipped marker such as `profileSkipped: true` without profile fields. This marker suppresses repeated first-use prompts but must not create an implicit default persona.
+- The per-run preference snapshot is passed to `retry_insights` together with the saved official transcript reference. It may be recorded in the local task manifest as user-visible context for already-generated AI artifacts.
+- The worker treats profile and generation preferences as structured prompt context for insight-topic generation only. Summary and Mermaid mindmap generation continue to use the generic AI整理 prompts and must not read the personalized preference snapshot. The worker must not infer hidden preferences from unrelated history.
+- For insight-topic generation, the worker should preserve LLM context budget by using transcript chunks, summaries, or candidate excerpts plus a compact structured preference JSON. It should not concatenate a full long transcript and verbose preference prose into a single prompt.
+- FrameQ server continues to own only account, entitlement, quota, and LLM checkout. It must not receive or store inspiration profiles, generation preferences, transcripts, generated insights, or local task manifests.
+- Each confirmed AI整理 attempt consumes exactly one quota use through server-managed checkout. That one use covers summary, Mermaid mindmap, and insight-topic generation as a single bundle; failed or partially failed AI整理 attempts remain consumed. Re-running via `换个方向` is a new confirmed AI整理 attempt and consumes one additional use.
+- The LLM supplier may receive transcript snippets only after the user confirms AI整理. The selected preference snapshot may be sent only with the insight-topic generation request, not with summary or Mermaid mindmap requests.
+
 ## 2026-07-05 Desktop Diagnostics Boundary
 
 - The Tauri desktop layer owns app-local diagnostic logs at `logs/frameq-desktop.log`.
