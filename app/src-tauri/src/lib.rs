@@ -2,10 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, Window};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -20,6 +17,7 @@ mod task_manifest;
 mod transcript_detail;
 mod updates;
 mod window_chrome;
+mod worker_command;
 
 pub(crate) use runtime::{
     bundled_python_path, ensure_runtime_dirs, path_to_env_string, prepend_to_path,
@@ -32,19 +30,23 @@ pub(crate) use diagnostics::{
     append_desktop_log, sanitize_diagnostic_text, summarize_worker_result_for_log, truncate_for_log,
 };
 
+pub(crate) use worker_command::{
+    build_worker_command_spec, parse_worker_output_or_fallback, parse_worker_stdout,
+    run_blocking_worker_command, spawn_worker_command, terminate_process_tree,
+    worker_command_log_detail, worker_exit_log_detail, WorkerCommandSpec, WorkerInvocation,
+    WorkerProcessState,
+};
+
 use settings::{
     asr_model_source, configured_env_value, env_path, legacy_local_llm_env_removals,
     parse_dotenv_values, resolve_asr_model_value, ASR_MODEL_DOWNLOAD_SHA256_ENV,
-    ASR_MODEL_DOWNLOAD_URL_ENV, ASR_MODEL_ENV, LLM_CHECKOUT_REQUEST_ID_ENV, LLM_CHECKOUT_URL_ENV,
-    LLM_SESSION_TOKEN_ENV, LLM_SOURCE_ENV, MODELSCOPE_ENDPOINT_ENV, SENSEVOICE_REVISION_ENV,
+    ASR_MODEL_DOWNLOAD_URL_ENV, ASR_MODEL_ENV, MODELSCOPE_ENDPOINT_ENV, SENSEVOICE_REVISION_ENV,
 };
 
 const PROGRESS_EVENT_NAME: &str = "worker-progress";
 const PROGRESS_EVENT_PREFIX: &str = "FRAMEQ_PROGRESS ";
 const ASR_MODEL_DOWNLOAD_EVENT_NAME: &str = "asr-model-download-progress";
 const MODEL_DOWNLOAD_EVENT_PREFIX: &str = "FRAMEQ_MODEL_DOWNLOAD ";
-#[cfg(target_os = "windows")]
-const WINDOWS_CREATE_NO_WINDOW: u32 = 0x08000000;
 const MODEL_VERSION_FILE_NAME: &str = "MODEL_VERSION.txt";
 const DEFAULT_ASR_MODEL: &str = "iic/SenseVoiceSmall";
 const SENSEVOICE_VAD_MODEL: &str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch";
@@ -107,78 +109,6 @@ struct AsrModelDownloadResult {
     started: bool,
 }
 
-#[derive(Debug, Clone)]
-enum WorkerInvocation {
-    ProcessVideo(String),
-    RetryInsights(String),
-}
-
-#[derive(Debug, Clone)]
-struct WorkerCommandSpec {
-    program: PathBuf,
-    args: Vec<String>,
-    env: Vec<(String, String)>,
-    env_remove: Vec<String>,
-    current_dir: PathBuf,
-}
-
-impl WorkerCommandSpec {
-    #[cfg(test)]
-    fn env_map(&self) -> HashMap<String, String> {
-        self.env.iter().cloned().collect()
-    }
-}
-
-#[derive(Default)]
-struct WorkerProcessState {
-    current_pid: Mutex<Option<u32>>,
-    cancelled_pid: Mutex<Option<u32>>,
-}
-
-impl WorkerProcessState {
-    fn register(&self, pid: u32) -> bool {
-        let mut current_pid = self.current_pid.lock().expect("worker state lock poisoned");
-        if current_pid.is_some() {
-            return false;
-        }
-
-        *current_pid = Some(pid);
-        true
-    }
-
-    fn current_pid(&self) -> Option<u32> {
-        *self.current_pid.lock().expect("worker state lock poisoned")
-    }
-
-    fn clear_current(&self, pid: u32) {
-        let mut current_pid = self.current_pid.lock().expect("worker state lock poisoned");
-        if *current_pid == Some(pid) {
-            *current_pid = None;
-        }
-    }
-
-    fn mark_cancelled(&self, pid: u32) {
-        let mut cancelled_pid = self
-            .cancelled_pid
-            .lock()
-            .expect("worker cancelled state lock poisoned");
-        *cancelled_pid = Some(pid);
-    }
-
-    fn take_cancelled(&self, pid: u32) -> bool {
-        let mut cancelled_pid = self
-            .cancelled_pid
-            .lock()
-            .expect("worker cancelled state lock poisoned");
-        if *cancelled_pid == Some(pid) {
-            *cancelled_pid = None;
-            return true;
-        }
-
-        false
-    }
-}
-
 #[derive(Default)]
 struct ModelDownloadProcessState {
     current_pid: Mutex<Option<u32>>,
@@ -238,94 +168,6 @@ impl ModelDownloadProcessState {
     }
 }
 
-fn worker_command_log_detail(spec: &WorkerCommandSpec, kind: &str) -> String {
-    let args = redact_worker_args_for_log(&spec.args).join(" ");
-    format!(
-        "kind={kind} program={} current_dir={} args={} {}",
-        path_to_env_string(&spec.program),
-        path_to_env_string(&spec.current_dir),
-        args,
-        js_runtime_diagnostics(spec)
-    )
-}
-
-fn redact_worker_args_for_log(args: &[String]) -> Vec<String> {
-    let mut redacted = Vec::with_capacity(args.len());
-    let mut redact_next = false;
-
-    for arg in args {
-        if redact_next {
-            redacted.push("[json-payload]".to_string());
-            redact_next = false;
-            continue;
-        }
-
-        redacted.push(arg.clone());
-        if arg == "--request-json" || arg == "--retry-insights-json" {
-            redact_next = true;
-        }
-    }
-
-    redacted
-}
-
-fn worker_exit_log_detail(pid: u32, output: &Output, stderr: &str) -> String {
-    format!(
-        "pid={pid} exit={} stderr={}",
-        output
-            .status
-            .code()
-            .map(|code| code.to_string())
-            .unwrap_or_else(|| "signal".to_string()),
-        truncate_for_log(&sanitize_diagnostic_text(stderr), 1000)
-    )
-}
-
-fn js_runtime_diagnostics(spec: &WorkerCommandSpec) -> String {
-    let path_value = spec
-        .env
-        .iter()
-        .find_map(|(key, value)| (key == "PATH").then_some(value.as_str()))
-        .unwrap_or_default();
-    let runtimes = [
-        (
-            "deno",
-            executable_available_on_path(path_value, &["deno", "deno.exe"]),
-        ),
-        (
-            "node",
-            executable_available_on_path(path_value, &["node", "node.exe"]),
-        ),
-        (
-            "quickjs",
-            executable_available_on_path(path_value, &["qjs", "qjs.exe"]),
-        ),
-        (
-            "bun",
-            executable_available_on_path(path_value, &["bun", "bun.exe"]),
-        ),
-    ];
-    let summary = runtimes
-        .iter()
-        .map(|(name, available)| {
-            format!(
-                "{name}:{}",
-                if *available { "available" } else { "missing" }
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-    format!("js_runtimes={summary}")
-}
-
-fn executable_available_on_path(path_value: &str, binary_names: &[&str]) -> bool {
-    std::env::split_paths(path_value).any(|directory| {
-        binary_names
-            .iter()
-            .any(|binary_name| directory.join(binary_name).is_file())
-    })
-}
-
 fn asr_model_dir(paths: &RuntimePaths) -> PathBuf {
     paths.user_data_dir.join("models")
 }
@@ -359,97 +201,6 @@ fn required_model_files_exist(model_dir: &Path) -> bool {
                 .join("model.pt");
             sensevoice_model.is_file() && vad_model.is_file()
         })
-}
-
-fn build_worker_command_spec(
-    paths: &RuntimePaths,
-    invocation: WorkerInvocation,
-    server_managed_llm: Option<account::ServerManagedLlmInvocation>,
-) -> Result<WorkerCommandSpec, String> {
-    let include_server_managed_llm = worker_invocation_uses_server_managed_llm(&invocation);
-    let (flag, payload) = match invocation {
-        WorkerInvocation::ProcessVideo(payload) => ("--request-json", payload),
-        WorkerInvocation::RetryInsights(payload) => ("--retry-insights-json", payload),
-    };
-    let resource_bin_dir = paths.resource_dir.join("bin");
-    let path_value = prepend_to_path(&resource_bin_dir)?;
-    let output_root = task_manifest::configured_output_root(paths)?;
-
-    let mut env = vec![
-        (
-            "PYTHONPATH".to_string(),
-            path_to_env_string(paths.resource_dir.join("worker")),
-        ),
-        ("PYTHONUTF8".to_string(), "1".to_string()),
-        ("PYTHONIOENCODING".to_string(), "utf-8".to_string()),
-        ("PATH".to_string(), path_value),
-        (OUTPUT_DIR_ENV.to_string(), path_to_env_string(output_root)),
-        (
-            CACHE_DIR_ENV.to_string(),
-            path_to_env_string(paths.user_data_dir.join(CACHE_DIR_NAME)),
-        ),
-        (
-            MODEL_DIR_ENV.to_string(),
-            path_to_env_string(paths.user_data_dir.join("models")),
-        ),
-        (
-            RESOURCE_DIR_ENV.to_string(),
-            path_to_env_string(&paths.resource_dir),
-        ),
-        (
-            USER_DATA_DIR_ENV.to_string(),
-            path_to_env_string(&paths.user_data_dir),
-        ),
-        (ALLOW_REAL_ASR_ENV.to_string(), "1".to_string()),
-        (MODELSCOPE_OFFLINE_ENV.to_string(), "1".to_string()),
-    ];
-    if include_server_managed_llm {
-        if let Some(llm) = server_managed_llm {
-            env.push((LLM_SOURCE_ENV.to_string(), "server".to_string()));
-            env.push((
-                LLM_CHECKOUT_URL_ENV.to_string(),
-                format!(
-                    "{}/api/desktop/llm/checkouts",
-                    llm.server_base_url.trim_end_matches('/')
-                ),
-            ));
-            env.push((LLM_SESSION_TOKEN_ENV.to_string(), llm.session_token));
-            env.push((LLM_CHECKOUT_REQUEST_ID_ENV.to_string(), llm.request_id));
-        }
-    }
-
-    Ok(WorkerCommandSpec {
-        program: bundled_python_path(&paths.resource_dir),
-        args: vec![
-            "-m".to_string(),
-            "frameq_worker".to_string(),
-            flag.to_string(),
-            payload,
-        ],
-        env,
-        env_remove: legacy_local_llm_env_removals(),
-        current_dir: paths.user_data_dir.clone(),
-    })
-}
-
-fn worker_invocation_uses_server_managed_llm(invocation: &WorkerInvocation) -> bool {
-    match invocation {
-        WorkerInvocation::RetryInsights(_) => true,
-        WorkerInvocation::ProcessVideo(payload) => {
-            process_video_request_generates_insights(payload)
-        }
-    }
-}
-
-fn process_video_request_generates_insights(payload: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(payload)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("generate_insights")
-                .and_then(serde_json::Value::as_bool)
-        })
-        .unwrap_or(true)
 }
 
 fn build_model_download_command_spec(
@@ -502,39 +253,6 @@ fn build_model_download_command_spec(
         env_remove: legacy_local_llm_env_removals(),
         current_dir: paths.user_data_dir.clone(),
     })
-}
-
-#[cfg(target_os = "windows")]
-fn windows_subprocess_creation_flags() -> u32 {
-    WINDOWS_CREATE_NO_WINDOW
-}
-
-fn hide_child_console_window(command: &mut Command) {
-    #[cfg(target_os = "windows")]
-    {
-        command.creation_flags(windows_subprocess_creation_flags());
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = command;
-    }
-}
-
-fn spawn_worker_command(spec: WorkerCommandSpec) -> Result<std::process::Child, String> {
-    let mut command = Command::new(spec.program);
-    hide_child_console_window(&mut command);
-    for key in spec.env_remove {
-        command.env_remove(key);
-    }
-    command
-        .args(spec.args)
-        .envs(spec.env)
-        .current_dir(spec.current_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    command.spawn().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -954,46 +672,6 @@ fn retry_insights_blocking(
     Ok(parsed)
 }
 
-fn parse_worker_stdout(stdout: &[u8]) -> Result<serde_json::Value, String> {
-    let text = String::from_utf8_lossy(stdout);
-    let mut last_error = None;
-
-    for raw_line in text.lines().rev() {
-        let line = raw_line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        match serde_json::from_str::<serde_json::Value>(line) {
-            Ok(value) if value.get("status").is_some() => return Ok(value),
-            Ok(_) => continue,
-            Err(error) => last_error = Some(error.to_string()),
-        }
-    }
-
-    let preview = text
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .take(3)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let detail = last_error.unwrap_or_else(|| "stdout did not contain JSON".to_string());
-    Err(format!(
-        "Worker stdout did not contain a structured JSON result: {detail}. stdout preview: {preview}"
-    ))
-}
-
-fn parse_worker_output_or_fallback(
-    output: &Output,
-    fallback: ProcessVideoResult,
-) -> Result<serde_json::Value, String> {
-    match parse_worker_stdout(&output.stdout) {
-        Ok(value) => Ok(value),
-        Err(error) if output.status.success() => Err(error),
-        Err(_) => Ok(serde_json::json!(fallback)),
-    }
-}
-
 #[tauri::command]
 fn cancel_process(
     process_state: State<'_, Arc<WorkerProcessState>>,
@@ -1204,51 +882,6 @@ fn apply_configured_asr_model_to_request(
     Ok(())
 }
 
-async fn run_blocking_worker_command<T, F>(operation: F) -> Result<T, String>
-where
-    T: Send + 'static,
-    F: FnOnce() -> Result<T, String> + Send + 'static,
-{
-    tauri::async_runtime::spawn_blocking(operation)
-        .await
-        .map_err(|error| format!("Worker command task failed: {error}"))?
-}
-
-#[cfg(target_os = "windows")]
-fn terminate_process_tree(pid: u32) -> Result<(), String> {
-    let mut command = Command::new("taskkill");
-    hide_child_console_window(&mut command);
-    let output = command
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .output()
-        .map_err(|error| error.to_string())?;
-
-    if output.status.success() {
-        return Ok(());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if stderr.is_empty() {
-        Err("taskkill failed to terminate the worker process.".to_string())
-    } else {
-        Err(stderr)
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn terminate_process_tree(pid: u32) -> Result<(), String> {
-    let output = Command::new("kill")
-        .args(["-TERM", &pid.to_string()])
-        .output()
-        .map_err(|error| error.to_string())?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-    }
-}
-
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -1351,24 +984,21 @@ pub fn run() {
 mod tests {
     use super::account::{
         build_activation_redeem_url, build_auth_login_url, parse_auth_callback_url,
-        server_base_url, AuthCallback, ServerManagedLlmInvocation,
+        server_base_url, AuthCallback,
     };
     use super::settings::{
         load_llm_config_from_file, save_llm_config_to_file, supported_asr_models, LlmConfigInput,
     };
     use super::{
         activate_main_window_for_deep_link, apply_configured_asr_model_to_request,
-        asr_model_available, build_model_download_command_spec, build_worker_command_spec,
-        cached_process_result_for_request, parse_worker_output_or_fallback, parse_worker_stdout,
-        path_to_env_string, run_blocking_worker_command, DeepLinkActivationWindow,
-        ProcessVideoRequest, ProcessVideoResult, RetryInsightsRequest, RuntimePaths,
-        WorkerCommandSpec, WorkerError, WorkerInvocation, WorkerProcessState,
+        asr_model_available, build_model_download_command_spec, cached_process_result_for_request,
+        path_to_env_string, DeepLinkActivationWindow, ProcessVideoRequest, RetryInsightsRequest,
+        RuntimePaths, WorkerCommandSpec,
     };
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
-    use std::process::Output;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn assert_removes_legacy_local_llm_env(spec: &WorkerCommandSpec) {
@@ -1442,39 +1072,6 @@ mod tests {
                 "emit:frameq://auth/callback?ticket=flt_abc&state=state-1",
             ]
         );
-    }
-
-    #[test]
-    fn worker_process_state_tracks_only_one_running_process() {
-        let state = WorkerProcessState::default();
-
-        assert!(state.register(10));
-        assert_eq!(state.current_pid(), Some(10));
-        assert!(!state.register(11));
-        assert_eq!(state.current_pid(), Some(10));
-    }
-
-    #[test]
-    fn worker_process_state_marks_cancelled_pid_once() {
-        let state = WorkerProcessState::default();
-
-        assert!(state.register(10));
-        state.mark_cancelled(10);
-
-        assert!(state.take_cancelled(10));
-        assert!(!state.take_cancelled(10));
-        assert!(!state.take_cancelled(11));
-    }
-
-    #[test]
-    fn worker_process_state_clears_matching_current_process() {
-        let state = WorkerProcessState::default();
-
-        assert!(state.register(10));
-        state.clear_current(11);
-        assert_eq!(state.current_pid(), Some(10));
-        state.clear_current(10);
-        assert_eq!(state.current_pid(), None);
     }
 
     #[test]
@@ -1659,163 +1256,6 @@ mod tests {
     }
 
     #[test]
-    fn blocking_worker_command_runs_on_background_thread() {
-        let caller_thread = std::thread::current().id();
-
-        let ran_on_background_thread =
-            tauri::async_runtime::block_on(run_blocking_worker_command(move || {
-                Ok(std::thread::current().id() != caller_thread)
-            }))
-            .expect("blocking command should complete");
-
-        assert!(ran_on_background_thread);
-    }
-
-    #[test]
-    fn parse_worker_stdout_uses_last_json_result_when_stdout_contains_logs() {
-        let stdout = r##"[funasr] loading model cache
-Some dependency logged to stdout
-{"status":"completed","task_id":"20260705-153012-douyin-demo","task_dir":"D:/FrameQ/outputs/tasks/20260705-153012-douyin-demo","artifacts":{"transcript_txt":"transcript/transcript.txt","summary":"ai/summary.md","mindmap":"ai/mindmap.mmd","insights":"ai/insights.json"},"text":"ok","summary":"# summary","insights":[{"id":1,"topic":"topic","matchReason":"matched","followUpQuestions":["next"],"suitableUse":"content planning","sourceChunkId":1}],"error":null}
-"##;
-
-        let parsed = parse_worker_stdout(stdout.as_bytes()).expect("parse worker result");
-
-        assert_eq!(parsed["status"], "completed");
-        assert_eq!(parsed["task_id"], "20260705-153012-douyin-demo");
-        assert_eq!(parsed["text"], "ok");
-        assert_eq!(parsed["summary"], "# summary");
-        assert_eq!(parsed["artifacts"]["summary"], "ai/summary.md");
-        assert_eq!(parsed["artifacts"]["mindmap"], "ai/mindmap.mmd");
-        assert_eq!(parsed["insights"][0]["topic"], "topic");
-    }
-
-    #[test]
-    fn parse_worker_output_prefers_structured_stdout_even_when_exit_fails() {
-        let output = Output {
-            status: exit_status(1),
-            stdout: br#"{"status":"failed","error":{"code":"ASR_MODEL_NOT_DOWNLOADED","message":"SenseVoice Small model is not downloaded yet.","stage":"video_transcribing"}}"#.to_vec(),
-            stderr: b"third-party stderr".to_vec(),
-        };
-        let fallback = ProcessVideoResult {
-            status: "failed".to_string(),
-            task_id: None,
-            task_dir: None,
-            artifacts: HashMap::new(),
-            text: String::new(),
-            summary: String::new(),
-            insights: vec![],
-            transcript: None,
-            error: Some(WorkerError {
-                code: "WORKER_PROCESS_FAILED".to_string(),
-                message: "third-party stderr".to_string(),
-                stage: "video_extracting".to_string(),
-            }),
-        };
-
-        let parsed = parse_worker_output_or_fallback(&output, fallback)
-            .expect("parse structured worker result");
-
-        assert_eq!(parsed["status"], "failed");
-        assert_eq!(parsed["error"]["code"], "ASR_MODEL_NOT_DOWNLOADED");
-        assert_eq!(parsed["error"]["stage"], "video_transcribing");
-    }
-
-    #[test]
-    fn parse_worker_output_fallback_includes_task_artifact_fields() {
-        let output = Output {
-            status: exit_status(1),
-            stdout: b"not-json".to_vec(),
-            stderr: b"worker failed before returning json".to_vec(),
-        };
-        let fallback = ProcessVideoResult {
-            status: "failed".to_string(),
-            task_id: None,
-            task_dir: None,
-            artifacts: HashMap::new(),
-            text: String::new(),
-            summary: String::new(),
-            insights: vec![],
-            transcript: None,
-            error: Some(WorkerError {
-                code: "WORKER_PROCESS_FAILED".to_string(),
-                message: "worker failed before returning json".to_string(),
-                stage: "video_extracting".to_string(),
-            }),
-        };
-
-        let parsed =
-            parse_worker_output_or_fallback(&output, fallback).expect("fallback worker result");
-
-        assert!(parsed.get("task_id").is_some());
-        assert!(parsed.get("task_dir").is_some());
-        assert!(parsed.get("artifacts").is_some());
-        assert_eq!(parsed["task_id"], serde_json::Value::Null);
-        assert_eq!(parsed["task_dir"], serde_json::Value::Null);
-        assert_eq!(parsed["artifacts"], serde_json::json!({}));
-    }
-
-    #[test]
-    fn worker_command_spec_uses_bundled_python_and_app_local_data() {
-        let paths = RuntimePaths {
-            resource_dir: PathBuf::from("C:/Program Files/FrameQ/resources"),
-            user_data_dir: PathBuf::from("C:/Users/demo/AppData/Local/com.frameq.desktop"),
-        };
-        let request_json = r#"{"url":"https://www.douyin.com/video/7524373044106677544"}"#;
-
-        let spec = build_worker_command_spec(
-            &paths,
-            WorkerInvocation::ProcessVideo(request_json.to_string()),
-            None,
-        )
-        .expect("build worker command spec");
-        let env = spec.env_map();
-
-        assert_eq!(
-            spec.program,
-            PathBuf::from("C:/Program Files/FrameQ/resources/python/python.exe")
-        );
-        assert_eq!(
-            spec.args,
-            vec!["-m", "frameq_worker", "--request-json", request_json,]
-        );
-        assert!(!spec.program.to_string_lossy().contains("uv"));
-        assert!(!spec.args.iter().any(|arg| arg == "uv"));
-        assert_eq!(
-            env.get("PYTHONPATH"),
-            Some(&"C:/Program Files/FrameQ/resources/worker".to_string())
-        );
-        assert_eq!(
-            env.get("FRAMEQ_OUTPUT_DIR"),
-            Some(&"C:/Users/demo/AppData/Local/com.frameq.desktop/outputs".to_string())
-        );
-        assert_eq!(
-            env.get("FRAMEQ_CACHE_DIR"),
-            Some(&"C:/Users/demo/AppData/Local/com.frameq.desktop/cache".to_string())
-        );
-        assert_eq!(
-            env.get("FRAMEQ_MODEL_DIR"),
-            Some(&"C:/Users/demo/AppData/Local/com.frameq.desktop/models".to_string())
-        );
-        assert_eq!(
-            env.get("FRAMEQ_RESOURCE_DIR"),
-            Some(&"C:/Program Files/FrameQ/resources".to_string())
-        );
-        assert_eq!(env.get("FRAMEQ_ALLOW_REAL_ASR"), Some(&"1".to_string()));
-        assert_eq!(env.get("MODELSCOPE_OFFLINE"), Some(&"1".to_string()));
-        assert_removes_legacy_local_llm_env(&spec);
-        assert_eq!(spec.current_dir, paths.user_data_dir);
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn windows_worker_subprocesses_suppress_console_window() {
-        assert_eq!(
-            super::windows_subprocess_creation_flags() & 0x08000000,
-            0x08000000
-        );
-    }
-
-    #[test]
     fn release_supported_asr_models_only_exposes_bundled_sensevoice() {
         assert_eq!(
             supported_asr_models(),
@@ -1857,69 +1297,6 @@ Some dependency logged to stdout
         fs::write(vad_dir.join("model.pt"), "vad").expect("write vad model");
 
         assert!(asr_model_available(&paths));
-    }
-
-    #[test]
-    fn worker_command_spec_includes_server_managed_llm_checkout_env() {
-        let paths = RuntimePaths {
-            resource_dir: PathBuf::from("C:/Program Files/FrameQ/resources"),
-            user_data_dir: PathBuf::from("C:/Users/demo/AppData/Local/com.frameq.desktop"),
-        };
-        let request_json = r#"{"url":"https://www.douyin.com/video/7524373044106677544","generate_insights":true}"#;
-
-        let spec = build_worker_command_spec(
-            &paths,
-            WorkerInvocation::ProcessVideo(request_json.to_string()),
-            Some(ServerManagedLlmInvocation {
-                server_base_url: "http://127.0.0.1:8787".to_string(),
-                session_token: "desktop-token".to_string(),
-                request_id: "llm-run-12345678".to_string(),
-            }),
-        )
-        .expect("build worker command spec");
-        let env = spec.env_map();
-
-        assert_removes_legacy_local_llm_env(&spec);
-        assert_eq!(env.get("FRAMEQ_LLM_SOURCE"), Some(&"server".to_string()));
-        assert_eq!(
-            env.get("FRAMEQ_LLM_CHECKOUT_URL"),
-            Some(&"http://127.0.0.1:8787/api/desktop/llm/checkouts".to_string())
-        );
-        assert_eq!(
-            env.get("FRAMEQ_LLM_SESSION_TOKEN"),
-            Some(&"desktop-token".to_string())
-        );
-        assert_eq!(
-            env.get("FRAMEQ_LLM_CHECKOUT_REQUEST_ID"),
-            Some(&"llm-run-12345678".to_string())
-        );
-    }
-
-    #[test]
-    fn worker_command_spec_skips_server_managed_llm_for_transcript_only_process() {
-        let paths = RuntimePaths {
-            resource_dir: PathBuf::from("C:/Program Files/FrameQ/resources"),
-            user_data_dir: PathBuf::from("C:/Users/demo/AppData/Local/com.frameq.desktop"),
-        };
-        let request_json = r#"{"url":"https://www.douyin.com/video/7524373044106677544","generate_insights":false}"#;
-
-        let spec = build_worker_command_spec(
-            &paths,
-            WorkerInvocation::ProcessVideo(request_json.to_string()),
-            Some(ServerManagedLlmInvocation {
-                server_base_url: "http://127.0.0.1:8787".to_string(),
-                session_token: "desktop-token".to_string(),
-                request_id: "llm-run-12345678".to_string(),
-            }),
-        )
-        .expect("build worker command spec");
-        let env = spec.env_map();
-
-        assert_removes_legacy_local_llm_env(&spec);
-        assert_eq!(env.get("FRAMEQ_LLM_SOURCE"), None);
-        assert_eq!(env.get("FRAMEQ_LLM_CHECKOUT_URL"), None);
-        assert_eq!(env.get("FRAMEQ_LLM_SESSION_TOKEN"), None);
-        assert_eq!(env.get("FRAMEQ_LLM_CHECKOUT_REQUEST_ID"), None);
     }
 
     #[test]
@@ -2287,17 +1664,5 @@ Some dependency logged to stdout
         let dir = std::env::temp_dir().join(format!("frameq-{test_name}-{unique}"));
         fs::create_dir_all(&dir).expect("create test dir");
         dir
-    }
-
-    #[cfg(windows)]
-    fn exit_status(code: u32) -> std::process::ExitStatus {
-        use std::os::windows::process::ExitStatusExt;
-        std::process::ExitStatus::from_raw(code)
-    }
-
-    #[cfg(unix)]
-    fn exit_status(code: i32) -> std::process::ExitStatus {
-        use std::os::unix::process::ExitStatusExt;
-        std::process::ExitStatus::from_raw(code << 8)
     }
 }
