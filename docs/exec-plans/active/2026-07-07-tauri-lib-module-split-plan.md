@@ -11,6 +11,8 @@ This is an internal architecture refactor, so it does not require a product spec
 ## Progress
 
 - [x] 2026-07-07: Diagnosed `app/src-tauri/src/lib.rs` size, responsibilities, and existing module dependencies before planning. Validation: `(Get-Content app/src-tauri/src/lib.rs).Count` reported 2670 lines; `Get-ChildItem app/src-tauri/src -File` showed `lib.rs` as the largest Rust source file at 92830 bytes; `rg -n "^(const |struct |enum |impl |fn |pub\(crate\) fn|async fn|#\[tauri::command\]|mod tests|    #\[test\])" app/src-tauri/src/lib.rs` mapped runtime, diagnostics, worker command, cache, ASR model, deep-link, bootstrap, and test sections.
+- [x] 2026-07-07: Established the clean Rust baseline before code extraction. Validation: `git status --short` returned no output; `(Get-Content app/src-tauri/src/lib.rs).Count` reported 2670 lines; `cargo test --manifest-path app\src-tauri\Cargo.toml` passed with 57 tests.
+- [x] 2026-07-07: Extracted runtime/app-local path helpers into `app/src-tauri/src/runtime.rs` while keeping root-level compatibility re-exports for existing modules. `lib.rs` dropped from 2670 to 2545 lines and `runtime.rs` now owns 157 lines. Validation: `cargo test --manifest-path app\src-tauri\Cargo.toml ensure_runtime_dirs -- --nocapture` passed with 1 focused test; `cargo test --manifest-path app\src-tauri\Cargo.toml normalize_resource_dir -- --nocapture` passed with 1 focused test; `cargo test --manifest-path app\src-tauri\Cargo.toml` passed with 57 tests.
 
 ## Surprises & Discoveries
 
@@ -23,6 +25,8 @@ Evidence: Existing modules import root-level runtime helpers and constants throu
 Evidence: `lib.rs` test coverage is broad but clustered by responsibility. Tests already characterize runtime paths, diagnostics redaction, process state, cached task reuse, structured insight parsing, worker command env construction, worker stdout parsing, ASR model availability, model download command construction, account URL helpers, settings dotenv behavior, and desktop worker contract constants.
 
 Evidence: `docs/exec-plans/active/index.md` currently lists only the installer distribution runtime plan. Adding this plan makes the `lib.rs` refactor explicit active work without disturbing the installer release validation plan.
+
+Evidence: The original focused command shape `cargo test --manifest-path app\src-tauri\Cargo.toml ensure_runtime_dirs normalize_resource_dir` is invalid because Cargo accepts only one test filter before `--`. Runtime extraction used two equivalent focused commands instead: one for `ensure_runtime_dirs` and one for `normalize_resource_dir`.
 
 ## Decision Log
 

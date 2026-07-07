@@ -14,11 +14,19 @@ use tauri_plugin_deep_link::DeepLinkExt;
 mod account;
 mod history;
 mod insight_preferences;
+mod runtime;
 mod settings;
 mod task_manifest;
 mod transcript_detail;
 mod updates;
 mod window_chrome;
+
+pub(crate) use runtime::{
+    bundled_python_path, ensure_runtime_dirs, path_to_env_string, prepend_to_path,
+    resolve_runtime_paths, RuntimePaths, ALLOW_REAL_ASR_ENV, CACHE_DIR_ENV, CACHE_DIR_NAME,
+    DESKTOP_LOG_DIR_NAME, MODELSCOPE_OFFLINE_ENV, MODEL_DIR_ENV, OUTPUT_DIR_ENV, RESOURCE_DIR_ENV,
+    USER_DATA_DIR_ENV,
+};
 
 use settings::{
     asr_model_source, configured_env_value, env_path, legacy_local_llm_env_removals,
@@ -31,19 +39,9 @@ const PROGRESS_EVENT_NAME: &str = "worker-progress";
 const PROGRESS_EVENT_PREFIX: &str = "FRAMEQ_PROGRESS ";
 const ASR_MODEL_DOWNLOAD_EVENT_NAME: &str = "asr-model-download-progress";
 const MODEL_DOWNLOAD_EVENT_PREFIX: &str = "FRAMEQ_MODEL_DOWNLOAD ";
-const OUTPUT_DIR_ENV: &str = "FRAMEQ_OUTPUT_DIR";
-const CACHE_DIR_ENV: &str = "FRAMEQ_CACHE_DIR";
-const MODEL_DIR_ENV: &str = "FRAMEQ_MODEL_DIR";
-const RESOURCE_DIR_ENV: &str = "FRAMEQ_RESOURCE_DIR";
-const USER_DATA_DIR_ENV: &str = "FRAMEQ_USER_DATA_DIR";
-const ALLOW_REAL_ASR_ENV: &str = "FRAMEQ_ALLOW_REAL_ASR";
-const MODELSCOPE_OFFLINE_ENV: &str = "MODELSCOPE_OFFLINE";
 #[cfg(target_os = "windows")]
 const WINDOWS_CREATE_NO_WINDOW: u32 = 0x08000000;
 const MODEL_VERSION_FILE_NAME: &str = "MODEL_VERSION.txt";
-const CACHE_DIR_NAME: &str = "cache";
-const LEGACY_TEMP_DIR_NAME: &str = "work";
-const DESKTOP_LOG_DIR_NAME: &str = "logs";
 const DESKTOP_LOG_FILE_NAME: &str = "frameq-desktop.log";
 const DEFAULT_ASR_MODEL: &str = "iic/SenseVoiceSmall";
 const SENSEVOICE_VAD_MODEL: &str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch";
@@ -104,12 +102,6 @@ struct FirstRunStatusView {
 #[derive(Debug, Serialize)]
 struct AsrModelDownloadResult {
     started: bool,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct RuntimePaths {
-    pub(crate) resource_dir: PathBuf,
-    pub(crate) user_data_dir: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -240,72 +232,6 @@ impl ModelDownloadProcessState {
         }
 
         false
-    }
-}
-
-pub(crate) fn resolve_runtime_paths(app: &AppHandle) -> Result<RuntimePaths, String> {
-    let raw_resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|error| error.to_string())?;
-    Ok(RuntimePaths {
-        resource_dir: normalize_resource_dir(raw_resource_dir),
-        user_data_dir: app
-            .path()
-            .app_local_data_dir()
-            .map_err(|error| error.to_string())?,
-    })
-}
-
-fn normalize_resource_dir(resource_dir: PathBuf) -> PathBuf {
-    if resource_dir_has_runtime(&resource_dir) {
-        return resource_dir;
-    }
-
-    let nested_resources = resource_dir.join("resources");
-    if resource_dir_has_runtime(&nested_resources) {
-        return nested_resources;
-    }
-
-    resource_dir
-}
-
-fn resource_dir_has_runtime(resource_dir: &Path) -> bool {
-    bundled_python_path(resource_dir).is_file()
-        || resource_dir.join("worker").is_dir()
-        || resource_dir.join("bin").is_dir()
-}
-
-pub(crate) fn ensure_runtime_dirs(paths: &RuntimePaths) -> Result<(), String> {
-    fs::create_dir_all(paths.user_data_dir.join("outputs")).map_err(|error| error.to_string())?;
-    fs::create_dir_all(paths.user_data_dir.join(CACHE_DIR_NAME))
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(paths.user_data_dir.join(DESKTOP_LOG_DIR_NAME))
-        .map_err(|error| error.to_string())?;
-    remove_legacy_app_local_temp_dir(paths)?;
-    fs::create_dir_all(asr_model_dir(paths)).map_err(|error| error.to_string())
-}
-
-fn remove_legacy_app_local_temp_dir(paths: &RuntimePaths) -> Result<(), String> {
-    let legacy_path = paths.user_data_dir.join(LEGACY_TEMP_DIR_NAME);
-    if !legacy_path.exists() {
-        return Ok(());
-    }
-
-    let user_data_dir = paths
-        .user_data_dir
-        .canonicalize()
-        .map_err(|error| error.to_string())?;
-    let canonical_legacy = legacy_path.canonicalize().map_err(|error| error.to_string())?;
-    if canonical_legacy == user_data_dir || !canonical_legacy.starts_with(&user_data_dir) {
-        return Err("Refusing to remove legacy temporary directory outside app-local data".into());
-    }
-
-    let metadata = fs::symlink_metadata(&legacy_path).map_err(|error| error.to_string())?;
-    if metadata.is_dir() {
-        fs::remove_dir_all(&legacy_path).map_err(|error| error.to_string())
-    } else {
-        fs::remove_file(&legacy_path).map_err(|error| error.to_string())
     }
 }
 
@@ -740,26 +666,6 @@ fn build_model_download_command_spec(
         env_remove: legacy_local_llm_env_removals(),
         current_dir: paths.user_data_dir.clone(),
     })
-}
-
-fn bundled_python_path(resource_dir: &Path) -> PathBuf {
-    if cfg!(windows) {
-        resource_dir.join("python").join("python.exe")
-    } else {
-        resource_dir.join("python").join("bin").join("python3")
-    }
-}
-
-fn prepend_to_path(path: &Path) -> Result<String, String> {
-    let existing_path = std::env::var_os("PATH").unwrap_or_default();
-    let paths = std::iter::once(path.to_path_buf()).chain(std::env::split_paths(&existing_path));
-    std::env::join_paths(paths)
-        .map(|value| value.to_string_lossy().to_string())
-        .map_err(|error| error.to_string())
-}
-
-fn path_to_env_string(path: impl AsRef<Path>) -> String {
-    path.as_ref().to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(target_os = "windows")]
@@ -1618,12 +1524,11 @@ mod tests {
         activate_main_window_for_deep_link, append_desktop_log,
         apply_configured_asr_model_to_request, asr_model_available,
         build_model_download_command_spec, build_worker_command_spec,
-        cached_process_result_for_request, desktop_log_path, ensure_runtime_dirs,
-        normalize_resource_dir, parse_worker_output_or_fallback, parse_worker_stdout,
-        path_to_env_string, run_blocking_worker_command, sanitize_diagnostic_text,
-        summarize_worker_result_for_log, DeepLinkActivationWindow, ProcessVideoRequest,
-        ProcessVideoResult, RetryInsightsRequest, RuntimePaths, WorkerCommandSpec, WorkerError,
-        WorkerInvocation, WorkerProcessState,
+        cached_process_result_for_request, desktop_log_path, parse_worker_output_or_fallback,
+        parse_worker_stdout, path_to_env_string, run_blocking_worker_command,
+        sanitize_diagnostic_text, summarize_worker_result_for_log, DeepLinkActivationWindow,
+        ProcessVideoRequest, ProcessVideoResult, RetryInsightsRequest, RuntimePaths,
+        WorkerCommandSpec, WorkerError, WorkerInvocation, WorkerProcessState,
     };
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -1812,25 +1717,6 @@ mod tests {
         assert!(!sanitized.contains("Bearer abc"));
         assert!(!sanitized.contains("SID=1"));
         assert!(!sanitized.contains("--cookies-from-browser"));
-    }
-
-    #[test]
-    fn ensure_runtime_dirs_creates_app_local_cache_dir() {
-        let root = temp_dir("ensure_runtime_dirs_creates_app_local_cache_dir");
-        let paths = RuntimePaths {
-            resource_dir: root.join("resources"),
-            user_data_dir: root.join("user-data"),
-        };
-        let legacy_temp_dir = paths.user_data_dir.join(super::LEGACY_TEMP_DIR_NAME);
-        fs::create_dir_all(&legacy_temp_dir).expect("create legacy temp dir");
-        fs::write(legacy_temp_dir.join("history.json"), "{}").expect("write legacy temp file");
-
-        ensure_runtime_dirs(&paths).expect("ensure runtime dirs");
-
-        assert!(paths.user_data_dir.join("outputs").is_dir());
-        assert!(paths.user_data_dir.join("cache").is_dir());
-        assert!(paths.user_data_dir.join("logs").is_dir());
-        assert!(!legacy_temp_dir.exists());
     }
 
     #[test]
@@ -2169,17 +2055,6 @@ Some dependency logged to stdout
             super::windows_subprocess_creation_flags() & 0x08000000,
             0x08000000
         );
-    }
-
-    #[test]
-    fn normalize_resource_dir_uses_packaged_resources_subdir_when_tauri_returns_install_root() {
-        let root = temp_dir("normalize_resource_dir_uses_packaged_resources_subdir");
-        let install_root = root.join("FrameQ");
-        let resources = install_root.join("resources");
-        fs::create_dir_all(resources.join("python")).expect("create packaged python dir");
-        fs::write(resources.join("python").join("python.exe"), "python").expect("write python");
-
-        assert_eq!(normalize_resource_dir(install_root), resources);
     }
 
     #[test]
