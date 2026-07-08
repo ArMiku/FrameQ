@@ -281,8 +281,8 @@ describe("App browser input interactions", () => {
                 '<section class="process-monitor process-pane completed" aria-label="处理进度">' +
                   '<div class="process-heading"><div><p class="section-label">Task monitor</p><h2>文字稿完成</h2></div></div>' +
                   '<div class="progress-summary"><div><span class="progress-value">100%</span><p>结果已可查看和导出</p></div><div class="progress-track"><span class="progress-fill completed"></span></div></div>' +
-                  '<div class="steps"><div class="step complete"><span class="step-dot"></span><span>视频提取中</span></div><div class="step complete"><span class="step-dot"></span><span>视频转译中</span></div><div class="step complete"><span class="step-dot"></span><span>话题点生成中</span></div></div>' +
-                  '<p class="status-line worker-message">文字稿和启发话题点已准备好。</p>' +
+                  '<div class="steps"><div class="step complete"><span class="step-dot"></span><span>视频提取中</span></div><div class="step complete"><span class="step-dot"></span><span>视频转译中</span></div><div class="step complete"><span class="step-dot"></span><span>灵感生成中</span></div></div>' +
+                  '<p class="status-line worker-message">文字稿和启发灵感已准备好。</p>' +
                 '</section>' +
               '</div>' +
               '<section class="result-workspace result-area" aria-label="结果总览">' +
@@ -292,7 +292,7 @@ describe("App browser input interactions", () => {
                   '<button class="result-card result-tile ready"><span class="result-icon"></span><span>音频文件</span><small>WAV 音频，可定位文件</small><em>定位文件</em></button>' +
                   '<button class="result-card result-tile ready"><span class="result-icon"></span><span>完整文字稿</span><small>15,297 字</small><em>打开详情</em></button>' +
                   '<button class="result-card result-tile ready"><span class="result-icon"></span><span>要点总结</span><small>1,065 字</small><em>打开详情</em></button>' +
-                  '<button class="result-card result-tile ready"><span class="result-icon"></span><span>启发话题点</span><small>12 个话题点</small><em>打开详情</em></button>' +
+                  '<button class="result-card result-tile ready"><span class="result-icon"></span><span>启发灵感</span><small>12 条灵感</small><em>打开详情</em></button>' +
                 '</div>' +
               '</section>';
             const processRect = document.querySelector('.process-monitor').getBoundingClientRect();

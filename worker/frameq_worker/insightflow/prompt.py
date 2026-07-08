@@ -16,7 +16,7 @@ def build_topic_plan_prompt(
     if preference_snapshot is not None:
         preference_prompt_section = f"""
 ## 个性化偏好快照
-以下 JSON 只用于启发话题点的选段、排序和 question_count 分配，不用于总结或思维导图。
+以下 JSON 只用于启发灵感的选段、排序和 question_count 分配，不用于总结或思维导图。
 优先参考 `generationPreferences` 判断哪些话题段更贴近本次目标、场景、关注角度和受众；
 `labelSnapshot` 仅用于理解选项含义。
 ```json
@@ -27,7 +27,7 @@ def build_topic_plan_prompt(
     return f"""
 # 角色使命
 你是一位话题分段规划师。你的任务不是生成问题，而是先把一整段可能没有自然分段的 ASR 文字稿，
-规划成适合后续生成启发话题点的语义话题段。
+规划成适合后续生成启发灵感的语义话题段。
 
 ## 核心任务
 根据用户提供的文字稿（长度：{len(text)} 字），提炼最多 {max_topics} 个高价值话题段。
@@ -90,7 +90,7 @@ def build_question_prompt(
     if preference_snapshot is not None:
         preference_prompt_section = f"""
 ## 个性化偏好快照
-以下 JSON 只用于生成启发话题点，不用于总结或思维导图。
+以下 JSON 只用于生成启发灵感，不用于总结或思维导图。
 优先参考 `generationPreferences`，`labelSnapshot` 仅用于理解选项含义。
 ```json
 {format_preference_snapshot_for_prompt(preference_snapshot)}
@@ -136,8 +136,8 @@ def build_question_prompt(
 ```json
 [
   {{
-    "topic": "启发话题点",
-    "matchReason": "为什么这个话题匹配文字稿和偏好",
+    "topic": "为什么企业 AI 落地时，上下文能力和流程编排可能比单点模型能力更关键？",
+    "matchReason": "为什么这条灵感匹配文字稿和偏好",
     "followUpQuestions": ["可以继续追问的问题"],
     "suitableUse": "适合的使用场景"
   }}

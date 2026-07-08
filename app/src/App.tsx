@@ -144,15 +144,15 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
   },
   insights_generating: {
     title: "AI 整理中",
-    body: "正在使用云端 LLM 生成要点总结、Mermaid mindmap 和启发话题点。",
+    body: "正在使用云端 LLM 生成要点总结、Mermaid mindmap 和启发灵感。",
   },
   completed: {
     title: "文字稿完成",
-    body: "视频、音频和文字稿已准备好；话题点可单独确认生成。",
+    body: "视频、音频和文字稿已准备好；启发灵感可单独确认生成。",
   },
   partial_completed: {
     title: "部分完成",
-    body: "文字稿已生成，话题点稍后可以重试。",
+    body: "文字稿已生成，启发灵感稍后可以重试。",
   },
   failed: {
     title: "失败",
@@ -183,7 +183,7 @@ const stageSummary: Record<WorkflowState["stage"], string> = {
   video_transcribing: "正在生成本地文字稿",
   insights_generating: "正在进行 AI 整理",
   completed: "视频、音频和文字稿已可查看",
-  partial_completed: "文字稿已保留，可重试话题点",
+  partial_completed: "文字稿已保留，可重试启发灵感",
   failed: "处理未完成，请查看原因",
 };
 
@@ -251,7 +251,7 @@ function accountProcessBlockerMessage(account: AccountStatus, actionLabel: strin
   }
 
   if (!account.llmConfigured) {
-    return "启发话题点 LLM 尚未由管理员配置完成，请稍后再试。";
+    return "启发灵感 LLM 尚未由管理员配置完成，请稍后再试。";
   }
 
   if (account.llmQuotaRemaining <= 0) {
@@ -799,7 +799,7 @@ function App() {
     try {
       const preferences = await clearInspirationProfile();
       setSettingsInsightPreferences(preferences);
-      setSettingsNotice("已清空灵感档案；下次生成启发话题点时会重新询问。");
+      setSettingsNotice("已清空灵感档案；下次生成启发灵感时会重新询问。");
     } catch (error) {
       setSettingsNotice(`清空失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -836,7 +836,7 @@ function App() {
 
   async function confirmInsightPreferences(preferences: GenerationPreferences) {
     if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结、Mermaid mindmap 和启发话题点"));
+      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结、Mermaid mindmap 和启发灵感"));
       return;
     }
 
@@ -864,7 +864,7 @@ function App() {
       return;
     }
     if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结、Mermaid mindmap 和启发话题点"));
+      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结、Mermaid mindmap 和启发灵感"));
       return;
     }
 
@@ -1379,7 +1379,7 @@ function App() {
   const activeCopy = stageCopy[workflow.stage];
   const progressPercent = formatProgressPercent(workflow.progressPercent);
   const detailTitle =
-    detailTab === "insights" ? "启发话题点" : detailTab === "summary" ? "要点总结" : "完整文字稿";
+    detailTab === "insights" ? "启发灵感" : detailTab === "summary" ? "要点总结" : "完整文字稿";
   const detailText =
     detailTab === "transcript" ? transcriptDraft : detailTab ? getDetailText(detailTab, workflow) : "";
   const exportPath = detailTab ? getExportPath(detailTab, workflow) : null;
@@ -1666,7 +1666,7 @@ function App() {
                 type="button"
                 onClick={() => setDetailTab("insights")}
               >
-                启发话题点
+                启发灵感
               </button>
               <button
                 className={detailTab === "transcript" ? "selected" : ""}
@@ -1751,7 +1751,7 @@ function App() {
                     ))}
                   </ol>
                 ) : (
-                  <p>话题点尚未生成。</p>
+                  <p>启发灵感尚未生成。</p>
                 )
               ) : (
                 <div className="transcript-review">
@@ -1929,7 +1929,7 @@ function App() {
                       <FolderOpen size={13} />
                       {item.outputDir || "outputs"}
                     </span>
-                    <span>{item.error ? item.error.code : `${item.insightsCount} 个话题点`}</span>
+                    <span>{item.error ? item.error.code : `${item.insightsCount} 条灵感`}</span>
                   </div>
                 </button>
               ))}
@@ -1984,7 +1984,7 @@ function App() {
                   <p className="settings-warning privacy-callout">
                     <ShieldCheck size={16} />
                     <span>
-                      这里仅管理本机 ASR 模型和输出目录。启发话题点 LLM 由管理员在服务端统一配置，客户端无需手动填写 API Key。
+                      这里仅管理本机 ASR 模型和输出目录。启发灵感 LLM 由管理员在服务端统一配置，客户端无需手动填写 API Key。
                     </span>
                   </p>
 
@@ -2041,7 +2041,7 @@ function App() {
                     <section id="settings-inspiration" className="sheet-form-section inspiration-settings-section">
                     <div className="form-section-heading">
                       <h3>灵感档案</h3>
-                      <p>只保存在本机，用于后续启发话题点生成。</p>
+                      <p>只保存在本机，用于后续启发灵感生成。</p>
                     </div>
                     <div className="settings-status-card inspiration-profile-card">
                       <div>

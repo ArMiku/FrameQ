@@ -150,7 +150,7 @@
 
 ## 概述
 
-FrameQ 是一个桌面客户端：用户输入抖音视频 URL 后，本地 worker 下载视频、校验媒体、提取音频、调用 ASR 转文字，并使用内置 InsightFlow 能力生成启发话题点。
+FrameQ 是一个桌面客户端：用户输入抖音视频 URL 后，本地 worker 下载视频、校验媒体、提取音频、调用 ASR 转文字，并使用内置 InsightFlow 能力生成启发灵感。
 
 ## 代码地图
 
@@ -160,7 +160,7 @@ FrameQ 是一个桌面客户端：用户输入抖音视频 URL 后，本地 work
 |------|------|------|
 | `app/` | Tauri + React + TypeScript 桌面 UI、状态展示、历史面板、设置面板、导出入口 | 已初始化；web build、Tauri release build 和安装器打包已验证 |
 | `worker/` | Python 下载、ffprobe 校验、ffmpeg 音频提取、ASR、结果写盘；开发态由 `uv` 管理 `.venv`，分发态由安装包内置 Python runtime 执行 | 已初始化 schema、CLI facade、下载/媒体校验/音频提取、ASR adapter、transcript writers；分发态默认启用 SenseVoice Small，但模型缓存由首启下载 |
-| `worker/insightflow/` | 从参考实现复制并裁剪后的话题点生成模块 | 已初始化 splitter、prompt、JSON parser、generator；先用 LLM 做话题分段规划，再逐话题生成问题；planner 失败时 fallback 到直接生成 |
+| `worker/insightflow/` | 从参考实现复制并裁剪后的灵感生成模块 | 已初始化 splitter、prompt、JSON parser、generator；先用 LLM 做话题分段规划，再逐话题生成问题；planner 失败时 fallback 到直接生成 |
 | `app/src-tauri/resources/` | 分发态内置 Python runtime、worker、ffmpeg/ffprobe 和配置模板 | 构建脚本生成；仓库只保留 placeholder，避免提交大体积 runtime |
 | app-local data `models/` | 用户本机可写模型缓存；由 `FRAMEQ_MODEL_DIR` 指向 | ModelScope cache root；canonical ASR files live under `models/iic/...`; legacy top-level `iic/...` is migrated/cleaned best-effort |
 | app-local data `outputs/` 或 `FRAMEQ_OUTPUT_DIR` | 用户可直接使用的 `tasks/<task_id>/` 最终视频、音频、文字稿、AI 产物和 `frameq-task.json` | 运行时生成；输出目录可由设置面板保存到 app-local data `.env` |
@@ -214,7 +214,7 @@ graph LR
   W2 -->|yt-dlp · ffprobe · ffmpeg| D1
   W2 -->|下载缓存 · 临时产物| D2
   W2 -->|ASR 加载| D3
-  W3 -->|总结 · mindmap · 话题点| D1
+  W3 -->|总结 · mindmap · 灵感| D1
   W4 -.->|仅 retry_insights 阶段| S1
   S1 -->|注入 LLM env| S2
   S2 -.->|OpenAI-compatible 调用| W3
@@ -226,7 +226,7 @@ graph LR
 - 改 UI 状态或历史展示：`app/src/workflow.ts` → `app/src/historyClient.ts` → `app/src-tauri/src/video_processing.rs` / `history.rs` / `settings.rs`。
 - 改下载 / 媒体校验 / 音频提取：`worker/frameq_worker/cli.py` → `media.py` → 对应平台 fallback。
 - 改 ASR 行为或模型缓存：`worker/frameq_worker/asr.py` → `model_download.py` → `app-local data models/`。
-- 改话题点 / 总结 / mindmap：`worker/frameq_worker/insightflow/` → `llm.py`。
+- 改灵感 / 总结 / mindmap：`worker/frameq_worker/insightflow/` → `llm.py`。
 - 改账户、激活码、配额或 LLM checkout：`server/`。
 
 
@@ -247,20 +247,20 @@ graph LR
 - `worker/frameq_worker/asr.py`：ASR model registry、Qwen / SenseVoice adapter、模型缓存目录解析和 transcript `.txt/.md` 写出。
 - `worker/frameq_worker/model_download.py`：SenseVoice Small 与 VAD 模型缓存下载、归档解压、校验和 `MODEL_VERSION.txt` 写入。
 - `worker/frameq_worker/config.py`：app-local data `.env` 加载、旧本地 LLM dotenv 字段过滤和环境变量合并；项目根 `.env` 不参与 worker runtime。
-- `worker/frameq_worker/llm.py`：OpenAI-compatible InsightFlow LLM client；桌面话题点生成通过 server-managed checkout env 创建 client，默认使用 `temperature=0.7`。
+- `worker/frameq_worker/llm.py`：OpenAI-compatible InsightFlow LLM client；桌面灵感生成通过 server-managed checkout env 创建 client，默认使用 `temperature=0.7`。
 - `worker/frameq_worker/pipeline.py`：worker 分阶段 pipeline 与 `ProcessResult` 映射。
-- `worker/frameq_worker/insightflow/`：内置 InsightFlow 话题点与总结生成模块，运行期不依赖外部参考仓库；对完整 ASR 文字稿优先生成 Mermaid mindmap 和要点总结，同时保留 topic planner 生成启发问题，最终去重并限制总数。
+- `worker/frameq_worker/insightflow/`：内置 InsightFlow 灵感与总结生成模块，运行期不依赖外部参考仓库；对完整 ASR 文字稿优先生成 Mermaid mindmap 和要点总结，同时保留 topic planner 生成启发问题，最终去重并限制总数。
 
 ## 架构不变量
 
 - UI 只编排任务和展示状态，不直接调用 `yt-dlp`、`ffmpeg`、ASR 或 LLM。
 - UI 可以通过 Tauri command 读取/保存 ASR 与输出目录配置；LLM 配置由 server Admin Web 管理，桌面 UI 不回显也不输入 API Key。
-- worker 通过结构化 JSON 返回状态、路径、文本、话题点和错误码。
-- `process_video` 主流程默认只负责视频下载、音频提取和 ASR 文字稿；`retry_insights`/AI整理流程在用户二次确认后单独运行，生成要点总结、Mermaid mindmap 和启发话题点，并且是唯一需要 server-managed LLM checkout 的本地 worker 调用。
+- worker 通过结构化 JSON 返回状态、路径、文本、灵感和错误码。
+- `process_video` 主流程默认只负责视频下载、音频提取和 ASR 文字稿；`retry_insights`/AI整理流程在用户二次确认后单独运行，生成要点总结、Mermaid mindmap 和启发灵感，并且是唯一需要 server-managed LLM checkout 的本地 worker 调用。
 - `D:\Github\InsightFlow\src\server` 只允许作为开发参考，禁止成为运行期依赖。
 - 对外分发态的用户可见输出默认写入 app-local data `outputs/tasks/<task_id>/`，也可通过 `FRAMEQ_OUTPUT_DIR` 写入自定义任务目录根；中间文件写入 app-local data `cache/tasks/<task_id>/`；模型缓存写入 app-local data `models/`。
 - 历史记录只索引本地结果和状态，不参与 worker 核心处理决策；旧历史路径不随输出目录配置变化而迁移。
-- 话题点失败不得阻断文字稿结果，客户端进入 `部分完成` 状态。
+- 灵感失败不得阻断文字稿结果，客户端进入 `部分完成` 状态。
 
 ## 层级边界
 

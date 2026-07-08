@@ -103,7 +103,7 @@ function getResultMeta(card: ResultCard, workflow: WorkflowState): string {
       return "生成失败，可重新确认";
     }
 
-    return `${workflow.insights.length} 个话题点`;
+    return `${workflow.insights.length} 条灵感`;
   }
 
   if (card.id === "summary") {

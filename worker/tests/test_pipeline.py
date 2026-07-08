@@ -1,7 +1,12 @@
 from pathlib import Path
 
 from frameq_worker.asr import Transcript
-from frameq_worker.pipeline import run_asr_transcript_step, run_insight_generation_step
+from frameq_worker.pipeline import (
+    CLOUD_LLM_AI_ORGANIZING_MESSAGE,
+    LOCAL_AI_ORGANIZING_MESSAGE,
+    run_asr_transcript_step,
+    run_insight_generation_step,
+)
 from frameq_worker.requests import parse_preference_snapshot
 
 
@@ -82,6 +87,13 @@ def test_run_asr_transcript_step_maps_asr_errors_to_worker_error(tmp_path: Path)
         "message": "ASR returned an empty transcript.",
         "stage": "video_transcribing",
     }
+
+
+def test_ai_organizing_progress_messages_use_inspiration_copy() -> None:
+    assert "启发灵感" in CLOUD_LLM_AI_ORGANIZING_MESSAGE
+    assert "启发灵感" in LOCAL_AI_ORGANIZING_MESSAGE
+    assert "启发话题点" not in CLOUD_LLM_AI_ORGANIZING_MESSAGE
+    assert "启发话题点" not in LOCAL_AI_ORGANIZING_MESSAGE
 
 
 class FakeInsightClient:

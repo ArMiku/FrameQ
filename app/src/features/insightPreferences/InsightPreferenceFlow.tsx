@@ -313,7 +313,7 @@ function ConfirmationStep({
       <p className="settings-warning privacy-callout">
         <ShieldCheck size={16} />
         <span>
-          确认后会把文字稿片段发送到管理员配置的云端 LLM，用于生成要点总结、Mermaid mindmap 和启发话题点；偏好快照只用于启发话题点，不用于要点总结或 Mermaid mindmap。
+          确认后会把文字稿片段发送到管理员配置的云端 LLM，用于生成要点总结、Mermaid mindmap 和启发灵感；偏好快照只用于启发灵感，不用于要点总结或 Mermaid mindmap。
         </span>
       </p>
       <div className="confirm-summary preference-confirm-grid">

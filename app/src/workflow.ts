@@ -295,7 +295,7 @@ export function startInsightRetry(state: WorkflowState): WorkflowState {
     ...state,
     stage: "insights_generating",
     showUrlInput: false,
-    statusMessage: "正在生成要点总结、Mermaid mindmap 和启发话题点；如已配置云端 LLM，文字稿会发送到该服务。",
+    statusMessage: "正在生成要点总结、Mermaid mindmap 和启发灵感；如已配置云端 LLM，文字稿会发送到该服务。",
     progressPercent: 88,
     error: null,
   };
@@ -572,7 +572,7 @@ function formatInsightGenerationError(error: WorkerErrorResult): string {
     rawSummary ? `${guidance}原始错误：${rawSummary}` : guidance;
 
   if (error.code === "INSIGHTFLOW_LLM_QUOTA_UNAVAILABLE") {
-    return "话题点额度不足，请续费或请管理员调整额度后重试。";
+    return "启发灵感额度不足，请续费或请管理员调整额度后重试。";
   }
 
   if (error.code === "INSIGHTFLOW_LLM_AUTH_REQUIRED") {
@@ -604,12 +604,12 @@ function formatInsightGenerationError(error: WorkerErrorResult): string {
 
   if (error.code === "INSIGHTFLOW_LLM_CONTENT_BLOCKED") {
     return appendRaw(
-      "文字稿可能触发了云端 LLM 的内容安全策略，当前服务拒绝生成话题点。请确认视频内容可被该模型处理，或请管理员更换模型/供应商后重试。",
+      "文字稿可能触发了云端 LLM 的内容安全策略，当前服务拒绝生成启发灵感。请确认视频内容可被该模型处理，或请管理员更换模型/供应商后重试。",
     );
   }
 
   if (error.code === "INSIGHTFLOW_EMPTY_RESULT") {
-    return appendRaw("云端 LLM 没有返回可用的话题点，请稍后重试或更换模型配置。");
+    return appendRaw("云端 LLM 没有返回可用的启发灵感，请稍后重试或更换模型配置。");
   }
 
   if (error.code === "INSIGHTFLOW_EMPTY_SUMMARY") {
@@ -629,7 +629,7 @@ function formatInsightGenerationError(error: WorkerErrorResult): string {
   }
 
   if (error.code === "WORKER_PROCESS_FAILED" || error.code === "TAURI_COMMAND_FAILED") {
-    return appendRaw("话题点生成进程异常退出，请保留文字稿并重试。");
+    return appendRaw("启发灵感生成进程异常退出，请保留文字稿并重试。");
   }
 
   return error.message;
@@ -735,7 +735,7 @@ export function getResultCards(state: WorkflowState): ResultCard[] {
       summaryCard,
       {
         id: "insights",
-        title: "启发话题点",
+        title: "启发灵感",
         status: "failed",
         action: "confirm",
       },
@@ -750,13 +750,13 @@ export function getResultCards(state: WorkflowState): ResultCard[] {
       state.insights.length > 0 || hasArtifact(state, "insights") || hasArtifact(state, "insights_md")
         ? {
             id: "insights",
-            title: "启发话题点",
+            title: "启发灵感",
             status: "ready",
             action: "open",
           }
         : {
             id: "insights",
-            title: "启发话题点",
+            title: "启发灵感",
             status: "pending",
             action: "confirm",
           },

@@ -254,7 +254,7 @@ def _normalize_insight_drafts(parsed: object | None) -> list[InsightDraft]:
                         topic=text,
                         match_reason="来自文字稿相关片段。",
                         follow_up_questions=(text,),
-                        suitable_use="启发话题延展",
+                        suitable_use="灵感延展",
                     )
                 )
         elif isinstance(item, dict):
@@ -275,7 +275,7 @@ def _normalize_insight_drafts(parsed: object | None) -> list[InsightDraft]:
                 item.get("suitableUse")
                 or item.get("suitable_use")
                 or item.get("label")
-                or "启发话题延展"
+                or "灵感延展"
             ).strip()
             follow_up_questions = _normalize_follow_up_questions(
                 item.get("followUpQuestions")
@@ -288,7 +288,7 @@ def _normalize_insight_drafts(parsed: object | None) -> list[InsightDraft]:
                     topic=topic,
                     match_reason=match_reason or "来自文字稿相关片段。",
                     follow_up_questions=follow_up_questions or (topic,),
-                    suitable_use=suitable_use or "启发话题延展",
+                    suitable_use=suitable_use or "灵感延展",
                 )
             )
     return drafts
@@ -330,13 +330,13 @@ def _append_unique_insights(
 
 
 def _format_insights_markdown(insights: list[Insight]) -> str:
-    lines = ["# 启发话题点", ""]
+    lines = ["# 启发灵感", ""]
     for insight in insights:
         lines.extend(
             [
-                f"## 话题点 {insight.id}",
+                f"## 灵感 {insight.id}",
                 "",
-                "### 话题点",
+                "### 灵感",
                 insight.topic,
                 "",
                 "### 匹配理由",

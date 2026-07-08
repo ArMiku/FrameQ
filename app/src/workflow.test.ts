@@ -217,7 +217,7 @@ describe("workflow state model", () => {
       },
       {
         id: "insights",
-        title: "启发话题点",
+        title: "启发灵感",
         status: "pending",
         action: "confirm",
       },
@@ -290,7 +290,7 @@ describe("workflow state model", () => {
       },
       {
         id: "insights",
-        title: "启发话题点",
+        title: "启发灵感",
         status: "failed",
         action: "confirm",
       },
@@ -522,7 +522,7 @@ describe("workflow state model", () => {
         message: "No cloud LLM API-call uses are available for this account.",
         stage: "insights_generating",
       }),
-    ).toBe("话题点额度不足，请续费或请管理员调整额度后重试。");
+    ).toBe("启发灵感额度不足，请续费或请管理员调整额度后重试。");
 
     expect(
       formatWorkerError({
@@ -532,7 +532,7 @@ describe("workflow state model", () => {
         stage: "insights_generating",
       }),
     ).toBe(
-      "文字稿可能触发了云端 LLM 的内容安全策略，当前服务拒绝生成话题点。请确认视频内容可被该模型处理，或请管理员更换模型/供应商后重试。原始错误：LLM provider blocked the request with its content safety policy. Provider detail: content_policy_violation.",
+      "文字稿可能触发了云端 LLM 的内容安全策略，当前服务拒绝生成启发灵感。请确认视频内容可被该模型处理，或请管理员更换模型/供应商后重试。原始错误：LLM provider blocked the request with its content safety policy. Provider detail: content_policy_violation.",
     );
 
     expect(
@@ -542,7 +542,7 @@ describe("workflow state model", () => {
         stage: "insights_generating",
       }),
     ).toBe(
-      "云端 LLM 没有返回可用的话题点，请稍后重试或更换模型配置。原始错误：InsightFlow returned no insights.",
+      "云端 LLM 没有返回可用的启发灵感，请稍后重试或更换模型配置。原始错误：InsightFlow returned no insights.",
     );
 
     expect(
@@ -651,7 +651,7 @@ describe("workflow state model", () => {
 
     expect(retrying.stage).toBe("insights_generating");
     expect(retrying.statusMessage).toBe(
-      "正在生成要点总结、Mermaid mindmap 和启发话题点；如已配置云端 LLM，文字稿会发送到该服务。",
+      "正在生成要点总结、Mermaid mindmap 和启发灵感；如已配置云端 LLM，文字稿会发送到该服务。",
     );
     expect(retrying.progressPercent).toBe(88);
     expect(retrying.text).toBe("已经完成的文字稿。");

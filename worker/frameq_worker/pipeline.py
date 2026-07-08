@@ -54,10 +54,10 @@ from frameq_worker.task_store import (
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 CLOUD_LLM_AI_ORGANIZING_MESSAGE = (
-    "正在使用配置的 LLM 生成要点总结、Mermaid mindmap 和启发话题点，"
+    "正在使用配置的 LLM 生成要点总结、Mermaid mindmap 和启发灵感，"
     "文字稿会发送到该服务。"
 )
-LOCAL_AI_ORGANIZING_MESSAGE = "正在生成要点总结、Mermaid mindmap 和启发话题点。"
+LOCAL_AI_ORGANIZING_MESSAGE = "正在生成要点总结、Mermaid mindmap 和启发灵感。"
 
 
 def run_asr_transcript_step(

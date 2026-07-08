@@ -191,7 +191,7 @@ def test_generate_insights_from_markdown_writes_json_and_markdown(tmp_path: Path
             },
         ],
     }
-    assert "启发话题点" in artifacts.md_path.read_text(encoding="utf-8")
+    assert "启发灵感" in artifacts.md_path.read_text(encoding="utf-8")
     assert "匹配理由" in artifacts.md_path.read_text(encoding="utf-8")
     assert "启发问题" in artifacts.md_path.read_text(encoding="utf-8")
     assert "适合用途" in artifacts.md_path.read_text(encoding="utf-8")
@@ -206,6 +206,7 @@ def test_build_topic_plan_prompt_requests_structured_topic_plan() -> None:
     prompt = prompt_module.build_topic_plan_prompt("这是一段没有分段的 ASR 文字稿。")
 
     assert "话题分段规划师" in prompt
+    assert "适合后续生成启发灵感的语义话题段" in prompt
     assert "忽略寒暄、重复、口头禅" in prompt
     assert '"title"' in prompt
     assert '"summary"' in prompt
@@ -293,9 +294,12 @@ def test_build_question_prompt_includes_compact_preference_context() -> None:
     )
 
     assert "## 个性化偏好快照" in prompt
+    assert "以下 JSON 只用于生成启发灵感" in prompt
     assert "content_creation" in prompt
     assert "内容创作" in prompt
     assert "profileSkipped" in prompt
+    assert '"topic": "为什么企业 AI 落地时，上下文能力和流程编排可能比单点模型能力更关键？"' in prompt
+    assert '"topic": "启发话题点"' not in prompt
 
 
 def test_generate_insights_applies_preferences_to_planner_and_question_prompts(
@@ -393,6 +397,7 @@ def test_topic_planner_failure_falls_back_to_direct_generation(tmp_path: Path) -
     assert [insight.topic for insight in artifacts.insights] == [
         "为什么重试应该保留已有文字稿？"
     ]
+    assert artifacts.insights[0].suitable_use == "灵感延展"
 
 
 def test_topic_planner_caps_total_question_count(tmp_path: Path) -> None:
@@ -455,7 +460,7 @@ def test_write_insight_files_serializes_existing_insights(tmp_path: Path) -> Non
     )
 
     assert json.loads(artifacts.json_path.read_text(encoding="utf-8"))["schemaVersion"] == 1
-    assert "## 话题点 1" in artifacts.md_path.read_text(encoding="utf-8")
+    assert "## 灵感 1" in artifacts.md_path.read_text(encoding="utf-8")
 
 
 def test_generate_summary_from_markdown_writes_summary_and_mermaid_mindmap(
