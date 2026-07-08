@@ -29,6 +29,7 @@ pub(crate) struct ProcessVideoRequest {
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct RetryInsightsRequest {
     task_id: String,
+    target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     preference_snapshot: Option<serde_json::Value>,
 }
@@ -713,6 +714,7 @@ mod tests {
     fn retry_insights_request_round_trips_preference_snapshot_payload() {
         let payload = serde_json::json!({
             "task_id": "20260705-153012-douyin-demo",
+            "target": "insights",
             "preference_snapshot": {
                 "profile": null,
                 "profileSkipped": true,
@@ -735,6 +737,10 @@ mod tests {
             serde_json::from_value(payload).expect("deserialize retry request");
         let serialized = serde_json::to_value(&request).expect("serialize retry request");
 
+        assert_eq!(
+            serialized["target"],
+            "insights"
+        );
         assert_eq!(
             serialized["preference_snapshot"]["generationPreferences"]["goal"],
             "content_creation"

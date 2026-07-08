@@ -188,8 +188,18 @@ def parse_retry_insights_request(payload: object) -> RetryInsightsRequest:
     if not TASK_ID_PATTERN.fullmatch(task_id):
         raise ValueError("Retry payload task_id must be a single task directory name.")
 
+    target = payload.get("target")
+    if not isinstance(target, str) or not target.strip():
+        raise ValueError("Retry payload must include target.")
+    target = target.strip()
+    if target not in {"summary", "insights"}:
+        raise ValueError("Retry payload target must be summary or insights.")
+    if target == "summary" and payload.get("preference_snapshot") is not None:
+        raise ValueError("preference_snapshot is only allowed for insights target.")
+
     return RetryInsightsRequest(
         task_id=task_id,
+        target=target,
         preference_snapshot=parse_preference_snapshot(payload.get("preference_snapshot")),
     )
 

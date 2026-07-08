@@ -174,7 +174,7 @@ describe("worker client", () => {
     expect(unlistenCalls).toEqual([WORKER_PROGRESS_EVENT]);
   });
 
-  test("invokes the Tauri retry_insights command with a task id", async () => {
+  test("invokes the Tauri retry_insights command for summary generation", async () => {
     const calls: Array<{ command: string; args: unknown }> = [];
     const runner: WorkerCommandRunner = async (command, args) => {
       calls.push({ command, args });
@@ -190,7 +190,7 @@ describe("worker client", () => {
       });
     };
 
-    const result = await retryInsights(TASK_ID, null, runner);
+    const result = await retryInsights(TASK_ID, "summary", null, runner);
 
     expect(calls).toEqual([
       {
@@ -198,6 +198,7 @@ describe("worker client", () => {
         args: {
           request: {
             task_id: TASK_ID,
+            target: "summary",
           },
         },
       },
@@ -212,7 +213,7 @@ describe("worker client", () => {
       return completedResult();
     };
 
-    const result = await retryInsights(TASK_ID, PREFERENCE_SNAPSHOT, runner);
+    const result = await retryInsights(TASK_ID, "insights", PREFERENCE_SNAPSHOT, runner);
 
     expect(calls).toEqual([
       {
@@ -220,6 +221,7 @@ describe("worker client", () => {
         args: {
           request: {
             task_id: TASK_ID,
+            target: "insights",
             preference_snapshot: PREFERENCE_SNAPSHOT,
           },
         },
@@ -233,7 +235,7 @@ describe("worker client", () => {
       throw new Error("retry worker process could not start");
     };
 
-    const result = await retryInsights(TASK_ID, null, runner);
+    const result = await retryInsights(TASK_ID, "summary", null, runner);
 
     expect(result).toEqual({
       status: "partial_completed",

@@ -72,6 +72,8 @@ export type WorkerProgressEvent = {
   progress: number;
 };
 
+export type InsightRetryTarget = "summary" | "insights";
+
 export type ToolbarNewTaskButtonState = {
   disabled: boolean;
   ariaLabel: string;
@@ -290,12 +292,15 @@ export function startProcessing(state: WorkflowState, url: string): WorkflowStat
   };
 }
 
-export function startInsightRetry(state: WorkflowState): WorkflowState {
+export function startInsightRetry(state: WorkflowState, target: InsightRetryTarget): WorkflowState {
   return {
     ...state,
     stage: "insights_generating",
     showUrlInput: false,
-    statusMessage: "正在生成要点总结、Mermaid mindmap 和启发灵感；如已配置云端 LLM，文字稿会发送到该服务。",
+    statusMessage:
+      target === "summary"
+        ? "正在生成要点总结和 Mermaid mindmap；文字稿片段会发送到管理员配置的云端 LLM 服务。"
+        : "正在生成启发灵感；文字稿片段和本次偏好会发送到管理员配置的云端 LLM 服务。",
     progressPercent: 88,
     error: null,
   };
@@ -576,14 +581,14 @@ function formatInsightGenerationError(error: WorkerErrorResult): string {
   }
 
   if (error.code === "INSIGHTFLOW_LLM_AUTH_REQUIRED") {
-    return "请先登录 FrameQ 账号，然后重新生成 AI 整理结果。";
+    return "请先登录 FrameQ 账号，然后重新生成所选 AI 结果。";
   }
 
   if (
     error.code === "INSIGHTFLOW_CONFIG_MISSING" ||
     error.code === "INSIGHTFLOW_LLM_CONFIG_MISSING"
   ) {
-    return "管理员尚未配置云端 LLM，配置完成后可重新生成 AI 整理结果。";
+    return "管理员尚未配置云端 LLM，配置完成后可重新生成所选 AI 结果。";
   }
 
   if (
@@ -621,11 +626,11 @@ function formatInsightGenerationError(error: WorkerErrorResult): string {
   }
 
   if (error.code === "INSIGHTFLOW_EMPTY_TRANSCRIPT") {
-    return "文字稿为空，暂时无法生成 AI 整理结果。";
+    return "文字稿为空，暂时无法生成所选 AI 结果。";
   }
 
   if (error.code === "TRANSCRIPT_MARKDOWN_NOT_FOUND") {
-    return "未找到文字稿 Markdown 文件，请重新运行主流程后再生成 AI 整理结果。";
+    return "未找到文字稿 Markdown 文件，请重新运行主流程后再生成所选 AI 结果。";
   }
 
   if (error.code === "WORKER_PROCESS_FAILED" || error.code === "TAURI_COMMAND_FAILED") {
@@ -727,18 +732,27 @@ export function getResultCards(state: WorkflowState): ResultCard[] {
           status: state.stage === "partial_completed" ? "failed" : "pending",
           action: "confirm",
         };
+  const insightsCard: ResultCard =
+    state.insights.length > 0 || hasArtifact(state, "insights") || hasArtifact(state, "insights_md")
+      ? {
+          id: "insights",
+          title: "启发灵感",
+          status: "ready",
+          action: "open",
+        }
+      : {
+          id: "insights",
+          title: "启发灵感",
+          status: state.stage === "partial_completed" ? "failed" : "pending",
+          action: "confirm",
+        };
 
   if (state.stage === "partial_completed") {
     return [
       ...mediaCards,
       ...(transcriptCard ? [transcriptCard] : []),
       summaryCard,
-      {
-        id: "insights",
-        title: "启发灵感",
-        status: "failed",
-        action: "confirm",
-      },
+      insightsCard,
     ];
   }
 
@@ -747,19 +761,7 @@ export function getResultCards(state: WorkflowState): ResultCard[] {
       ...mediaCards,
       ...(transcriptCard ? [transcriptCard] : []),
       summaryCard,
-      state.insights.length > 0 || hasArtifact(state, "insights") || hasArtifact(state, "insights_md")
-        ? {
-            id: "insights",
-            title: "启发灵感",
-            status: "ready",
-            action: "open",
-          }
-        : {
-            id: "insights",
-            title: "启发灵感",
-            status: "pending",
-            action: "confirm",
-          },
+      insightsCard,
     ];
   }
 
@@ -768,6 +770,16 @@ export function getResultCards(state: WorkflowState): ResultCard[] {
   }
 
   return [];
+}
+
+export function getInsightRetryTargetForCard(card: ResultCard): InsightRetryTarget | null {
+  if (card.action !== "confirm") {
+    return null;
+  }
+  if (card.id === "summary" || card.id === "insights") {
+    return card.id;
+  }
+  return null;
 }
 
 export function getDetailText(tab: DetailTab, state: WorkflowState): string {

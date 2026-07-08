@@ -10,6 +10,7 @@ import {
   FileText,
   FolderOpen,
   History as HistoryIcon,
+  ListChecks,
   LoaderCircle,
   Pause,
   Play,
@@ -28,6 +29,7 @@ import {
   createInitialWorkflow,
   getDetailText,
   getExportPath,
+  getInsightRetryTargetForCard,
   getProgressSteps,
   getResultCards,
   getTranscriptSourceLabel,
@@ -40,6 +42,7 @@ import {
   startInsightRetry,
   summarizeWorkerResult,
   type DetailTab,
+  type InsightRetryTarget,
   type ResultCard,
   type WorkflowState,
 } from "./workflow";
@@ -145,7 +148,7 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
   },
   insights_generating: {
     title: "AI 整理中",
-    body: "正在使用云端 LLM 生成要点总结、Mermaid mindmap 和启发灵感。",
+    body: "正在使用云端 LLM 生成所选 AI 结果。",
   },
   completed: {
     title: "文字稿完成",
@@ -153,7 +156,7 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
   },
   partial_completed: {
     title: "部分完成",
-    body: "文字稿已生成，启发灵感稍后可以重试。",
+    body: "文字稿已生成，失败的 AI 结果稍后可以重试。",
   },
   failed: {
     title: "失败",
@@ -182,9 +185,9 @@ const stageSummary: Record<WorkflowState["stage"], string> = {
   waiting_input: "准备接收一个公开视频链接",
   video_extracting: "正在准备媒体文件",
   video_transcribing: "正在生成本地文字稿",
-  insights_generating: "正在进行 AI 整理",
+  insights_generating: "正在生成所选 AI 结果",
   completed: "视频、音频和文字稿已可查看",
-  partial_completed: "文字稿已保留，可重试启发灵感",
+  partial_completed: "文字稿已保留，可重试失败的 AI 结果",
   failed: "处理未完成，请查看原因",
 };
 
@@ -252,7 +255,7 @@ function accountProcessBlockerMessage(account: AccountStatus, actionLabel: strin
   }
 
   if (!account.llmConfigured) {
-    return "启发灵感 LLM 尚未由管理员配置完成，请稍后再试。";
+    return "AI 结果 LLM 尚未由管理员配置完成，请稍后再试。";
   }
 
   if (account.llmQuotaRemaining <= 0) {
@@ -354,6 +357,7 @@ function settingsGenerationPreferenceLines(state: InsightPreferenceState | null,
 function App() {
   const [workflow, setWorkflow] = useState(createInitialWorkflow);
   const [detailTab, setDetailTab] = useState<DetailTab | null>(null);
+  const [summaryConfirmOpen, setSummaryConfirmOpen] = useState(false);
   const [insightPreferenceFlow, setInsightPreferenceFlow] =
     useState<InsightPreferenceFlowState | null>(null);
   const [insightPreferenceBusy, setInsightPreferenceBusy] = useState(false);
@@ -453,6 +457,11 @@ function App() {
         return;
       }
 
+      if (summaryConfirmOpen) {
+        setSummaryConfirmOpen(false);
+        return;
+      }
+
       if (insightPreferenceFlow) {
         setInsightPreferenceFlow(null);
         return;
@@ -470,7 +479,15 @@ function App() {
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [detailTab, historyOpen, insightPreferenceFlow, settingsOpen, modelGuideOpen, modelDownloadActive]);
+  }, [
+    detailTab,
+    historyOpen,
+    summaryConfirmOpen,
+    insightPreferenceFlow,
+    settingsOpen,
+    modelGuideOpen,
+    modelDownloadActive,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -688,6 +705,7 @@ function App() {
   function resetWorkflow() {
     operationIdRef.current += 1;
     setDetailTab(null);
+    setSummaryConfirmOpen(false);
     setInsightPreferenceFlow(null);
     setActionNotice("");
     setWorkflow(createInitialWorkflow());
@@ -704,6 +722,7 @@ function App() {
   async function cancelCurrentProcessing() {
     operationIdRef.current += 1;
     setDetailTab(null);
+    setSummaryConfirmOpen(false);
     setInsightPreferenceFlow(null);
     setActionNotice("");
     setWorkflow((current) => cancelProcessing(current));
@@ -724,7 +743,14 @@ function App() {
 
     if (card.action === "confirm") {
       setActionNotice("");
-      void openInsightPreferenceFlow();
+      const target = getInsightRetryTargetForCard(card);
+      if (target === "summary") {
+        openSummaryConfirmation();
+        return;
+      }
+      if (target === "insights") {
+        void openInsightPreferenceFlow();
+      }
     }
   }
 
@@ -745,7 +771,7 @@ function App() {
 
   async function openInsightPreferenceFlow() {
     if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
-      setActionNotice("文字稿生成后才能继续 AI 整理。");
+      setActionNotice("文字稿生成后才能继续生成启发灵感。");
       return;
     }
 
@@ -758,6 +784,29 @@ function App() {
       setActionNotice(`无法读取本地偏好：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setInsightPreferenceBusy(false);
+    }
+  }
+
+  function openSummaryConfirmation() {
+    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
+      setActionNotice("文字稿生成后才能继续生成要点总结。");
+      return;
+    }
+
+    setSummaryConfirmOpen(true);
+  }
+
+  async function confirmSummaryGeneration() {
+    if (!canProcessWithAccount(account)) {
+      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结"));
+      return;
+    }
+
+    setSummaryConfirmOpen(false);
+    try {
+      await retryInsightGeneration("summary", null);
+    } catch (error) {
+      setActionNotice(`启动要点总结失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -837,7 +886,7 @@ function App() {
 
   async function confirmInsightPreferences(preferences: GenerationPreferences) {
     if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结、Mermaid mindmap 和启发灵感"));
+      openAccountPanel(accountProcessBlockerMessage(account, "生成启发灵感"));
       return;
     }
 
@@ -848,24 +897,32 @@ function App() {
             profile: insightPreferenceFlow.profile,
             profileSkipped: insightPreferenceFlow.profileSkipped,
             generationPreferences: preferences,
-          })
+      })
         : null;
       await saveDefaultGenerationPreferences(preferences);
       setInsightPreferenceFlow(null);
-      await retryInsightGeneration(preferenceSnapshot);
+      await retryInsightGeneration("insights", preferenceSnapshot);
     } catch (error) {
-      setActionNotice(`启动 AI 整理失败：${error instanceof Error ? error.message : String(error)}`);
+      setActionNotice(`启动启发灵感失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setInsightPreferenceBusy(false);
     }
   }
 
-  async function retryInsightGeneration(preferenceSnapshot: PreferenceSnapshot | null = null) {
+  async function retryInsightGeneration(
+    target: InsightRetryTarget,
+    preferenceSnapshot: PreferenceSnapshot | null = null,
+  ) {
     if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
       return;
     }
     if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结、Mermaid mindmap 和启发灵感"));
+      openAccountPanel(
+        accountProcessBlockerMessage(
+          account,
+          target === "summary" ? "生成要点总结" : "生成启发灵感",
+        ),
+      );
       return;
     }
 
@@ -874,9 +931,9 @@ function App() {
     operationIdRef.current = operationId;
     setDetailTab(null);
     setActionNotice("");
-    setWorkflow((current) => startInsightRetry(current));
+    setWorkflow((current) => startInsightRetry(current, target));
 
-    const result = await retryInsights(taskId, preferenceSnapshot);
+    const result = await retryInsights(taskId, target, preferenceSnapshot);
     if (operationIdRef.current !== operationId) {
       return;
     }
@@ -890,6 +947,8 @@ function App() {
           ...(result.artifacts ?? {}),
         },
         text: result.text || current.text,
+        summary: result.summary || current.summary,
+        insights: result.insights.length > 0 ? result.insights : current.insights,
       }),
       url: current.url,
       submittedUrl: current.submittedUrl,
@@ -1621,6 +1680,80 @@ function App() {
         onCancelDownload={cancelCurrentAsrModelDownload}
       />
 
+      {summaryConfirmOpen ? (
+        <div
+          className="modal-backdrop sheet-backdrop"
+          role="presentation"
+          onClick={() => setSummaryConfirmOpen(false)}
+        >
+          <section
+            className="sheet-panel detail-modal preference-flow-sheet"
+            aria-label="确认要点总结"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modal-header sheet-header">
+              <div>
+                <p className="section-label">Summary</p>
+                <h2>确认要点总结</h2>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setSummaryConfirmOpen(false)}
+                aria-label="关闭要点总结确认"
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <div className="preference-flow-content">
+              <p className="settings-warning privacy-callout">
+                <ShieldCheck size={16} />
+                <span>
+                  确认后会把文字稿片段发送到管理员配置的云端 LLM，用于生成要点总结和本地 Mermaid mindmap。
+                </span>
+              </p>
+              <div className="confirm-summary preference-confirm-grid">
+                <div>
+                  <span className="account-status-label">当前文字稿</span>
+                  <strong>
+                    {workflow.text.length > 0
+                      ? `${workflow.text.length.toLocaleString("zh-CN")} 字`
+                      : "等待文字稿"}
+                  </strong>
+                  <small>{currentTranscriptPath || "文字稿文件生成后才能继续。"}</small>
+                </div>
+                <div>
+                  <span className="account-status-label">账号额度</span>
+                  <strong>{account.llmQuotaRemaining} 次可用</strong>
+                  <small>1 次额度 = 1 次云端 LLM API 调用尝试；本次会按实际调用次数扣除。</small>
+                </div>
+              </div>
+              <div className="settings-actions sheet-footer">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setSummaryConfirmOpen(false)}
+                  disabled={isProcessingStage(workflow.stage)}
+                >
+                  <span>取消</span>
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={confirmSummaryGeneration}
+                  disabled={isProcessingStage(workflow.stage)}
+                >
+                  <ListChecks size={16} />
+                  <span>确认</span>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {insightPreferenceFlow ? (
         <InsightPreferenceFlow
           flow={insightPreferenceFlow}
@@ -1985,7 +2118,7 @@ function App() {
                   <p className="settings-warning privacy-callout">
                     <ShieldCheck size={16} />
                     <span>
-                      这里仅管理本机 ASR 模型和输出目录。启发灵感 LLM 由管理员在服务端统一配置，客户端无需手动填写 API Key。
+                      这里仅管理本机 ASR 模型和输出目录。AI 结果 LLM 由管理员在服务端统一配置，客户端无需手动填写 API Key。
                     </span>
                   </p>
 

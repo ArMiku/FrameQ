@@ -19,7 +19,7 @@ from frameq_worker.insightflow import InsightClient
 from frameq_worker.llm import build_insight_client_from_env
 from frameq_worker.media import CommandRunner, run_command
 from frameq_worker.model_download import ModelDownloadError, download_asr_model_cache
-from frameq_worker.models import JobStage, ProcessResult, TranscriptMetadata, WorkerError
+from frameq_worker.models import Insight, JobStage, ProcessResult, TranscriptMetadata, WorkerError
 from frameq_worker.pipeline import (
     failed_result,
     finalize_task_result,
@@ -152,7 +152,7 @@ def retry_insights_once(
             ),
         ).to_dict()
     ensure_task_dirs(task_context.paths)
-    if request.preference_snapshot is not None:
+    if request.target == "insights" and request.preference_snapshot is not None:
         write_preference_snapshot_artifact(
             task_context.paths,
             request.preference_snapshot,
@@ -183,9 +183,88 @@ def retry_insights_once(
         client=configured_insight_client,
         transcript=transcript_metadata_from_manifest(manifest),
         preference_snapshot=request.preference_snapshot,
+        target=request.target,
     )
 
-    return finalize_task_result(task_context, insight_result).to_dict()
+    return finalize_task_result(
+        task_context,
+        merge_existing_ai_artifacts(task_context.paths, insight_result),
+    ).to_dict()
+
+
+def merge_existing_ai_artifacts(paths: object, result: ProcessResult) -> ProcessResult:
+    summary = result.summary or read_existing_summary(paths)
+    insights = result.insights or read_existing_insights(paths)
+    return ProcessResult(
+        status=result.status,
+        artifacts=result.artifacts,
+        text=result.text,
+        summary=summary,
+        insights=insights,
+        transcript=result.transcript,
+        error=result.error,
+    )
+
+
+def read_existing_summary(paths: object) -> str:
+    summary_path = getattr(paths, "summary_path", None)
+    if not isinstance(summary_path, Path) or not summary_path.is_file():
+        return ""
+    return summary_path.read_text(encoding="utf-8").strip()
+
+
+def read_existing_insights(paths: object) -> list[Insight]:
+    insights_path = getattr(paths, "insights_json_path", None)
+    if not isinstance(insights_path, Path) or not insights_path.is_file():
+        return []
+    try:
+        payload = json.loads(insights_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != 1:
+        return []
+    raw_insights = payload.get("insights")
+    if not isinstance(raw_insights, list):
+        return []
+
+    insights: list[Insight] = []
+    for raw in raw_insights:
+        if not isinstance(raw, dict):
+            return []
+        try:
+            insight_id = int(raw["id"])
+            topic = str(raw["topic"]).strip()
+            match_reason = str(raw["matchReason"]).strip()
+            raw_questions = raw["followUpQuestions"]
+            if not isinstance(raw_questions, list):
+                return []
+            follow_up_questions = tuple(
+                question.strip()
+                for question in raw_questions
+                if isinstance(question, str) and question.strip()
+            )
+            suitable_use = str(raw["suitableUse"]).strip()
+            raw_source_chunk_id = raw.get("sourceChunkId")
+            source_chunk_id = (
+                int(raw_source_chunk_id)
+                if raw_source_chunk_id is not None
+                else None
+            )
+        except (KeyError, TypeError, ValueError):
+            return []
+        if not topic or not match_reason or not follow_up_questions or not suitable_use:
+            return []
+        insights.append(
+            Insight(
+                id=insight_id,
+                topic=topic,
+                match_reason=match_reason,
+                follow_up_questions=follow_up_questions,
+                suitable_use=suitable_use,
+                source_chunk_id=source_chunk_id,
+            )
+        )
+    return insights
 
 
 

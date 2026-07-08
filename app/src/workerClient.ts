@@ -22,6 +22,7 @@ export type WorkerProgressListener = (
 export type WorkerProgressHandler = (event: WorkerProgressEvent) => void;
 
 export const WORKER_PROGRESS_EVENT = "worker-progress";
+export type RetryInsightTarget = "summary" | "insights";
 
 export type ProcessVideoRequest = {
   url: string;
@@ -34,6 +35,7 @@ export type ProcessVideoRequest = {
 
 export type RetryInsightsRequest = {
   task_id: string;
+  target: RetryInsightTarget;
   preference_snapshot?: PreferenceSnapshot;
 };
 
@@ -81,11 +83,13 @@ export async function processVideo(
 
 export async function retryInsights(
   taskId: string,
+  target: RetryInsightTarget,
   preferenceSnapshot: PreferenceSnapshot | null = null,
   runner: WorkerCommandRunner = defaultWorkerRunner,
 ): Promise<WorkerResult> {
   const request: RetryInsightsRequest = {
     task_id: taskId,
+    target,
   };
   if (preferenceSnapshot) {
     request.preference_snapshot = preferenceSnapshot;

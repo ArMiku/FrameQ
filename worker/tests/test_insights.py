@@ -298,7 +298,10 @@ def test_build_question_prompt_includes_compact_preference_context() -> None:
     assert "content_creation" in prompt
     assert "内容创作" in prompt
     assert "profileSkipped" in prompt
-    assert '"topic": "为什么企业 AI 落地时，上下文能力和流程编排可能比单点模型能力更关键？"' in prompt
+    assert (
+        '"topic": "为什么企业 AI 落地时，上下文能力和流程编排可能比单点模型能力更关键？"'
+        in prompt
+    )
     assert '"topic": "启发话题点"' not in prompt
 
 

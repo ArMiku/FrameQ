@@ -120,7 +120,7 @@
 
 ## 背景
 
-用户希望在桌面客户端中输入抖音视频 URL，先确认启动本地公开视频下载、音频提取和中文 ASR 转写，再在文字稿完成后单独确认生成可继续思考的要点总结、Mermaid mindmap 和启发灵感。
+用户希望在桌面客户端中输入抖音视频 URL，先确认启动本地公开视频下载、音频提取和中文 ASR 转写，再在文字稿完成后按需分别确认生成要点总结和启发灵感。
 
 已有方案验证了基础下载链路：示例视频可保存为 task 目录中的 `media/video.mp4`，并通过 `ffprobe` 校验为有效媒体文件。
 
@@ -129,7 +129,7 @@
 - 支持粘贴单个抖音视频 URL 并触发处理。
 - 下载并校验公开视频，输出标准 MP4 文件。
 - 提取 16 kHz 单声道 WAV 音频并调用本地 ASR 模型转写中文语音；默认模型为 `iic/SenseVoiceSmall`，并支持选择 Qwen3-ASR。
-- 在文字稿完成后，由用户单独确认调用本项目内置的 AI 整理能力，输出要点总结、Mermaid 思维导图本地文件和启发灵感。
+- 在文字稿完成后，由用户分别确认生成要点总结和启发灵感；要点总结会同时写入隐藏的 Mermaid 思维导图本地文件。
 - 在桌面 UI 中展示进度、结果总览、详情浮窗、复制和导出入口。
 - 在结果总览中提供视频、音频、完整文字稿、要点总结、启发灵感这 5 个入口；Mermaid mindmap 作为本地 `.mmd` 文件保存但不作为单独入口展示；视频和音频入口定位本地文件。
 - 支持导出文字稿 `txt` / `md`、要点总结 `md`，以及灵感 `json` / `md`；Mermaid 思维导图仅保存为本地 `.mmd` 文件，不展示或渲染。
@@ -150,9 +150,9 @@
 - 用户阅读完整文字稿，并复制到笔记或文档中继续编辑。
 - 用户打开要点总结，获得基于文字稿原文和 Mermaid 思维导图整理出的层次化 Markdown 摘要。
 - 用户打开启发灵感，获得可用于讨论、选题或复盘的开放式问题。
-- InsightFlow 配置缺失时，用户仍能得到文字稿，并稍后重试 AI 整理。
+- InsightFlow 配置缺失时，用户仍能得到文字稿，并稍后分别重试要点总结或启发灵感。
 - AI 整理使用由管理员在 FrameQ server 端统一配置的 OpenAI-compatible LLM；桌面 UI 不再提供 LLM API Key、base URL、model 或 timeout 输入。
-- 用户完成主流程后，可以先查看或定位视频、音频和文字稿，再通过单独的确认面板启动要点总结、Mermaid mindmap 和启发灵感生成。
+- 用户完成主流程后，可以先查看或定位视频、音频和文字稿，再通过对应卡片分别启动要点总结或启发灵感生成。
 - 用户可以打开历史任务列表，查看过去处理过的 URL、完成状态、时间和结果路径，并重新打开文字稿、要点总结或灵感详情。
 - 用户可以在设置中修改结果输出目录；修改后只影响新任务，旧历史仍指向旧文件路径。
 - 用户可以在设置中选择后续任务使用的 ASR 模型：`Qwen/Qwen3-ASR-0.6B` 或 `iic/SenseVoiceSmall`。
@@ -186,19 +186,19 @@
 - 音频提取后，当前 task 目录的 `media/audio.wav` 中存在 16 kHz 单声道 WAV；临时下载和中间文件保留在 app-local `cache/tasks/<task_id>/`。
 - ASR 成功后，当前 task 目录的 `transcript/` 中存在 `transcript.txt`、`transcript.md`，有合法时间轴时存在 `segments.json`。
 - 主流程完成后，结果区显示视频、音频、完整文字稿、要点总结、启发灵感这 5 个入口；Mermaid mindmap 保存为本地 `.mmd` 文件但不作为单独入口展示；视频和音频入口在文件管理器中定位对应本地文件。
-- 主流程完成后，要点总结、启发灵感入口显示待生成状态；点击后打开确认面板，用户再次点击 `确认` 才启动要点总结、Mermaid mindmap 和启发灵感生成。
-- AI 整理开始后才使用 server-managed LLM checkout；主流程不得携带 checkout env 或消耗额度。AI 整理额度按云端 LLM API 调用尝试计费，1 次额度对应 1 次 chat-completion/API 调用尝试，而不是 1 次 AI整理任务包。
+- 主流程完成后，要点总结、启发灵感入口显示待生成状态；点击 `要点总结` 后打开轻量确认面板，只生成 `summary.md` 和隐藏的 `mindmap.mmd`；点击 `启发灵感` 后进入灵感偏好流程，只生成 `insights.json` 和 `insights.md`。
+- AI 生成开始后才使用 server-managed LLM checkout；主流程不得携带 checkout env 或消耗额度。额度按云端 LLM API 调用尝试计费，1 次额度对应 1 次 chat-completion/API 调用尝试；要点总结和启发灵感各自按实际调用次数扣除。
 - 用户在 UI 设置中保存 ASR 模型后，后续完整处理请求应使用保存后的 ASR 模型；历史记录和 transcript markdown 中应保留任务实际使用的模型名。
-- AI 整理成功后，当前 task 目录的 `ai/` 中存在 `summary.md`、`mindmap.mmd`、`insights.json` 和 `insights.md`。
+- 当两个独立生成动作都成功后，当前 task 目录的 `ai/` 中存在 `summary.md`、`mindmap.mmd`、`insights.json` 和 `insights.md`；任一动作成功不得删除或清空另一项已有产物。
 - 灵感生成应先请求 LLM 规划话题段，并在逐话题生成问题时包含“读完就知道可以从哪个角度思考”“问题长度尽量控制在一行可读范围内”等表达优化约束。
 - planner JSON 无法解析或没有有效话题段时，worker 应自动回退到直接问题生成策略，不因 planner 失败丢失可用文字稿结果。
-- InsightFlow 失败时，UI 展示 `部分完成`，保留文字稿和已经成功生成的 AI 产物，并提供重试入口。
-- 在 `部分完成` 状态点击要点总结或灵感重试时，仅重新运行 AI 整理，不重新下载视频或重新执行 ASR。
-- 要点总结或灵感待生成/失败时，点击对应入口都应进入确认面板；确认后仅运行要点总结、Mermaid mindmap 和灵感生成，不重新下载视频、提取音频或重新转写。
+- InsightFlow 失败时，UI 展示 `部分完成`，保留文字稿和已经成功生成的 AI 产物，并在对应卡片提供重试入口。
+- 在 `部分完成` 状态点击要点总结或灵感重试时，仅重新运行对应目标，不重新下载视频或重新执行 ASR。
+- 要点总结或灵感待生成/失败时，点击对应入口都应进入各自确认流程；确认后仅运行该目标，不重新下载视频、提取音频或重新转写。
 - app-local data `.env` 只承载本机 ASR、输出目录和模型下载覆盖；灵感生成不得从 dotenv 读取 LLM key 或 model。
 - 管理员在 server 端保存 LLM base URL、API key、model 和 timeout 后，后续灵感生成应通过 server-managed checkout 使用该配置；主流程不携带 LLM checkout env。
 - 用户在 UI 设置中保存输出目录后，后续完整处理生成的视频、音频、文字稿、要点总结、Mermaid mindmap 和灵感文件应写入该目录下的 `tasks/<task_id>/`；临时下载和中间产物仍写入 app-local `cache/tasks/<task_id>/`。
-- 设置 UI 必须提示：这里只管理本机 ASR 和输出目录；AI 整理确认面板必须提示文字稿片段会发送到管理员配置的云端 LLM 服务。
+- 设置 UI 必须提示：这里只管理本机 ASR 和输出目录；要点总结和启发灵感确认流程必须提示文字稿片段会发送到管理员配置的云端 LLM 服务。
 - 历史入口应展示最近任务列表；每条历史至少包含 URL、状态、时间、输出目录、文字稿路径、要点总结路径、Mermaid mindmap 路径、灵感路径和错误码或摘要。
 - 点击历史中的可用结果应打开与当前结果一致的详情浮窗；导出按钮应定位历史项记录的实际文件路径。
 - 处理中点击取消时，桌面端终止当前 worker 进程树，UI 返回输入态并保留已提交 URL；取消后的晚到结果不会覆盖界面。
@@ -255,12 +255,12 @@
 
 ## 2026-06-25 Transcript Summary and Mermaid Mindmap
 
-- After transcript completion, the existing second confirmation starts one AI整理 run that generates `要点总结`, local Mermaid mindmap, and `启发灵感` using server-managed LLM checkout.
-- The AI整理 run consumes quota per underlying cloud LLM API call attempt. A single AI整理 run may make multiple LLM calls, and each attempted call consumes one quota use.
+- After transcript completion, `要点总结` and `启发灵感` are independent user-triggered generations. `要点总结` writes `summary.md` plus local Mermaid `mindmap.mmd`; `启发灵感` writes `insights.json` and `insights.md`.
+- Each generation consumes quota per underlying cloud LLM API call attempt. Running both outputs may consume multiple calls, but one output no longer implicitly triggers the other.
 - The worker should first generate a Mermaid `mindmap` text from the transcript, then generate a layered Markdown summary from the original transcript and that Mermaid mindmap.
 - The UI shows the summary content as a result card and detail tab, but must not display or render the Mermaid source.
 - The summary detail tab renders `summary.md` as sanitized Markdown with GitHub Flavored Markdown support; raw HTML from the Markdown source must not pass through to the UI.
 - Summary artifacts are written under the current task's `ai/summary.md`; Mermaid text is written to `ai/mindmap.mmd`.
 - Task manifests should preserve `summary`, `mindmap`, and summary text loading so completed tasks can reopen the summary detail.
-- If summary generation succeeds but topic generation fails, the summary remains available and the task is `partial_completed`; if topic generation succeeds but summary generation fails, topic output remains available and the task is `partial_completed`.
-- Transcript-only completion shows both `要点总结` and `启发灵感` as pending AI整理 outputs until the user confirms generation.
+- If one output succeeds and the other is pending or failed, the successful artifact remains available and the task manifest preserves its paths and content preview data.
+- Transcript-only completion shows both `要点总结` and `启发灵感` as pending outputs until the user confirms each generation independently.

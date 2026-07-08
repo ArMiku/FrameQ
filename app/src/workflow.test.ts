@@ -6,6 +6,7 @@ import {
   formatWorkerError,
   getDetailText,
   getExportPath,
+  getInsightRetryTargetForCard,
   getTranscriptSourceLabel,
   getProgressSteps,
   getResultCards,
@@ -224,6 +225,41 @@ describe("workflow state model", () => {
     ]);
   });
 
+  test("maps confirm result cards to independent retry targets", () => {
+    expect(
+      getInsightRetryTargetForCard({
+        id: "summary",
+        title: "要点总结",
+        status: "pending",
+        action: "confirm",
+      }),
+    ).toBe("summary");
+    expect(
+      getInsightRetryTargetForCard({
+        id: "insights",
+        title: "启发灵感",
+        status: "failed",
+        action: "confirm",
+      }),
+    ).toBe("insights");
+    expect(
+      getInsightRetryTargetForCard({
+        id: "summary",
+        title: "要点总结",
+        status: "ready",
+        action: "open",
+      }),
+    ).toBeNull();
+    expect(
+      getInsightRetryTargetForCard({
+        id: "video",
+        title: "视频文件",
+        status: "ready",
+        action: "locate",
+      }),
+    ).toBeNull();
+  });
+
   test("summarizes transcript source metadata for platform subtitles", () => {
     const state = summarizeWorkerResult(workerResult({
       transcript: {
@@ -293,6 +329,61 @@ describe("workflow state model", () => {
         title: "启发灵感",
         status: "failed",
         action: "confirm",
+      },
+    ]);
+  });
+
+  test("partial worker result keeps existing insights ready when summary fails", () => {
+    const state = summarizeWorkerResult(workerResult({
+      status: "partial_completed",
+      text: "已经完成的文字稿",
+      summary: "",
+      insights: [DEFAULT_INSIGHT],
+      artifacts: {
+        video: DEFAULT_ARTIFACTS.video,
+        audio: DEFAULT_ARTIFACTS.audio,
+        transcript_txt: DEFAULT_ARTIFACTS.transcript_txt,
+        transcript_md: DEFAULT_ARTIFACTS.transcript_md,
+        insights: DEFAULT_ARTIFACTS.insights,
+        insights_md: DEFAULT_ARTIFACTS.insights_md,
+      },
+      error: {
+        code: "INSIGHTFLOW_EMPTY_SUMMARY",
+        message: "InsightFlow returned an empty summary.",
+        stage: "insights_generating",
+      },
+    }));
+
+    expect(getResultCards(state)).toEqual([
+      {
+        id: "video",
+        title: "视频文件",
+        status: "ready",
+        action: "locate",
+      },
+      {
+        id: "audio",
+        title: "音频文件",
+        status: "ready",
+        action: "locate",
+      },
+      {
+        id: "transcript",
+        title: "完整文字稿",
+        status: "ready",
+        action: "open",
+      },
+      {
+        id: "summary",
+        title: "要点总结",
+        status: "failed",
+        action: "confirm",
+      },
+      {
+        id: "insights",
+        title: "启发灵感",
+        status: "ready",
+        action: "open",
       },
     ]);
   });
@@ -626,7 +717,38 @@ describe("workflow state model", () => {
     expect(updated.showUrlInput).toBe(false);
   });
 
-  test("starts an insight retry without discarding the existing transcript", () => {
+  test("starts summary generation without discarding the existing transcript", () => {
+    const state = summarizeWorkerResult(workerResult({
+      status: "completed",
+      text: "已经完成的文字稿。",
+      summary: "",
+      insights: [DEFAULT_INSIGHT],
+      artifacts: {
+        video: DEFAULT_ARTIFACTS.video,
+        audio: DEFAULT_ARTIFACTS.audio,
+        transcript_txt: DEFAULT_ARTIFACTS.transcript_txt,
+        transcript_md: DEFAULT_ARTIFACTS.transcript_md,
+        insights: DEFAULT_ARTIFACTS.insights,
+        insights_md: DEFAULT_ARTIFACTS.insights_md,
+      },
+    }));
+
+    const retrying = startInsightRetry(state, "summary");
+
+    expect(retrying.stage).toBe("insights_generating");
+    expect(retrying.statusMessage).toBe(
+      "正在生成要点总结和 Mermaid mindmap；文字稿片段会发送到管理员配置的云端 LLM 服务。",
+    );
+    expect(retrying.progressPercent).toBe(88);
+    expect(retrying.text).toBe("已经完成的文字稿。");
+    expect(retrying.insights).toEqual([DEFAULT_INSIGHT]);
+    expect(retrying.taskId).toBe(TASK_ID);
+    expect(retrying.taskDir).toBe(TASK_DIR);
+    expect(retrying.artifacts.insights).toBe("ai/insights.json");
+    expect(retrying.error).toBeNull();
+  });
+
+  test("starts insight generation without discarding the existing transcript", () => {
     const state = summarizeWorkerResult(workerResult({
       status: "partial_completed",
       text: "已经完成的文字稿。",
@@ -647,11 +769,11 @@ describe("workflow state model", () => {
       },
     }));
 
-    const retrying = startInsightRetry(state);
+    const retrying = startInsightRetry(state, "insights");
 
     expect(retrying.stage).toBe("insights_generating");
     expect(retrying.statusMessage).toBe(
-      "正在生成要点总结、Mermaid mindmap 和启发灵感；如已配置云端 LLM，文字稿会发送到该服务。",
+      "正在生成启发灵感；文字稿片段和本次偏好会发送到管理员配置的云端 LLM 服务。",
     );
     expect(retrying.progressPercent).toBe(88);
     expect(retrying.text).toBe("已经完成的文字稿。");

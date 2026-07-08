@@ -58,7 +58,7 @@ export function InsightPreferenceFlow({
     flow.screen === "profile_intro" || flow.screen === "profile_form"
       ? "我的灵感档案"
       : flow.screen === "confirmation"
-        ? "确认 AI 整理"
+        ? "确认启发灵感"
         : "本次生成偏好";
 
   return (
@@ -313,7 +313,7 @@ function ConfirmationStep({
       <p className="settings-warning privacy-callout">
         <ShieldCheck size={16} />
         <span>
-          确认后会把文字稿片段发送到管理员配置的云端 LLM，用于生成要点总结、Mermaid mindmap 和启发灵感；偏好快照只用于启发灵感，不用于要点总结或 Mermaid mindmap。
+          确认后会把文字稿片段和本次偏好发送到管理员配置的云端 LLM，用于生成启发灵感。
         </span>
       </p>
       <div className="confirm-summary preference-confirm-grid">

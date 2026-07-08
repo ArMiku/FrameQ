@@ -1,16 +1,24 @@
 # FrameQ Architecture
 
+## 2026-07-08 Split Summary and Inspiration Generation Boundary
+
+- `retry_insights` now receives an explicit target: `summary` or `insights`. The command still reuses the saved official transcript and the owning task manifest; it must not re-download media or rerun ASR.
+- The `summary` target generates only `ai/summary.md` and hidden `ai/mindmap.mmd`. It must not accept, read, write, or prompt with the personalized preference snapshot.
+- The `insights` target generates only `ai/insights.json` and `ai/insights.md`. It may persist `ai/preference-snapshot.json` and may include that snapshot only in insight-topic prompts.
+- Retrying either target must merge existing AI artifacts from the same task directory before writing `frameq-task.json`, so generating one output cannot clear the other output or reset `insights_count`.
+- Each user confirmation uses server-managed LLM checkout and consumes quota per actual supplier API-call attempt for that target.
+
 ## 2026-07-06 Personalized Insight Preferences Boundary
 
 - The desktop UI owns the inspiration-profile setup flow, the per-run six-step generation-preference wizard, confirmation summaries, and result-detail actions such as `换个方向`.
 - Tauri owns app-local persistence for the inspiration profile. The profile should be stored as a constrained local JSON file, not in app-local `.env`, and Tauri commands must validate the file path under app-local data.
 - If the user skips profile setup, Tauri persists a local skipped marker such as `profileSkipped: true` without profile fields. This marker suppresses repeated first-use prompts but must not create an implicit default persona.
-- The per-run preference snapshot is passed to `retry_insights` together with the saved official transcript reference. It may be recorded in the local task manifest as user-visible context for already-generated AI artifacts.
+- The per-run preference snapshot is passed to `retry_insights` only when the target is `insights`, together with the saved official transcript reference. It may be recorded in the local task manifest as user-visible context for already-generated inspiration artifacts.
 - The worker treats profile and generation preferences as structured prompt context for insight-topic generation only. Summary and Mermaid mindmap generation continue to use the generic AI整理 prompts and must not read the personalized preference snapshot. The worker must not infer hidden preferences from unrelated history.
 - For insight-topic generation, the worker should preserve LLM context budget by using transcript chunks, summaries, or candidate excerpts plus a compact structured preference JSON. It should not concatenate a full long transcript and verbose preference prose into a single prompt.
 - FrameQ server continues to own only account, entitlement, quota, and LLM checkout. It must not receive or store inspiration profiles, generation preferences, transcripts, generated insights, or local task manifests.
-- Quota is counted per cloud LLM API call attempt: `1 quota use = 1 supplier chat-completion/API call attempt`. A confirmed AI整理 attempt may consume multiple quota uses because summary, Mermaid mindmap, topic planning, and insight-topic generation can be separate LLM calls. Re-running via `换个方向` starts a new confirmed AI整理 attempt and consumes quota again according to the new attempt's actual LLM calls. Failed, timed-out, unparsable, or partially failed calls remain consumed once attempted.
-- The LLM supplier may receive transcript snippets only after the user confirms AI整理. The selected preference snapshot may be sent only with the insight-topic generation request, not with summary or Mermaid mindmap requests.
+- Quota is counted per cloud LLM API call attempt: `1 quota use = 1 supplier chat-completion/API call attempt`. Summary generation, Mermaid mindmap generation, topic planning, and insight-topic generation may each consume separate quota uses only when their target is confirmed. Re-running via `换个方向` starts a new confirmed `insights` target attempt and consumes quota again according to its actual LLM calls. Failed, timed-out, unparsable, or partially failed calls remain consumed once attempted.
+- The LLM supplier may receive transcript snippets only after the user confirms the corresponding AI target. The selected preference snapshot may be sent only with the insight-topic generation request, not with summary or Mermaid mindmap requests.
 
 ## 2026-07-05 Desktop Diagnostics Boundary
 
@@ -256,7 +264,7 @@ graph LR
 - UI 只编排任务和展示状态，不直接调用 `yt-dlp`、`ffmpeg`、ASR 或 LLM。
 - UI 可以通过 Tauri command 读取/保存 ASR 与输出目录配置；LLM 配置由 server Admin Web 管理，桌面 UI 不回显也不输入 API Key。
 - worker 通过结构化 JSON 返回状态、路径、文本、灵感和错误码。
-- `process_video` 主流程默认只负责视频下载、音频提取和 ASR 文字稿；`retry_insights`/AI整理流程在用户二次确认后单独运行，生成要点总结、Mermaid mindmap 和启发灵感，并且是唯一需要 server-managed LLM checkout 的本地 worker 调用。
+- `process_video` 主流程默认只负责视频下载、音频提取和 ASR 文字稿；`retry_insights` 在用户二次确认后按 `summary` 或 `insights` 目标单独运行，并且是唯一需要 server-managed LLM checkout 的本地 worker 调用。
 - `D:\Github\InsightFlow\src\server` 只允许作为开发参考，禁止成为运行期依赖。
 - 对外分发态的用户可见输出默认写入 app-local data `outputs/tasks/<task_id>/`，也可通过 `FRAMEQ_OUTPUT_DIR` 写入自定义任务目录根；中间文件写入 app-local data `cache/tasks/<task_id>/`；模型缓存写入 app-local data `models/`。
 - 历史记录只索引本地结果和状态，不参与 worker 核心处理决策；旧历史路径不随输出目录配置变化而迁移。

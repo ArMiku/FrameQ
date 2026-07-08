@@ -31,4 +31,4 @@ Product specs describe user-visible intent and boundaries before implementation 
 
 | File | Scope |
 |------|-------|
-| `2026-06-16-douyin-video-transcription-client.md` | MVP 桌面客户端：输入抖音 URL，输出最高质量公开视频、文字稿、要点总结、Mermaid mindmap 和启发灵感；包含 Douyin share page fallback 行为 |
+| `2026-06-16-douyin-video-transcription-client.md` | MVP 桌面客户端：输入抖音 URL，输出最高质量公开视频和文字稿；文字稿完成后可单独确认生成要点总结/Mermaid mindmap 或启发灵感；包含 Douyin share page fallback 行为 |

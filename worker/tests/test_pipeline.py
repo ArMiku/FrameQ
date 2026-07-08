@@ -89,9 +89,11 @@ def test_run_asr_transcript_step_maps_asr_errors_to_worker_error(tmp_path: Path)
     }
 
 
-def test_ai_organizing_progress_messages_use_inspiration_copy() -> None:
-    assert "启发灵感" in CLOUD_LLM_AI_ORGANIZING_MESSAGE
-    assert "启发灵感" in LOCAL_AI_ORGANIZING_MESSAGE
+def test_ai_organizing_progress_messages_do_not_describe_bundled_generation() -> None:
+    assert "AI 结果" in CLOUD_LLM_AI_ORGANIZING_MESSAGE
+    assert "AI 结果" in LOCAL_AI_ORGANIZING_MESSAGE
+    assert "要点总结、Mermaid mindmap 和启发灵感" not in CLOUD_LLM_AI_ORGANIZING_MESSAGE
+    assert "要点总结、Mermaid mindmap 和启发灵感" not in LOCAL_AI_ORGANIZING_MESSAGE
     assert "启发话题点" not in CLOUD_LLM_AI_ORGANIZING_MESSAGE
     assert "启发话题点" not in LOCAL_AI_ORGANIZING_MESSAGE
 
@@ -169,6 +171,59 @@ def test_run_insight_generation_step_returns_task_style_artifacts(tmp_path: Path
         "insights": "insights.json",
         "insights_md": "insights.md",
     }
+
+
+def test_run_insight_generation_step_can_generate_only_summary(tmp_path: Path) -> None:
+    transcript_path = tmp_path / "task" / "transcript" / "transcript.md"
+    transcript_path.parent.mkdir(parents=True)
+    transcript_path.write_text("# Transcript\n\ntranscript text", encoding="utf-8")
+    client = CapturingInsightClient()
+
+    result = run_insight_generation_step(
+        transcript_path=transcript_path,
+        output_dir=tmp_path / "task" / "ai",
+        output_stem="",
+        transcript_text="transcript text",
+        client=client,
+        target="summary",
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["summary"].startswith("#")
+    assert result["insights"] == []
+    assert result["artifacts"] == {
+        "summary": "summary.md",
+        "mindmap": "mindmap.mmd",
+    }
+    assert len(client.prompts) == 2
+
+
+def test_run_insight_generation_step_can_generate_only_insights(tmp_path: Path) -> None:
+    transcript_path = tmp_path / "task" / "transcript" / "transcript.md"
+    transcript_path.parent.mkdir(parents=True)
+    transcript_path.write_text("# Transcript\n\ntranscript text", encoding="utf-8")
+    client = CapturingInsightClient()
+
+    result = run_insight_generation_step(
+        transcript_path=transcript_path,
+        output_dir=tmp_path / "task" / "ai",
+        output_stem="",
+        transcript_text="transcript text",
+        client=client,
+        preference_snapshot=preference_snapshot(),
+        target="insights",
+    ).to_dict()
+
+    assert result["status"] == "completed"
+    assert result["summary"] == ""
+    assert result["insights"][0]["topic"] == "pipeline question"
+    assert result["artifacts"] == {
+        "insights": "insights.json",
+        "insights_md": "insights.md",
+    }
+    assert len(client.prompts) == 2
+    assert "content_creation" in client.prompts[0]
+    assert "content_creation" in client.prompts[1]
 
 
 def test_run_insight_generation_step_scopes_preferences_to_insight_prompts(

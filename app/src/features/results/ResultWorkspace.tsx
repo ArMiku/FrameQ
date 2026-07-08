@@ -74,7 +74,7 @@ export function ResultWorkspace({
             <strong>结果生成中</strong>
             <span>
               {workflow.stage === "insights_generating" && workflow.text
-                ? "文字稿已保留，正在重新生成 AI 整理结果。"
+                ? "文字稿已保留，正在生成所选 AI 结果。"
                 : "视频提取完成后将开始转译。"}
             </span>
           </div>

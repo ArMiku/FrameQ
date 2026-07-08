@@ -59,10 +59,12 @@ def test_retry_request_parses_preference_snapshot() -> None:
     request = parse_retry_insights_request(
         {
             "task_id": "20260705-153012-douyin-demo",
+            "target": "insights",
             "preference_snapshot": valid_preference_snapshot(),
         }
     )
 
+    assert request.target == "insights"
     assert request.preference_snapshot is not None
     assert request.preference_snapshot.profile is not None
     assert request.preference_snapshot.profile.role == "content_creator"
@@ -82,7 +84,34 @@ def test_retry_request_rejects_invalid_preference_snapshot_options() -> None:
         parse_retry_insights_request(
             {
                 "task_id": "20260705-153012-douyin-demo",
+                "target": "insights",
                 "preference_snapshot": snapshot,
+            }
+        )
+
+
+def test_retry_request_requires_generation_target() -> None:
+    with pytest.raises(ValueError, match="target"):
+        parse_retry_insights_request({"task_id": "20260705-153012-douyin-demo"})
+
+
+def test_retry_request_rejects_unknown_generation_target() -> None:
+    with pytest.raises(ValueError, match="target"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "both",
+            }
+        )
+
+
+def test_retry_summary_request_rejects_preference_snapshot() -> None:
+    with pytest.raises(ValueError, match="preference_snapshot"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "summary",
+                "preference_snapshot": valid_preference_snapshot(),
             }
         )
 
@@ -99,4 +128,4 @@ def test_retry_request_rejects_invalid_preference_snapshot_options() -> None:
 )
 def test_retry_request_rejects_task_id_path_traversal(task_id: str) -> None:
     with pytest.raises(ValueError, match="task_id"):
-        parse_retry_insights_request({"task_id": task_id})
+        parse_retry_insights_request({"task_id": task_id, "target": "insights"})

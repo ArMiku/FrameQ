@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
+RetryInsightTarget = Literal["summary", "insights"]
+InsightGenerationTarget = Literal["all", "summary", "insights"]
+
 
 class JobStage(StrEnum):
     WAITING_INPUT = "waiting_input"
@@ -128,6 +131,7 @@ class PreferenceSnapshot:
 @dataclass(frozen=True)
 class RetryInsightsRequest:
     task_id: str
+    target: RetryInsightTarget
     preference_snapshot: PreferenceSnapshot | None = None
 
 

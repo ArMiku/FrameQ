@@ -35,6 +35,7 @@ from frameq_worker.model_download import (
     validate_asr_model_cache,
 )
 from frameq_worker.models import (
+    InsightGenerationTarget,
     JobStage,
     PreferenceSnapshot,
     ProcessRequest,
@@ -54,10 +55,9 @@ from frameq_worker.task_store import (
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 CLOUD_LLM_AI_ORGANIZING_MESSAGE = (
-    "正在使用配置的 LLM 生成要点总结、Mermaid mindmap 和启发灵感，"
-    "文字稿会发送到该服务。"
+    "正在使用配置的 LLM 生成 AI 结果，文字稿会发送到该服务。"
 )
-LOCAL_AI_ORGANIZING_MESSAGE = "正在生成要点总结、Mermaid mindmap 和启发灵感。"
+LOCAL_AI_ORGANIZING_MESSAGE = "正在生成 AI 结果。"
 
 
 def run_asr_transcript_step(
@@ -161,6 +161,7 @@ def run_insight_generation_step(
     client: InsightClient | None,
     transcript: TranscriptMetadata | None = None,
     preference_snapshot: PreferenceSnapshot | None = None,
+    target: InsightGenerationTarget = "all",
 ) -> ProcessResult:
     if client is None:
         return ProcessResult(
@@ -192,27 +193,29 @@ def run_insight_generation_step(
     insight_artifacts = None
     generation_error: InsightGenerationError | None = None
 
-    try:
-        summary_artifacts = generate_summary_from_markdown(
-            markdown=markdown,
-            output_dir=output_dir,
-            output_stem=output_stem,
-            client=client,
-        )
-    except InsightGenerationError as exc:
-        generation_error = exc
-
-    try:
-        insight_artifacts = generate_insights_from_markdown(
-            markdown=markdown,
-            output_dir=output_dir,
-            output_stem=output_stem,
-            client=client,
-            preference_snapshot=preference_snapshot,
-        )
-    except InsightGenerationError as exc:
-        if generation_error is None:
+    if target in {"all", "summary"}:
+        try:
+            summary_artifacts = generate_summary_from_markdown(
+                markdown=markdown,
+                output_dir=output_dir,
+                output_stem=output_stem,
+                client=client,
+            )
+        except InsightGenerationError as exc:
             generation_error = exc
+
+    if target in {"all", "insights"}:
+        try:
+            insight_artifacts = generate_insights_from_markdown(
+                markdown=markdown,
+                output_dir=output_dir,
+                output_stem=output_stem,
+                client=client,
+                preference_snapshot=preference_snapshot,
+            )
+        except InsightGenerationError as exc:
+            if generation_error is None:
+                generation_error = exc
 
     status = JobStage.COMPLETED if generation_error is None else JobStage.PARTIAL_COMPLETED
 
