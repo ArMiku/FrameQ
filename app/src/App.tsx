@@ -28,7 +28,6 @@ import { cancelProcess } from "./workerClient";
 import { historyItemToWorkerResult, type HistoryItem } from "./historyClient";
 import type { UpdateState } from "./updateState";
 import {
-  canGenerateAiWithAccount,
   canProcessWithAccount,
   type AccountStatus,
 } from "./accountState";
@@ -39,6 +38,7 @@ import { useAsrModelDownload } from "./features/asrModel/useAsrModelDownload";
 import { HistorySheet } from "./features/history/HistorySheet";
 import { useHistoryController } from "./features/history/useHistoryController";
 import { InsightPreferenceFlow } from "./features/insightPreferences/InsightPreferenceFlow";
+import { useInsightGenerationController } from "./features/insightPreferences/useInsightGenerationController";
 import { ResultWorkspace } from "./features/results/ResultWorkspace";
 import { SettingsSheet } from "./features/settings/SettingsSheet";
 import { useSettingsController } from "./features/settings/useSettingsController";
@@ -47,24 +47,6 @@ import { useTranscriptDetailController } from "./features/transcript/useTranscri
 import { useWindowChromeController } from "./features/window/useWindowChromeController";
 import { useTaskProcessingController } from "./features/workflow/useTaskProcessingController";
 import { useAppUpdateController } from "./features/updates/useAppUpdateController";
-import {
-  getInsightPreferences,
-  saveDefaultGenerationPreferences,
-  saveInspirationProfile,
-  skipInspirationProfile,
-} from "./insightPreferencesClient";
-import {
-  createInsightPreferenceFlow,
-  skipProfileSetupInFlow,
-  startGenerationPreferenceEditing,
-  startProfileSetupInFlow,
-  type InsightPreferenceFlowState,
-} from "./insightPreferenceFlow";
-import {
-  buildPreferenceSnapshot,
-  type GenerationPreferences,
-  type InspirationProfile,
-} from "./insightPreferences";
 
 const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }> = {
   waiting_input: {
@@ -186,14 +168,11 @@ function updateToolbarLabel(state: UpdateState): string {
 }
 
 function App() {
-  const [summaryConfirmOpen, setSummaryConfirmOpen] = useState(false);
-  const [insightPreferenceFlow, setInsightPreferenceFlow] =
-    useState<InsightPreferenceFlowState | null>(null);
-  const [insightPreferenceBusy, setInsightPreferenceBusy] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
   const settingsController = useSettingsController();
   const { settingsOpen, closeSettings, openSettings } = settingsController;
   const closeDetailForTaskRef = useRef<() => void>(() => {});
+  const resetInsightGenerationUiRef = useRef<() => void>(() => {});
   const {
     modelGuideOpen,
     setModelGuideOpen,
@@ -209,8 +188,7 @@ function App() {
   } = useAsrModelDownload();
   const resetTaskUi = useCallback(() => {
     closeDetailForTaskRef.current();
-    setSummaryConfirmOpen(false);
-    setInsightPreferenceFlow(null);
+    resetInsightGenerationUiRef.current();
     setActionNotice("");
   }, []);
   const prepareInsightRetryUi = useCallback(() => {
@@ -274,6 +252,34 @@ function App() {
       resetWorkflow();
     },
   });
+  const {
+    summaryConfirmOpen,
+    insightPreferenceFlow,
+    insightPreferenceBusy,
+    setInsightPreferenceFlow,
+    closeSummaryConfirmation,
+    closeInsightPreferenceFlow,
+    resetInsightGenerationUi,
+    openInsightPreferenceFlow,
+    openSummaryConfirmation,
+    confirmSummaryGeneration,
+    openProfileEditorFromSettings,
+    openDirectionEditorFromDetail,
+    skipCurrentProfileSetup,
+    saveCurrentProfile,
+    confirmInsightPreferences,
+  } = useInsightGenerationController({
+    workflow,
+    account,
+    setActionNotice,
+    closeSettings,
+    closeDetail,
+    openAccountPanel,
+    refreshAccountStatus,
+    retryInsightGeneration,
+    aiBlockerMessage: accountAiBlockerMessage,
+  });
+  resetInsightGenerationUiRef.current = resetInsightGenerationUi;
   const handleHistoryItemSelected = useCallback(
     (item: HistoryItem) => {
       setWorkflow({
@@ -330,12 +336,12 @@ function App() {
       }
 
       if (summaryConfirmOpen) {
-        setSummaryConfirmOpen(false);
+        closeSummaryConfirmation();
         return;
       }
 
       if (insightPreferenceFlow) {
-        setInsightPreferenceFlow(null);
+        closeInsightPreferenceFlow();
         return;
       }
 
@@ -357,7 +363,9 @@ function App() {
     historyOpen,
     closeHistory,
     summaryConfirmOpen,
+    closeSummaryConfirmation,
     insightPreferenceFlow,
+    closeInsightPreferenceFlow,
     settingsOpen,
     closeSettings,
     modelGuideOpen,
@@ -461,132 +469,6 @@ function App() {
       setActionNotice("已在文件管理器中定位文件。");
     } catch {
       setActionNotice(`无法定位文件：${artifactPath}`);
-    }
-  }
-
-  async function openInsightPreferenceFlow() {
-    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
-      setActionNotice("文字稿生成后才能继续生成启发灵感。");
-      return;
-    }
-
-    setInsightPreferenceBusy(true);
-    setActionNotice("");
-    try {
-      const preferences = await getInsightPreferences();
-      setInsightPreferenceFlow(createInsightPreferenceFlow(preferences));
-    } catch (error) {
-      setActionNotice(`无法读取本地偏好：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setInsightPreferenceBusy(false);
-    }
-  }
-
-  function openSummaryConfirmation() {
-    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
-      setActionNotice("文字稿生成后才能继续生成要点总结。");
-      return;
-    }
-
-    setSummaryConfirmOpen(true);
-  }
-
-  async function confirmSummaryGeneration() {
-    if (!canGenerateAiWithAccount(account)) {
-      openAccountPanel(accountAiBlockerMessage(account, "生成要点总结"));
-      return;
-    }
-
-    setSummaryConfirmOpen(false);
-    try {
-      await retryInsightGeneration("summary", null, account, openAccountPanel, refreshAccountStatus);
-    } catch (error) {
-      setActionNotice(`启动要点总结失败：${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  async function openProfileEditorFromSettings() {
-    closeSettings();
-    setInsightPreferenceBusy(true);
-    setActionNotice("");
-    try {
-      const preferences = await getInsightPreferences();
-      setInsightPreferenceFlow(startProfileSetupInFlow(createInsightPreferenceFlow(preferences)));
-    } catch (error) {
-      setActionNotice(`无法读取本地偏好：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setInsightPreferenceBusy(false);
-    }
-  }
-
-  async function openDirectionEditorFromDetail() {
-    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
-      setActionNotice("文字稿生成后才能重新选择方向。");
-      return;
-    }
-
-    closeDetail();
-    setInsightPreferenceBusy(true);
-    setActionNotice("");
-    try {
-      const preferences = await getInsightPreferences();
-      setInsightPreferenceFlow(startGenerationPreferenceEditing(createInsightPreferenceFlow(preferences)));
-    } catch (error) {
-      setActionNotice(`无法读取本地偏好：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setInsightPreferenceBusy(false);
-    }
-  }
-
-  async function skipCurrentProfileSetup() {
-    if (!insightPreferenceFlow) {
-      return;
-    }
-    setInsightPreferenceBusy(true);
-    try {
-      await skipInspirationProfile();
-      setInsightPreferenceFlow(skipProfileSetupInFlow(insightPreferenceFlow));
-    } catch (error) {
-      setActionNotice(`保存跳过状态失败：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setInsightPreferenceBusy(false);
-    }
-  }
-
-  async function saveCurrentProfile(profile: InspirationProfile) {
-    setInsightPreferenceBusy(true);
-    try {
-      const preferences = await saveInspirationProfile(profile);
-      setInsightPreferenceFlow(startGenerationPreferenceEditing(createInsightPreferenceFlow(preferences)));
-    } catch (error) {
-      setActionNotice(`保存灵感档案失败：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setInsightPreferenceBusy(false);
-    }
-  }
-
-  async function confirmInsightPreferences(preferences: GenerationPreferences) {
-    if (!canGenerateAiWithAccount(account)) {
-      openAccountPanel(accountAiBlockerMessage(account, "生成启发灵感"));
-      return;
-    }
-
-    setInsightPreferenceBusy(true);
-    try {
-      const preferenceSnapshot = insightPreferenceFlow
-        ? buildPreferenceSnapshot({
-            profile: insightPreferenceFlow.profile,
-            profileSkipped: insightPreferenceFlow.profileSkipped,
-            generationPreferences: preferences,
-      })
-        : null;
-      await saveDefaultGenerationPreferences(preferences);
-      setInsightPreferenceFlow(null);
-      await retryInsightGeneration("insights", preferenceSnapshot, account, openAccountPanel, refreshAccountStatus);
-    } catch (error) {
-      setActionNotice(`启动启发灵感失败：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setInsightPreferenceBusy(false);
     }
   }
 
@@ -796,7 +678,7 @@ function App() {
         <div
           className="modal-backdrop sheet-backdrop"
           role="presentation"
-          onClick={() => setSummaryConfirmOpen(false)}
+          onClick={closeSummaryConfirmation}
         >
           <section
             className="sheet-panel detail-modal preference-flow-sheet"
@@ -813,7 +695,7 @@ function App() {
               <button
                 className="icon-button"
                 type="button"
-                onClick={() => setSummaryConfirmOpen(false)}
+                onClick={closeSummaryConfirmation}
                 aria-label="关闭要点总结确认"
               >
                 <X size={18} />
@@ -846,7 +728,7 @@ function App() {
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() => setSummaryConfirmOpen(false)}
+                  onClick={closeSummaryConfirmation}
                   disabled={isProcessingStage(workflow.stage)}
                 >
                   <span>取消</span>
@@ -877,7 +759,7 @@ function App() {
           onSkipProfile={skipCurrentProfileSetup}
           onSaveProfile={saveCurrentProfile}
           onConfirm={confirmInsightPreferences}
-          onCancel={() => setInsightPreferenceFlow(null)}
+          onCancel={closeInsightPreferenceFlow}
         />
       ) : null}
 
