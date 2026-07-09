@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   findActiveTranscriptSegmentId,
   isTranscriptSegmentEditDisabled,
+  shouldPauseActiveTranscriptSegment,
   transcriptTextFromSegments,
   updateTranscriptSegmentText,
 } from "./transcriptReviewState";
@@ -32,5 +33,12 @@ describe("transcript review state", () => {
     expect(isTranscriptSegmentEditDisabled(null, "seg-0001")).toBe(false);
     expect(isTranscriptSegmentEditDisabled("seg-0001", "seg-0001")).toBe(false);
     expect(isTranscriptSegmentEditDisabled("seg-0001", "seg-0002")).toBe(true);
+  });
+
+  test("pauses only when clicking the currently playing segment again", () => {
+    expect(shouldPauseActiveTranscriptSegment("seg-0001", "seg-0001", true)).toBe(true);
+    expect(shouldPauseActiveTranscriptSegment("seg-0001", "seg-0001", false)).toBe(false);
+    expect(shouldPauseActiveTranscriptSegment("seg-0001", "seg-0002", true)).toBe(false);
+    expect(shouldPauseActiveTranscriptSegment(null, "seg-0001", true)).toBe(false);
   });
 });

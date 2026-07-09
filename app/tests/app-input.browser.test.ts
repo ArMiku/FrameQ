@@ -128,7 +128,7 @@ describe("App browser input interactions", () => {
             innerDragRegions: [
               '.toolbar-title',
               '.app-mark',
-              '.toolbar-title .eyebrow',
+              '.toolbar-title > div',
               '.toolbar-title h1'
             ].every((selector) => document.querySelector(selector)?.hasAttribute('data-tauri-drag-region')),
             toolbarStageBadges: document.querySelectorAll('.app-toolbar .stage-badge').length,
@@ -376,7 +376,7 @@ describe("App browser input interactions", () => {
       expect(exception).toBeUndefined();
       expect(afterState.rootChildren).toBe(1);
       expect(afterState.inputValue).toBe(pastedUrl);
-      expect(afterState.bodyText).toContain("视频转文字");
+      expect(afterState.bodyText).toContain("FrameQ");
       expect(afterState.primaryDisabled).toBe(false);
     } finally {
       page.close();

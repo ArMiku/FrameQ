@@ -1,4 +1,4 @@
-import { FormEvent, type ChangeEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type CSSProperties, type ChangeEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
@@ -99,6 +99,7 @@ import {
 import {
   findActiveTranscriptSegmentId,
   isTranscriptSegmentEditDisabled,
+  shouldPauseActiveTranscriptSegment,
   transcriptTextFromSegments,
   updateTranscriptSegmentText,
 } from "./transcriptReviewState";
@@ -106,8 +107,6 @@ import {
   audioProgressPercent,
   clampAudioTime,
   formatAudioClock,
-  formatPlaybackRate,
-  nextPlaybackRate,
 } from "./audioReviewBarState";
 import {
   clearInspirationProfile,
@@ -373,7 +372,6 @@ function App() {
   const [transcriptAudioCurrentTime, setTranscriptAudioCurrentTime] = useState(0);
   const [transcriptAudioDuration, setTranscriptAudioDuration] = useState(0);
   const [transcriptAudioPlaying, setTranscriptAudioPlaying] = useState(false);
-  const [transcriptPlaybackRate, setTranscriptPlaybackRate] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("basic");
   const [settingsDraft, setSettingsDraft] = useState<LlmConfigDraft>({
@@ -1001,15 +999,22 @@ function App() {
       return;
     }
 
-    setActiveTranscriptSegmentId(segment.id);
     const audio = transcriptAudioRef.current;
     if (!audio || !transcriptDetail?.audio_asset_path) {
+      setActiveTranscriptSegmentId(segment.id);
       setActionNotice("当前任务没有可播放的本地音频，只能编辑文字稿。");
       return;
     }
 
+    if (shouldPauseActiveTranscriptSegment(activeTranscriptSegmentId, segment.id, !audio.paused)) {
+      audio.pause();
+      setTranscriptAudioPlaying(false);
+      return;
+    }
+
+    setActiveTranscriptSegmentId(segment.id);
     audio.currentTime = segment.start_ms / 1000;
-    audio.playbackRate = transcriptPlaybackRate;
+    audio.playbackRate = 1;
     setTranscriptAudioCurrentTime(audio.currentTime);
     try {
       await audio.play();
@@ -1029,7 +1034,7 @@ function App() {
     if (!audio) {
       return;
     }
-    audio.playbackRate = transcriptPlaybackRate;
+    audio.playbackRate = 1;
     syncTranscriptAudioState(audio);
   }
 
@@ -1059,28 +1064,11 @@ function App() {
       return;
     }
 
-    audio.playbackRate = transcriptPlaybackRate;
+    audio.playbackRate = 1;
     try {
       await audio.play();
     } catch {
       setActionNotice("音频无法播放，请确认本地音频文件仍然存在。");
-    }
-  }
-
-  function seekTranscriptAudio(deltaSeconds: number) {
-    const audio = transcriptAudioRef.current;
-    if (!audio || !transcriptDetail?.audio_asset_path) {
-      return;
-    }
-
-    const nextTime = clampAudioTime(audio.currentTime + deltaSeconds, transcriptAudioDuration);
-    audio.currentTime = nextTime;
-    setTranscriptAudioCurrentTime(nextTime);
-    if (!editingTranscriptSegmentId) {
-      const activeId = findActiveTranscriptSegmentId(transcriptSegments, nextTime);
-      if (activeId) {
-        setActiveTranscriptSegmentId(activeId);
-      }
     }
   }
 
@@ -1096,14 +1084,6 @@ function App() {
       if (activeId) {
         setActiveTranscriptSegmentId(activeId);
       }
-    }
-  }
-
-  function cycleTranscriptPlaybackRate() {
-    const nextRate = nextPlaybackRate(transcriptPlaybackRate);
-    setTranscriptPlaybackRate(nextRate);
-    if (transcriptAudioRef.current) {
-      transcriptAudioRef.current.playbackRate = nextRate;
     }
   }
 
@@ -1451,13 +1431,15 @@ function App() {
   const transcriptAudioProgress = audioProgressPercent(transcriptAudioCurrentTime, transcriptAudioDuration);
   const transcriptAudioScrubberMax =
     transcriptAudioDuration > 0 ? transcriptAudioDuration : Math.max(transcriptAudioCurrentTime, 1);
+  const transcriptAudioScrubberStyle = {
+    "--audio-progress": `${transcriptAudioProgress}%`,
+  } as CSSProperties;
   const hasTranscriptSegments = transcriptSegments.length > 0;
 
   useEffect(() => {
     setTranscriptAudioCurrentTime(0);
     setTranscriptAudioDuration(0);
     setTranscriptAudioPlaying(false);
-    setTranscriptPlaybackRate(1);
     if (transcriptAudioRef.current) {
       transcriptAudioRef.current.playbackRate = 1;
     }
@@ -1511,8 +1493,7 @@ function App() {
           <div className="toolbar-title" data-tauri-drag-region="">
             <span className="app-mark" data-tauri-drag-region="">FQ</span>
             <div data-tauri-drag-region="">
-              <p className="eyebrow" data-tauri-drag-region="">FrameQ</p>
-              <h1 data-tauri-drag-region="">视频转文字</h1>
+              <h1 data-tauri-drag-region="">FrameQ</h1>
             </div>
           </div>
 
@@ -1919,16 +1900,13 @@ function App() {
                           {transcriptAudioPlaying ? <Pause size={16} /> : <Play size={16} />}
                         </button>
                         <div className="audio-review-timeline">
-                          <div className="audio-review-clock">
-                            <span>{formatAudioClock(transcriptAudioCurrentTime)}</span>
-                            <span>{formatAudioClock(transcriptAudioDuration)}</span>
-                          </div>
                           <input
                             className="audio-review-scrubber"
                             type="range"
                             min={0}
                             max={transcriptAudioScrubberMax}
                             step={0.1}
+                            style={transcriptAudioScrubberStyle}
                             value={clampAudioTime(transcriptAudioCurrentTime, transcriptAudioScrubberMax)}
                             onChange={scrubTranscriptAudio}
                             disabled={transcriptAudioDuration <= 0}
@@ -1937,17 +1915,11 @@ function App() {
                               transcriptAudioProgress,
                             )}%`}
                           />
-                        </div>
-                        <div className="audio-review-actions">
-                          <button type="button" onClick={() => seekTranscriptAudio(-5)}>
-                            -5s
-                          </button>
-                          <button type="button" onClick={() => seekTranscriptAudio(5)}>
-                            +5s
-                          </button>
-                          <button type="button" onClick={cycleTranscriptPlaybackRate}>
-                            {formatPlaybackRate(transcriptPlaybackRate)}x
-                          </button>
+                          <div className="audio-review-clock">
+                            <span>{formatAudioClock(transcriptAudioCurrentTime)}</span>
+                            <span aria-hidden="true"> / </span>
+                            <span>{formatAudioClock(transcriptAudioDuration)}</span>
+                          </div>
                         </div>
                       </div>
                     </>

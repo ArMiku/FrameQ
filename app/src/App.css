@@ -393,8 +393,8 @@ h3 {
 
 .workspace.active-layout {
   align-content: start;
-  grid-template-columns: minmax(0, 1120px);
-  justify-content: center;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
 }
 
 .workflow-column {
@@ -640,6 +640,7 @@ h3 {
 
 .workspace.active-layout .result-grid {
   align-items: stretch;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
 }
 
 .result-card,
@@ -1358,126 +1359,121 @@ h3 {
 
 .audio-review-bar {
   align-items: center;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(239, 241, 245, 0.9));
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 1px 2px rgba(31, 35, 42, 0.06);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(31, 35, 42, 0.04);
   display: grid;
-  gap: 8px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 40px;
-  padding: 4px 8px;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 64px;
+  padding: 12px 16px;
 }
 
-.audio-play-button,
-.audio-review-actions button {
+.audio-play-button {
   align-items: center;
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(31, 35, 42, 0.1);
-  border-radius: 999px;
-  box-shadow: none;
-  color: #34363b;
+  background: #eef7ff;
+  border: 1px solid #b8dcff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(22, 111, 199, 0.08);
+  color: #075c9f;
   display: inline-flex;
-  font-size: 0.75rem;
-  font-weight: 680;
-  height: 28px;
+  height: 48px;
   justify-content: center;
   line-height: 1;
-  padding: 0 9px;
+  padding: 0;
   transition:
     background 120ms ease,
     border-color 120ms ease,
     transform 120ms ease;
-  white-space: nowrap;
+  width: 48px;
 }
 
-.audio-play-button {
-  color: var(--text);
-  padding: 0;
-  width: 28px;
+.audio-play-button:hover {
+  background: #e4f2ff;
+  border-color: #8cc8ff;
 }
 
-.audio-play-button:hover,
-.audio-review-actions button:hover {
-  background: #ffffff;
-  border-color: var(--border-strong);
-}
-
-.audio-play-button:active,
-.audio-review-actions button:active {
+.audio-play-button:active {
   transform: translateY(1px);
 }
 
 .audio-review-timeline {
   display: grid;
-  gap: 2px;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
   min-width: 0;
 }
 
 .audio-review-clock {
-  color: var(--text-muted);
-  display: flex;
-  font-size: 0.72rem;
+  color: #0f1115;
+  font-size: 1rem;
   font-variant-numeric: tabular-nums;
-  justify-content: space-between;
+  font-weight: 760;
   line-height: 1;
+  min-width: 126px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .audio-review-scrubber {
   appearance: none;
   background: transparent;
   cursor: pointer;
-  height: 12px;
+  height: 16px;
   margin: 0;
   width: 100%;
 }
 
 .audio-review-scrubber::-webkit-slider-runnable-track {
-  background: #c7cbd1;
+  background:
+    linear-gradient(
+      90deg,
+      #2388f2 0%,
+      #2fc66d var(--audio-progress, 0%),
+      #dfe3e8 var(--audio-progress, 0%),
+      #dfe3e8 100%
+    );
   border-radius: 999px;
-  height: 4px;
+  height: 8px;
 }
 
 .audio-review-scrubber::-webkit-slider-thumb {
   appearance: none;
-  background: var(--primary);
-  border: 2px solid #ffffff;
+  background: transparent;
+  border: 0;
   border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(10, 132, 255, 0.18);
-  height: 10px;
-  margin-top: -3px;
-  width: 10px;
+  box-shadow: none;
+  height: 18px;
+  margin-top: -5px;
+  width: 18px;
 }
 
 .audio-review-scrubber::-moz-range-track {
-  background: #c7cbd1;
+  background: #dfe3e8;
   border-radius: 999px;
-  height: 4px;
+  height: 8px;
 }
 
 .audio-review-scrubber::-moz-range-progress {
-  background: var(--primary);
+  background: linear-gradient(90deg, #2388f2 0%, #2fc66d 100%);
   border-radius: 999px;
-  height: 4px;
+  height: 8px;
 }
 
 .audio-review-scrubber::-moz-range-thumb {
-  background: var(--primary);
-  border: 2px solid #ffffff;
+  background: transparent;
+  border: 0;
   border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(10, 132, 255, 0.18);
-  height: 10px;
-  width: 10px;
+  box-shadow: none;
+  height: 18px;
+  width: 18px;
 }
 
 .audio-review-scrubber:disabled {
   cursor: default;
   opacity: 0.5;
-}
-
-.audio-review-actions {
-  display: flex;
-  gap: 4px;
 }
 
 .transcript-status {
@@ -2214,6 +2210,7 @@ h3 {
   .url-row,
   .command-row,
   .workspace.active-layout .steps,
+  .workspace.active-layout .result-grid,
   .result-grid,
   .account-quota-grid,
   .field-row {

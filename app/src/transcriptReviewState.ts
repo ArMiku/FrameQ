@@ -43,3 +43,11 @@ export function isTranscriptSegmentEditDisabled(
 ): boolean {
   return editingSegmentId !== null && editingSegmentId !== segmentId;
 }
+
+export function shouldPauseActiveTranscriptSegment(
+  activeSegmentId: string | null,
+  clickedSegmentId: string,
+  audioPlaying: boolean,
+): boolean {
+  return audioPlaying && activeSegmentId === clickedSegmentId;
+}

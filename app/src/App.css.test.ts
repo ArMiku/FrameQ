@@ -25,6 +25,22 @@ describe("App result workspace layout styles", () => {
     expect(activeResultAreaRule).not.toContain("grid-template-rows");
   });
 
+  test("lets the active workspace expand across maximized desktop windows", () => {
+    const activeWorkspaceRule = getRuleBody([".workspace.active-layout"]);
+    const activeResultAreaRule = getRuleBody([
+      ".workspace.active-layout .result-workspace",
+      ".workspace.active-layout .result-area",
+    ]);
+    const activeGridRule = getRuleBody([".workspace.active-layout .result-grid"]);
+
+    expect(activeWorkspaceRule).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(activeWorkspaceRule).toContain("justify-content: stretch;");
+    expect(activeWorkspaceRule).not.toContain("1120px");
+    expect(activeResultAreaRule).toContain("align-self: start;");
+    expect(activeResultAreaRule).toContain("min-height: auto;");
+    expect(activeGridRule).toContain("repeat(auto-fit, minmax(360px, 1fr))");
+  });
+
   test("keeps the desktop surfaces on a macOS-like layered visual system", () => {
     const rootRule = getRuleBody([":root"]);
     const toolbarRule = getRuleBody([".app-toolbar", ".topbar"]);
@@ -89,23 +105,32 @@ describe("App result workspace layout styles", () => {
     expect(tableRule).toContain("overflow-x: auto;");
   });
 
-  test("keeps the custom audio review bar quiet and compact", () => {
+  test("keeps the transcript audio review bar in the requested single-line player style", () => {
     const barRule = getRuleBody([".audio-review-bar"]);
-    const controlRule = getRuleBody([".audio-play-button", ".audio-review-actions button"]);
     const playButtonRule = getRuleBody([".audio-play-button"]);
+    const timelineRule = getRuleBody([".audio-review-timeline"]);
+    const clockRule = getRuleBody([".audio-review-clock"]);
     const scrubberRule = getRuleBody([".audio-review-scrubber"]);
     const webkitTrackRule = getRuleBody([".audio-review-scrubber::-webkit-slider-runnable-track"]);
     const webkitThumbRule = getRuleBody([".audio-review-scrubber::-webkit-slider-thumb"]);
 
-    expect(barRule).toContain("min-height: 40px;");
-    expect(barRule).toContain("padding: 4px 8px;");
-    expect(controlRule).toContain("box-shadow: none;");
-    expect(controlRule).toContain("height: 28px;");
-    expect(playButtonRule).toContain("width: 28px;");
+    expect(appTsx).not.toContain('className="audio-review-actions"');
+    expect(appTsx).toContain("--audio-progress");
+    expect(barRule).toContain("grid-template-columns: auto minmax(0, 1fr);");
+    expect(barRule).toContain("min-height: 64px;");
+    expect(barRule).toContain("padding: 12px 16px;");
+    expect(playButtonRule).toContain("height: 48px;");
+    expect(playButtonRule).toContain("width: 48px;");
+    expect(timelineRule).toContain("grid-template-columns: minmax(0, 1fr) max-content;");
+    expect(clockRule).toContain("font-variant-numeric: tabular-nums;");
+    expect(clockRule).toContain("font-weight: 760;");
     expect(scrubberRule).toContain("appearance: none;");
-    expect(webkitTrackRule).toContain("height: 4px;");
-    expect(webkitThumbRule).toContain("height: 10px;");
-    expect(webkitThumbRule).toContain("width: 10px;");
+    expect(webkitTrackRule).toContain("#2388f2");
+    expect(webkitTrackRule).toContain("#2fc66d");
+    expect(webkitTrackRule).toContain("height: 8px;");
+    expect(webkitThumbRule).toContain("background: transparent;");
+    expect(webkitThumbRule).toContain("height: 18px;");
+    expect(webkitThumbRule).toContain("width: 18px;");
   });
 
   test("keeps the settings sheet grouped and scannable", () => {
