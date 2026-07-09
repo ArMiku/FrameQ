@@ -34,6 +34,10 @@ class CommandResult:
 
 CommandRunner = Callable[[list[str]], CommandResult]
 ProgressCallback = Callable[[dict[str, object]], None]
+StrategyError = DouyinFallbackError | XiaohongshuFallbackError | BilibiliFallbackError
+StrategyShouldAttempt = Callable[[str, str], bool]
+StrategyDownload = Callable[[str, Path, CommandRunner, ProgressCallback | None], Path]
+StrategyErrorMapper = Callable[[str, str, StrategyError], CommandResult]
 DOUYIN_URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 DOUYIN_HOST_SUFFIXES = ("douyin.com", "iesdouyin.com")
 XIAOHONGSHU_HOST_SUFFIXES = ("xiaohongshu.com", "xhslink.com")
@@ -101,6 +105,16 @@ class MediaInfo:
             and self.size_bytes is not None
             and self.size_bytes > 0
         )
+
+
+@dataclass(frozen=True)
+class DownloadStrategy:
+    name: str
+    command_name: str
+    should_attempt: StrategyShouldAttempt
+    download: StrategyDownload
+    error_type: type[Exception]
+    map_error: StrategyErrorMapper
 
 
 def extract_douyin_video_id(url: str) -> str | None:
@@ -189,66 +203,22 @@ def download_video(
     output_dir.mkdir(parents=True, exist_ok=True)
     result = runner(build_ytdlp_command(url, output_dir))
     if result.returncode != 0:
-        if should_attempt_douyin_fallback(url, result.stderr or result.stdout):
+        failure_message = result.stderr or result.stdout
+        for strategy in FALLBACK_DOWNLOAD_STRATEGIES:
+            if not strategy.should_attempt(url, failure_message):
+                continue
             try:
-                video_path = download_douyin_video(
+                video_path = strategy.download(
                     url,
-                    output_dir=output_dir,
-                    progress_callback=progress_callback,
+                    output_dir,
+                    runner,
+                    progress_callback,
                 )
-            except DouyinFallbackError as exc:
-                fallback_result = CommandResult(
-                    command=["douyin-fallback", url],
-                    returncode=1,
-                    stdout="",
-                    stderr=f"{exc.code}: {exc}",
-                )
+            except strategy.error_type as exc:
+                fallback_result = strategy.map_error(strategy.command_name, url, exc)
                 raise CommandExecutionError(fallback_result) from exc
             return CommandResult(
-                command=["douyin-fallback", url],
-                returncode=0,
-                stdout=video_path.as_posix(),
-                stderr="",
-            )
-        if should_attempt_xiaohongshu_fallback(url, result.stderr or result.stdout):
-            try:
-                video_path = download_xiaohongshu_video(
-                    url,
-                    output_dir=output_dir,
-                    progress_callback=progress_callback,
-                )
-            except XiaohongshuFallbackError as exc:
-                fallback_result = CommandResult(
-                    command=["xiaohongshu-fallback", url],
-                    returncode=1,
-                    stdout="",
-                    stderr=f"{exc.code}: {exc}",
-                )
-                raise CommandExecutionError(fallback_result) from exc
-            return CommandResult(
-                command=["xiaohongshu-fallback", url],
-                returncode=0,
-                stdout=video_path.as_posix(),
-                stderr="",
-            )
-        if should_attempt_bilibili_fallback(url, result.stderr or result.stdout):
-            try:
-                video_path = download_bilibili_video(
-                    url,
-                    output_dir=output_dir,
-                    command_runner=runner,
-                    progress_callback=progress_callback,
-                )
-            except BilibiliFallbackError as exc:
-                fallback_result = CommandResult(
-                    command=["bilibili-fallback", url],
-                    returncode=1,
-                    stdout="",
-                    stderr=f"{exc.code}: {exc}",
-                )
-                raise CommandExecutionError(fallback_result) from exc
-            return CommandResult(
-                command=["bilibili-fallback", url],
+                command=[strategy.command_name, url],
                 returncode=0,
                 stdout=video_path.as_posix(),
                 stderr="",
@@ -305,6 +275,83 @@ def should_attempt_bilibili_fallback(url: str, failure_message: str) -> bool:
         url,
         BILIBILI_HOST_SUFFIXES,
     )
+
+
+def _download_douyin_strategy(
+    url: str,
+    output_dir: Path,
+    _runner: CommandRunner,
+    progress_callback: ProgressCallback | None,
+) -> Path:
+    return download_douyin_video(
+        url,
+        output_dir=output_dir,
+        progress_callback=progress_callback,
+    )
+
+
+def _download_xiaohongshu_strategy(
+    url: str,
+    output_dir: Path,
+    _runner: CommandRunner,
+    progress_callback: ProgressCallback | None,
+) -> Path:
+    return download_xiaohongshu_video(
+        url,
+        output_dir=output_dir,
+        progress_callback=progress_callback,
+    )
+
+
+def _download_bilibili_strategy(
+    url: str,
+    output_dir: Path,
+    runner: CommandRunner,
+    progress_callback: ProgressCallback | None,
+) -> Path:
+    return download_bilibili_video(
+        url,
+        output_dir=output_dir,
+        command_runner=runner,
+        progress_callback=progress_callback,
+    )
+
+
+def _map_fallback_error(command_name: str, url: str, exc: StrategyError) -> CommandResult:
+    return CommandResult(
+        command=[command_name, url],
+        returncode=1,
+        stdout="",
+        stderr=f"{exc.code}: {exc}",
+    )
+
+
+FALLBACK_DOWNLOAD_STRATEGIES: tuple[DownloadStrategy, ...] = (
+    DownloadStrategy(
+        name="douyin",
+        command_name="douyin-fallback",
+        should_attempt=should_attempt_douyin_fallback,
+        download=_download_douyin_strategy,
+        error_type=DouyinFallbackError,
+        map_error=_map_fallback_error,
+    ),
+    DownloadStrategy(
+        name="xiaohongshu",
+        command_name="xiaohongshu-fallback",
+        should_attempt=should_attempt_xiaohongshu_fallback,
+        download=_download_xiaohongshu_strategy,
+        error_type=XiaohongshuFallbackError,
+        map_error=_map_fallback_error,
+    ),
+    DownloadStrategy(
+        name="bilibili",
+        command_name="bilibili-fallback",
+        should_attempt=should_attempt_bilibili_fallback,
+        download=_download_bilibili_strategy,
+        error_type=BilibiliFallbackError,
+        map_error=_map_fallback_error,
+    ),
+)
 
 
 def should_attempt_youtube_processing(url: str) -> bool:
