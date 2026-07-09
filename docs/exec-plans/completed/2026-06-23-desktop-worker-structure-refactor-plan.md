@@ -27,6 +27,7 @@ Make desktop client, Tauri bridge, and Python worker code easier to change by sp
 - [x] Worker orchestration split completed.
 - [x] Full verification completed.
 - [x] 2026-07-09: P2 God Component follow-up completed for the frontend shell. `App.tsx` now composes extracted account, task processing, transcript detail, settings, history, window chrome, and insight generation controllers while preserving behavior. Validation: `npm --prefix app test`, `npm --prefix app run build`, and `git diff --check`.
+- [x] 2026-07-09: P2 hook-level testing first round completed for the extracted orchestration hooks. Added main-path and key-gate coverage for `useHistoryController`, `useSettingsController`, and `useInsightGenerationController`; remaining hook error branches and lightweight harness limitations are tracked in `docs/exec-plans/tech-debt-tracker.md`.
 
 ## Validation
 
@@ -67,3 +68,5 @@ Delivered the zero-behavior-change structure split for the React shell, Tauri br
 Residual risk: `npm --prefix app run lint` remains unavailable because the app package has no `lint` script; future large UI or Tauri changes should continue the modularization instead of rebuilding monolithic files.
 
 2026-07-09 P2 frontend follow-up: The God Component split is closed. `App.tsx` remains the composition root and still owns startup/deep-link effects, `openCard` / `locateArtifact`, global `actionNotice`, and Sheet/Flow composition. Remaining risk is tracked in `docs/exec-plans/tech-debt-tracker.md`: automated UI/E2E smoke coverage is missing, and orchestration hooks still need hook-level tests before future wiring-heavy changes.
+
+2026-07-09 P2 hook testing follow-up: The first hook-level testing round is closed. `useHistoryController`, `useSettingsController`, and `useInsightGenerationController` now have focused Vitest coverage for main paths and key gates. Deferred testing risk remains for insight generation preference read/save/retry/profile save-skip failures, settings load/save/cache/location/profile failures, history concurrent/repeated open behavior, and the fact that the lightweight hook harness does not exercise real React scheduling or component interactions.
