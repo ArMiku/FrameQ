@@ -159,7 +159,8 @@ describe("desktop account routes", () => {
       llm_quota_used: 0,
       llm_quota_remaining: 20,
       llm_configured: false,
-      can_process: false,
+      can_process: true,
+      can_generate_ai: false,
     });
   });
 

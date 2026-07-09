@@ -12,7 +12,8 @@ FrameQ should let paid users generate insight topics without configuring an LLM 
 - The desktop/worker/server accounting boundary must authorize or record one quota use for each supplier LLM API call attempt. Reusing the same per-call checkout/request ID must not double-charge that same call attempt.
 - Renewing before expiry extends entitlement and adds 20 more uses; reactivating after expiry starts a fresh 31-day window with 20 uses and 0 used.
 - Account status shows entitlement and remaining LLM API-call uses.
-- Users with no entitlement, expired entitlement, no remaining uses, or missing server LLM config cannot start new processing or retry insight generation.
+- `/api/desktop/account` exposes separate gates: `can_process` means the signed-in user has an active entitlement for local video/audio/ASR processing; `can_generate_ai` means the user can start a confirmed AI output and therefore also requires server LLM config plus remaining quota.
+- Users with no entitlement or expired entitlement cannot start local processing or AI generation. Users with no remaining uses or missing server LLM config can still run local transcription, but cannot start summary or inspiration generation.
 
 ## Security Boundary
 
@@ -27,4 +28,4 @@ FrameQ should let paid users generate insight topics without configuring an LLM 
 - A desktop user can redeem an activation code and see 20 available LLM API-call uses.
 - Starting AI整理 checks account/config readiness before the first LLM call, then consumes quota per LLM API call attempt made during that AI整理.
 - Reusing the same per-call checkout/request ID does not double-charge that same LLM API call attempt.
-- When uses reach 0, the desktop client blocks new processing and retry with an account-panel explanation.
+- When uses reach 0, the desktop client blocks summary/inspiration generation with an account-panel explanation; local video extraction and ASR transcription remain available for signed-in users with active entitlement.

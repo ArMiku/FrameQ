@@ -8,7 +8,7 @@ FrameQ is still stabilizing. When a user loses time or LLM API-call quota becaus
 
 - Let the configured administrator manually extend a user's entitlement expiry from Admin Web.
 - Let the configured administrator manually add LLM API-call quota to a user after a support incident.
-- Keep the desktop client account contract unchanged: `/api/desktop/account` continues to return entitlement status, expiry, quota limit, quota used, quota remaining, reset time, and `can_process`.
+- Keep the desktop client account contract focused on the existing account status refresh: `/api/desktop/account` returns entitlement status, expiry, quota limit, quota used, quota remaining, reset time, `can_process` for local transcription entitlement, and `can_generate_ai` for LLM-ready AI generation.
 - Record every manual adjustment with administrator identity, reason, optional support note, before/after entitlement values, and timestamp.
 - Make compensation visible in Admin Web so future support work can understand why a user's expiry or quota changed.
 
@@ -48,7 +48,7 @@ FrameQ is still stabilizing. When a user loses time or LLM API-call quota becaus
 ## User-visible Behavior
 
 - A compensated user sees the updated expiry and remaining LLM API-call uses the next time the desktop client refreshes account status.
-- If the compensation makes the user active and leaves quota remaining, `can_process` becomes true once server-managed LLM config is also available.
+- If the compensation makes the user active, `can_process` becomes true for local transcription. `can_generate_ai` becomes true only when server-managed LLM config is also available and quota remains.
 - No video, audio, transcript, history, model cache, cookie, or local configuration data is sent to the server as part of compensation.
 
 ## Security and Compliance

@@ -65,6 +65,7 @@ import {
   redeemActivationCode,
 } from "./accountClient";
 import {
+  canGenerateAiWithAccount,
   canProcessWithAccount,
   createAccountStatusFailure,
   createBrowserPreviewAccountStatus,
@@ -253,6 +254,20 @@ function accountProcessBlockerMessage(account: AccountStatus, actionLabel: strin
     return `请先输入激活码激活 FrameQ 后再${actionLabel}。`;
   }
 
+  return account.serverError
+    ? `当前账号状态暂不可用：${account.serverError}`
+    : `当前账号暂不能${actionLabel}，请刷新账号状态后重试。`;
+}
+
+function accountAiBlockerMessage(account: AccountStatus, actionLabel: string): string {
+  if (!account.authenticated) {
+    return `请先登录 FrameQ 账号后再${actionLabel}。`;
+  }
+
+  if (account.entitlementStatus !== "active") {
+    return `请先输入激活码激活 FrameQ 后再${actionLabel}。`;
+  }
+
   if (!account.llmConfigured) {
     return "AI 结果 LLM 尚未由管理员配置完成，请稍后再试。";
   }
@@ -261,7 +276,9 @@ function accountProcessBlockerMessage(account: AccountStatus, actionLabel: strin
     return "LLM API 调用额度已用完，请联系管理员补充额度或兑换新的激活码。";
   }
 
-  return `当前账号暂不能${actionLabel}，请刷新账号状态后重试。`;
+  return account.serverError
+    ? `当前账号状态暂不可用：${account.serverError}`
+    : `当前账号暂不能${actionLabel}，请刷新账号状态后重试。`;
 }
 
 function updateToolbarLabel(state: UpdateState): string {
@@ -795,8 +812,8 @@ function App() {
   }
 
   async function confirmSummaryGeneration() {
-    if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "生成要点总结"));
+    if (!canGenerateAiWithAccount(account)) {
+      openAccountPanel(accountAiBlockerMessage(account, "生成要点总结"));
       return;
     }
 
@@ -883,8 +900,8 @@ function App() {
   }
 
   async function confirmInsightPreferences(preferences: GenerationPreferences) {
-    if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "生成启发灵感"));
+    if (!canGenerateAiWithAccount(account)) {
+      openAccountPanel(accountAiBlockerMessage(account, "生成启发灵感"));
       return;
     }
 
@@ -914,9 +931,9 @@ function App() {
     if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
       return;
     }
-    if (!canProcessWithAccount(account)) {
+    if (!canGenerateAiWithAccount(account)) {
       openAccountPanel(
-        accountProcessBlockerMessage(
+        accountAiBlockerMessage(
           account,
           target === "summary" ? "生成要点总结" : "生成启发灵感",
         ),

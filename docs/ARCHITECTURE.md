@@ -1,5 +1,13 @@
 # FrameQ Architecture
 
+## 2026-07-09 Account Processing and AI Gate Boundary
+
+- `/api/desktop/account` returns two capability fields with different responsibilities. `can_process` means the authenticated desktop user has an active entitlement and may start local video extraction, audio extraction, and ASR transcription.
+- `can_process` must not depend on `llm_configured` or `llm_quota_remaining`; local transcription is allowed to degrade independently when cloud AI is unavailable.
+- `can_generate_ai` means the authenticated desktop user has an active entitlement, server-managed LLM config is available, and LLM API-call quota remains.
+- The desktop UI uses `can_process` only for submitting a new video URL. It uses `can_generate_ai` for confirmed `summary` and `insights` generation.
+- `process_video` remains transcript-only by default and must not request server-managed LLM checkout. `retry_insights` is the AI generation path that can require checkout and quota.
+
 ## 2026-07-08 Split Summary and Inspiration Generation Boundary
 
 - `retry_insights` now receives an explicit target: `summary` or `insights`. The command still reuses the saved official transcript and the owning task manifest; it must not re-download media or rerun ASR.
@@ -93,7 +101,7 @@
 - Manual quota compensation should add to `llmQuotaLimit` while preserving `llmQuotaUsed`, so consumed usage remains traceable and `/api/desktop/account` can keep computing remaining uses with the existing response shape.
 - Manual expiry extension should use `base = max(now, current expiresAt)` for day-based extensions, with absolute expiry setting reserved for repair cases.
 - Every successful adjustment must create an append-only server-side audit record with administrator identity, target user, reason, optional note, before/after expiry, before/after quota values, and timestamp.
-- Desktop clients do not need a new API shape for this feature. They observe the result through the existing account status refresh, entitlement gate, and quota gate.
+- Desktop clients observe the result through account status refresh: `can_process` for local transcription entitlement and `can_generate_ai` for LLM-ready AI generation.
 
 ## 2026-06-26 Worker-Owned Download Strategy Boundary
 

@@ -11,6 +11,7 @@ Let users trigger `要点总结` and `启发灵感` independently after transcri
 - `insights` target generates `ai/insights.json` and `ai/insights.md` only, and is the only target allowed to persist/send `preference-snapshot.json`.
 - Task manifest updates must merge existing AI artifacts from the same task directory, so generating one target does not clear the other target or reset `insights_count`.
 - Both targets use server-managed LLM checkout only after user confirmation, with quota charged per actual supplier API-call attempt.
+- Account status uses separate gates: `can_process` allows local video/audio/ASR when the signed-in user has active entitlement; `can_generate_ai` gates confirmed summary/inspiration generation and also requires server LLM config plus remaining quota.
 
 ## Implementation Tasks
 
@@ -31,6 +32,7 @@ Let users trigger `要点总结` and `启发灵感` independently after transcri
 - [x] Frontend/Tauri target plumbing and summary confirmation UI implemented.
 - [x] Product, architecture, design, security, and personalized preference docs updated.
 - [x] Final validation gates.
+- [x] 2026-07-09: Split local processing and AI generation account gates across server, Tauri, and frontend UI so exhausted quota or missing LLM config no longer blocks transcript-only processing.
 
 ## Validation
 

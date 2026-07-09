@@ -634,6 +634,8 @@ function accountStatusPayload(input: {
   const quotaRemaining = entitlementActive && input.entitlement
     ? llmQuotaRemaining(input.entitlement, input.now)
     : 0;
+  const canProcess = entitlementActive;
+  const canGenerateAi = canProcess && quotaRemaining > 0 && input.llmConfigured;
   return {
     authenticated: true,
     email: input.email,
@@ -645,7 +647,8 @@ function accountStatusPayload(input: {
     llm_quota_resets_at: entitlementActive ? input.entitlement?.expiresAt.toISOString() ?? null : null,
     llm_configured: input.llmConfigured,
     last_verified_at: input.now.toISOString(),
-    can_process: entitlementActive && quotaRemaining > 0 && input.llmConfigured,
+    can_process: canProcess,
+    can_generate_ai: canGenerateAi,
   };
 }
 

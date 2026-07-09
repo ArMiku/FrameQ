@@ -27,6 +27,7 @@ describe("account client", () => {
         llm_configured: true,
         last_verified_at: "2026-06-21T08:00:00.000Z",
         can_process: true,
+        can_generate_ai: true,
         server_error: null,
       };
     };
@@ -46,6 +47,7 @@ describe("account client", () => {
       llmConfigured: true,
       lastVerifiedAt: "2026-06-21T08:00:00.000Z",
       canProcess: true,
+      canGenerateAi: true,
       serverError: null,
     });
   });
@@ -58,7 +60,12 @@ describe("account client", () => {
         return { auth_url: "https://frameq.example/login?state=state-1", state: "state-1" };
       }
       if (command === "complete_auth_flow") {
-        return { authenticated: true, email: "user@example.com", can_process: false };
+        return {
+          authenticated: true,
+          email: "user@example.com",
+          can_process: false,
+          can_generate_ai: false,
+        };
       }
       if (command === "create_wechat_checkout") {
         return {
@@ -86,7 +93,12 @@ describe("account client", () => {
     });
     await expect(
       completeAuthFlow("frameq://auth/callback?ticket=flt_abc&state=state-1", runner),
-    ).resolves.toEqual({ authenticated: true, email: "user@example.com", canProcess: false });
+    ).resolves.toEqual({
+      authenticated: true,
+      email: "user@example.com",
+      canProcess: false,
+      canGenerateAi: false,
+    });
     await expect(createWechatCheckout(runner)).resolves.toEqual({
       orderId: "fq_order",
       amountFen: 990,
@@ -130,6 +142,7 @@ describe("account client", () => {
         llm_configured: true,
         last_verified_at: "2026-06-21T08:00:00.000Z",
         can_process: true,
+        can_generate_ai: true,
         server_error: null,
       };
     };
@@ -146,6 +159,7 @@ describe("account client", () => {
       llmConfigured: true,
       lastVerifiedAt: "2026-06-21T08:00:00.000Z",
       canProcess: true,
+      canGenerateAi: true,
       serverError: null,
     });
     expect(calls).toEqual([

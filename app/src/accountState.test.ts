@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  canGenerateAiWithAccount,
   canProcessWithAccount,
   createAccountStatusFailure,
   createBrowserPreviewAccountStatus,
@@ -23,28 +24,51 @@ describe("account state", () => {
         llmConfigured: false,
         lastVerifiedAt: "2026-06-21T08:00:00.000Z",
         canProcess: false,
+        canGenerateAi: false,
         serverError: null,
       }),
     ).toBe(false);
   });
 
-  test("allows processing only when the server says the entitlement can process", () => {
-    expect(
-      canProcessWithAccount({
-        authenticated: true,
-        email: "user@example.com",
-        entitlementStatus: "active",
-        entitlementExpiresAt: "2026-07-22T08:00:00.000Z",
-        llmQuotaLimit: 20,
-        llmQuotaUsed: 2,
-        llmQuotaRemaining: 18,
-        llmQuotaResetsAt: "2026-07-22T08:00:00.000Z",
-        llmConfigured: true,
-        lastVerifiedAt: "2026-06-21T08:00:00.000Z",
-        canProcess: true,
-        serverError: null,
-      }),
-    ).toBe(true);
+  test("allows local processing with active entitlement even when LLM is unavailable", () => {
+    const account = {
+      authenticated: true,
+      email: "user@example.com",
+      entitlementStatus: "active",
+      entitlementExpiresAt: "2026-07-22T08:00:00.000Z",
+      llmQuotaLimit: 20,
+      llmQuotaUsed: 20,
+      llmQuotaRemaining: 0,
+      llmQuotaResetsAt: "2026-07-22T08:00:00.000Z",
+      llmConfigured: false,
+      lastVerifiedAt: "2026-06-21T08:00:00.000Z",
+      canProcess: true,
+      canGenerateAi: false,
+      serverError: null,
+    };
+
+    expect(canProcessWithAccount(account)).toBe(true);
+    expect(canGenerateAiWithAccount(account)).toBe(false);
+  });
+
+  test("allows AI generation only when the server says the AI gate is ready", () => {
+    const account = {
+      authenticated: true,
+      email: "user@example.com",
+      entitlementStatus: "active",
+      entitlementExpiresAt: "2026-07-22T08:00:00.000Z",
+      llmQuotaLimit: 20,
+      llmQuotaUsed: 2,
+      llmQuotaRemaining: 18,
+      llmQuotaResetsAt: "2026-07-22T08:00:00.000Z",
+      llmConfigured: true,
+      lastVerifiedAt: "2026-06-21T08:00:00.000Z",
+      canProcess: true,
+      canGenerateAi: true,
+      serverError: null,
+    };
+
+    expect(canGenerateAiWithAccount(account)).toBe(true);
   });
 
   test("blocks processing when account status refresh fails", () => {

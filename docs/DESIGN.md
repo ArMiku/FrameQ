@@ -59,7 +59,8 @@
 - Login and activation-code monthly pass flows use sheet-style panels consistent with settings/history.
 - Browser deep-link return from login must restore and focus the existing desktop window so the account sheet is visible without the user hunting for FrameQ.
 - Account copy must clearly distinguish local processing from server-side account and entitlement verification.
-- If the user is not entitled, submitting a URL or retrying insights opens the account sheet and does not start worker processing.
+- Submitting a URL is blocked only when the user is not signed in or does not have an active entitlement; missing LLM config or exhausted LLM quota must not block local video/audio/ASR processing.
+- Retrying summary or inspiration generation opens the account sheet and does not start worker processing when the user is not entitled, LLM config is missing, or LLM quota is exhausted.
 - The account sheet shows remaining LLM API-call uses when the user is signed in.
 - Desktop settings must not expose insight LLM provider, base URL, API key, model, or timeout; those fields are administrator-managed.
 - Desktop settings should expose the app-local `.env` path for non-LLM local settings and provide a locate-file action.

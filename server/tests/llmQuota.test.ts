@@ -137,7 +137,7 @@ describe("server-managed LLM config and quota", () => {
     });
   });
 
-  test("account status reflects quota and blocks processing when quota is exhausted", async () => {
+  test("account status allows local processing but blocks AI generation when quota is exhausted", async () => {
     const store = new MemoryStore();
     const { sessionToken } = await createAuthorizedUser(store);
     const entitlement = await store.getEntitlement(store.users[0]!.id);
@@ -159,7 +159,31 @@ describe("server-managed LLM config and quota", () => {
       llm_quota_remaining: 0,
       llm_quota_resets_at: "2026-07-22T08:00:00.000Z",
       llm_configured: false,
-      can_process: false,
+      can_process: true,
+      can_generate_ai: false,
+    });
+  });
+
+  test("account status allows AI generation only when LLM is configured and quota remains", async () => {
+    const store = new MemoryStore();
+    await createAdminSession(store);
+    const { sessionToken } = await createAuthorizedUser(store);
+    const app = buildTestServer(store);
+    expect((await saveLlmConfig(app)).statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/desktop/account",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      entitlement_status: "active",
+      llm_quota_remaining: 20,
+      llm_configured: true,
+      can_process: true,
+      can_generate_ai: true,
     });
   });
 

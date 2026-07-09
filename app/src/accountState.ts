@@ -10,6 +10,7 @@ export type AccountStatus = {
   llmConfigured: boolean;
   lastVerifiedAt: string | null;
   canProcess: boolean;
+  canGenerateAi: boolean;
   serverError: string | null;
 };
 
@@ -26,6 +27,7 @@ export function createGuestAccountStatus(): AccountStatus {
     llmConfigured: false,
     lastVerifiedAt: null,
     canProcess: false,
+    canGenerateAi: false,
     serverError: null,
   };
 }
@@ -50,6 +52,7 @@ export function createBrowserPreviewAccountStatus(): AccountStatus {
     llmConfigured: true,
     lastVerifiedAt: null,
     canProcess: true,
+    canGenerateAi: true,
     serverError: "Browser preview fallback",
   };
 }
@@ -71,4 +74,8 @@ export function isBrowserPreviewRuntime(
 
 export function canProcessWithAccount(account: AccountStatus): boolean {
   return account.authenticated && account.entitlementStatus === "active" && account.canProcess;
+}
+
+export function canGenerateAiWithAccount(account: AccountStatus): boolean {
+  return account.authenticated && account.entitlementStatus === "active" && account.canGenerateAi;
 }

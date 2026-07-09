@@ -16,6 +16,7 @@ export type CompleteAuthFlow = {
   authenticated: boolean;
   email: string;
   canProcess: boolean;
+  canGenerateAi: boolean;
 };
 
 export type WechatCheckout = {
@@ -45,6 +46,7 @@ type AccountStatusResponse = {
   llm_configured: boolean;
   last_verified_at: string | null;
   can_process: boolean;
+  can_generate_ai: boolean;
   server_error: string | null;
 };
 
@@ -57,6 +59,7 @@ type CompleteAuthFlowResponse = {
   authenticated: boolean;
   email: string;
   can_process: boolean;
+  can_generate_ai: boolean;
 };
 
 type WechatCheckoutResponse = {
@@ -101,6 +104,7 @@ export async function completeAuthFlow(
     authenticated: response.authenticated,
     email: response.email,
     canProcess: response.can_process,
+    canGenerateAi: response.can_generate_ai ?? false,
   };
 }
 
@@ -149,6 +153,7 @@ function mapAccountStatus(response: AccountStatusResponse): AccountStatus {
     llmConfigured: response.llm_configured ?? false,
     lastVerifiedAt: response.last_verified_at,
     canProcess: response.can_process,
+    canGenerateAi: response.can_generate_ai ?? false,
     serverError: response.server_error,
   };
 }

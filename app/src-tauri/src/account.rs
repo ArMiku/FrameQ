@@ -43,6 +43,7 @@ pub(crate) struct AccountStatusView {
     llm_configured: bool,
     last_verified_at: Option<String>,
     can_process: bool,
+    can_generate_ai: bool,
     server_error: Option<String>,
 }
 
@@ -59,6 +60,7 @@ struct ServerAccountStatus {
     llm_configured: bool,
     last_verified_at: String,
     can_process: bool,
+    can_generate_ai: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,6 +75,7 @@ pub(crate) struct CompleteAuthFlowResult {
     authenticated: bool,
     email: String,
     can_process: bool,
+    can_generate_ai: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,6 +152,7 @@ pub(crate) async fn complete_auth_flow(
         authenticated: true,
         email: exchange.email,
         can_process: status.can_process,
+        can_generate_ai: status.can_generate_ai,
     })
 }
 
@@ -172,6 +176,7 @@ pub(crate) async fn get_account_status(app: AppHandle) -> Result<AccountStatusVi
             llm_configured: status.llm_configured,
             last_verified_at: Some(status.last_verified_at),
             can_process: status.can_process,
+            can_generate_ai: status.can_generate_ai,
             server_error: None,
         }),
         Err(error) => Ok(AccountStatusView {
@@ -186,6 +191,7 @@ pub(crate) async fn get_account_status(app: AppHandle) -> Result<AccountStatusVi
             llm_configured: false,
             last_verified_at: None,
             can_process: false,
+            can_generate_ai: false,
             server_error: Some(error),
         }),
     }
@@ -470,6 +476,7 @@ fn account_status_view_from_server(status: ServerAccountStatus) -> AccountStatus
         llm_configured: status.llm_configured,
         last_verified_at: Some(status.last_verified_at),
         can_process: status.can_process,
+        can_generate_ai: status.can_generate_ai,
         server_error: None,
     }
 }
@@ -535,6 +542,46 @@ fn guest_account_status() -> AccountStatusView {
         llm_configured: false,
         last_verified_at: None,
         can_process: false,
+        can_generate_ai: false,
         server_error: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{account_status_view_from_server, guest_account_status, ServerAccountStatus};
+    use serde_json::json;
+
+    #[test]
+    fn account_status_view_preserves_separate_processing_and_ai_gates() {
+        let status: ServerAccountStatus = serde_json::from_value(json!({
+            "authenticated": true,
+            "email": "user@example.com",
+            "entitlement_status": "active",
+            "entitlement_expires_at": "2026-07-22T08:00:00.000Z",
+            "llm_quota_limit": 20,
+            "llm_quota_used": 20,
+            "llm_quota_remaining": 0,
+            "llm_quota_resets_at": "2026-07-22T08:00:00.000Z",
+            "llm_configured": false,
+            "last_verified_at": "2026-06-21T08:00:00.000Z",
+            "can_process": true,
+            "can_generate_ai": false
+        }))
+        .expect("deserialize server account status");
+
+        let view = account_status_view_from_server(status);
+        let value = serde_json::to_value(view).expect("serialize account status view");
+
+        assert_eq!(value["can_process"], true);
+        assert_eq!(value["can_generate_ai"], false);
+    }
+
+    #[test]
+    fn guest_account_status_blocks_processing_and_ai_generation() {
+        let value = serde_json::to_value(guest_account_status()).expect("serialize guest status");
+
+        assert_eq!(value["can_process"], false);
+        assert_eq!(value["can_generate_ai"], false);
     }
 }
