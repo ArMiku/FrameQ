@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 
 const appCss = readFileSync(new URL("./App.css", import.meta.url), "utf-8");
 const appTsx = readFileSync(new URL("./App.tsx", import.meta.url), "utf-8");
+const resultDetailSheetTsx = readFileSync(
+  new URL("./features/transcript/ResultDetailSheet.tsx", import.meta.url),
+  "utf-8",
+);
+const transcriptDetailControllerTs = readFileSync(
+  new URL("./features/transcript/useTranscriptDetailController.ts", import.meta.url),
+  "utf-8",
+);
 
 function getRuleBody(selectors: string[]): string {
   const selectorPattern = selectors
@@ -86,10 +94,10 @@ describe("App result workspace layout styles", () => {
   });
 
   test("uses a custom compact audio review bar instead of the browser audio controls", () => {
-    expect(appTsx).toContain('className="audio-review-bar"');
-    expect(appTsx).toContain('className="transcript-audio-engine"');
-    expect(appTsx).not.toContain('className="transcript-audio"');
-    expect(appTsx).not.toContain("controls\n");
+    expect(resultDetailSheetTsx).toContain('className="audio-review-bar"');
+    expect(resultDetailSheetTsx).toContain('className="transcript-audio-engine"');
+    expect(resultDetailSheetTsx).not.toContain('className="transcript-audio"');
+    expect(resultDetailSheetTsx).not.toContain("controls\n");
   });
 
   test("renders summary markdown through the markdown content component", () => {
@@ -97,8 +105,8 @@ describe("App result workspace layout styles", () => {
     const headingRule = getRuleBody([".markdown-content :is(h1, h2, h3, h4)"]);
     const tableRule = getRuleBody([".markdown-content table"]);
 
-    expect(appTsx).toContain("MarkdownContent");
-    expect(appTsx).toContain('markdown={workflow.summary}');
+    expect(resultDetailSheetTsx).toContain("MarkdownContent");
+    expect(resultDetailSheetTsx).toContain('markdown={workflow.summary}');
     expect(markdownRule).toContain("white-space: normal;");
     expect(markdownRule).toContain("overflow-wrap: anywhere;");
     expect(headingRule).toContain("line-height: 1.35;");
@@ -114,8 +122,9 @@ describe("App result workspace layout styles", () => {
     const webkitTrackRule = getRuleBody([".audio-review-scrubber::-webkit-slider-runnable-track"]);
     const webkitThumbRule = getRuleBody([".audio-review-scrubber::-webkit-slider-thumb"]);
 
-    expect(appTsx).not.toContain('className="audio-review-actions"');
-    expect(appTsx).toContain("--audio-progress");
+    expect(resultDetailSheetTsx).not.toContain('className="audio-review-actions"');
+    expect(resultDetailSheetTsx).toContain("transcriptAudioScrubberStyle");
+    expect(transcriptDetailControllerTs).toContain("--audio-progress");
     expect(barRule).toContain("grid-template-columns: auto minmax(0, 1fr);");
     expect(barRule).toContain("min-height: 64px;");
     expect(barRule).toContain("padding: 12px 16px;");

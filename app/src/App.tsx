@@ -1,18 +1,15 @@
-import { FormEvent, type CSSProperties, type ChangeEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { FormEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
   CheckCircle2,
   Circle,
   Clock3,
-  Copy,
   Download,
   FileText,
   FolderOpen,
   History as HistoryIcon,
   ListChecks,
   LoaderCircle,
-  Pause,
   Play,
   RotateCcw,
   Settings,
@@ -24,13 +21,10 @@ import {
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import "./App.css";
 import {
-  getDetailText,
   getExportPath,
   getInsightRetryTargetForCard,
-  getTranscriptSourceLabel,
   isProcessingStage,
   summarizeWorkerResult,
-  type DetailTab,
   type ResultCard,
   type WorkflowState,
 } from "./workflow";
@@ -66,28 +60,11 @@ import { useAccountController } from "./features/account/useAccountController";
 import { ModelGuideSheet } from "./features/asrModel/ModelGuideSheet";
 import { useAsrModelDownload } from "./features/asrModel/useAsrModelDownload";
 import { InsightPreferenceFlow } from "./features/insightPreferences/InsightPreferenceFlow";
-import { MarkdownContent } from "./features/results/MarkdownContent";
 import { ResultWorkspace } from "./features/results/ResultWorkspace";
+import { ResultDetailSheet } from "./features/transcript/ResultDetailSheet";
+import { useTranscriptDetailController } from "./features/transcript/useTranscriptDetailController";
 import { useTaskProcessingController } from "./features/workflow/useTaskProcessingController";
 import { useAppUpdateController } from "./features/updates/useAppUpdateController";
-import {
-  loadTranscriptDetail,
-  saveTranscriptEdit,
-  type TranscriptDetailResponse,
-  type TranscriptSegment,
-} from "./transcriptDetailClient";
-import {
-  findActiveTranscriptSegmentId,
-  isTranscriptSegmentEditDisabled,
-  shouldPauseActiveTranscriptSegment,
-  transcriptTextFromSegments,
-  updateTranscriptSegmentText,
-} from "./transcriptReviewState";
-import {
-  audioProgressPercent,
-  clampAudioTime,
-  formatAudioClock,
-} from "./audioReviewBarState";
 import {
   clearInspirationProfile,
   getInsightPreferences,
@@ -210,13 +187,6 @@ function formatByteSize(value: number): string {
   }
   const precision = size >= 10 ? 0 : 1;
   return `${size.toFixed(precision)} ${units[unitIndex]}`;
-}
-
-function formatSegmentTime(startMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(startMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function asrModelSourceLabel(source: string): string {
@@ -349,23 +319,11 @@ function settingsGenerationPreferenceLines(state: InsightPreferenceState | null,
 }
 
 function App() {
-  const [detailTab, setDetailTab] = useState<DetailTab | null>(null);
   const [summaryConfirmOpen, setSummaryConfirmOpen] = useState(false);
   const [insightPreferenceFlow, setInsightPreferenceFlow] =
     useState<InsightPreferenceFlowState | null>(null);
   const [insightPreferenceBusy, setInsightPreferenceBusy] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
-  const [transcriptDetail, setTranscriptDetail] = useState<TranscriptDetailResponse | null>(null);
-  const [transcriptDraft, setTranscriptDraft] = useState("");
-  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
-  const [transcriptDirty, setTranscriptDirty] = useState(false);
-  const [transcriptLoading, setTranscriptLoading] = useState(false);
-  const [transcriptSaving, setTranscriptSaving] = useState(false);
-  const [activeTranscriptSegmentId, setActiveTranscriptSegmentId] = useState<string | null>(null);
-  const [editingTranscriptSegmentId, setEditingTranscriptSegmentId] = useState<string | null>(null);
-  const [transcriptAudioCurrentTime, setTranscriptAudioCurrentTime] = useState(0);
-  const [transcriptAudioDuration, setTranscriptAudioDuration] = useState(0);
-  const [transcriptAudioPlaying, setTranscriptAudioPlaying] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("basic");
   const [settingsDraft, setSettingsDraft] = useState<LlmConfigDraft>({
@@ -381,6 +339,7 @@ function App() {
   const [settingsNotice, setSettingsNotice] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const closeDetailForTaskRef = useRef<() => void>(() => {});
   const {
     modelGuideOpen,
     setModelGuideOpen,
@@ -395,13 +354,13 @@ function App() {
     cancelCurrentAsrModelDownload,
   } = useAsrModelDownload();
   const resetTaskUi = useCallback(() => {
-    setDetailTab(null);
+    closeDetailForTaskRef.current();
     setSummaryConfirmOpen(false);
     setInsightPreferenceFlow(null);
     setActionNotice("");
   }, []);
   const prepareInsightRetryUi = useCallback(() => {
-    setDetailTab(null);
+    closeDetailForTaskRef.current();
     setActionNotice("");
   }, []);
   const {
@@ -423,6 +382,18 @@ function App() {
     processBlockerMessage: accountProcessBlockerMessage,
     aiBlockerMessage: accountAiBlockerMessage,
   });
+  const transcriptDetailController = useTranscriptDetailController({
+    workflow,
+    setWorkflow,
+    setActionNotice,
+  });
+  const {
+    detailTab,
+    openDetailTab,
+    closeDetail,
+    currentTranscriptPath,
+  } = transcriptDetailController;
+  closeDetailForTaskRef.current = closeDetail;
   const {
     account,
     accountOpen,
@@ -453,9 +424,6 @@ function App() {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyNotice, setHistoryNotice] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
-  const transcriptAudioRef = useRef<HTMLAudioElement | null>(null);
-  const transcriptSegmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const resumeTranscriptAfterSaveRef = useRef(false);
   const windowDragSessionRef = useRef<WindowDragSession | null>(null);
   const queuedWindowPositionRef = useRef<WindowPosition | null>(null);
   const windowMoveInFlightRef = useRef(false);
@@ -483,7 +451,7 @@ function App() {
       }
 
       if (detailTab) {
-        setDetailTab(null);
+        closeDetail();
         return;
       }
 
@@ -516,6 +484,7 @@ function App() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [
     detailTab,
+    closeDetail,
     historyOpen,
     summaryConfirmOpen,
     insightPreferenceFlow,
@@ -584,78 +553,6 @@ function App() {
     };
   }, [handleAuthCallback]);
 
-  useEffect(() => {
-    if (detailTab !== "transcript") {
-      return;
-    }
-
-    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
-      setTranscriptDetail(null);
-      setTranscriptDraft(workflow.text);
-      setTranscriptSegments([]);
-      setTranscriptDirty(false);
-      setActiveTranscriptSegmentId(null);
-      setEditingTranscriptSegmentId(null);
-      return;
-    }
-
-    let cancelled = false;
-    setTranscriptLoading(true);
-    setTranscriptDetail(null);
-    setTranscriptDraft(workflow.text);
-    setTranscriptSegments([]);
-    setTranscriptDirty(false);
-    setActiveTranscriptSegmentId(null);
-    setEditingTranscriptSegmentId(null);
-    const taskId = workflow.taskId;
-
-    async function loadDetail() {
-      try {
-        const detail = await loadTranscriptDetail(taskId);
-        if (cancelled) {
-          return;
-        }
-        setTranscriptDetail(detail);
-        setTranscriptDraft(detail.text || workflow.text);
-        setTranscriptSegments(detail.segments);
-        setActionNotice(
-          detail.audio_asset_path
-            ? ""
-            : "音频文件暂不可用，可以先编辑文字稿；点击保存后会更新正式文字稿。",
-        );
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setTranscriptDetail(null);
-        setTranscriptDraft(workflow.text);
-        setTranscriptSegments([]);
-        setActionNotice(
-          `无法读取文字稿详情，已显示当前结果文本：${error instanceof Error ? error.message : String(error)}`,
-        );
-      } finally {
-        if (!cancelled) {
-          setTranscriptLoading(false);
-        }
-      }
-    }
-
-    void loadDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [detailTab, workflow.artifacts.transcript_txt, workflow.taskId, workflow.text]);
-
-  useEffect(() => {
-    if (!activeTranscriptSegmentId) {
-      return;
-    }
-    transcriptSegmentRefs.current[activeTranscriptSegmentId]?.scrollIntoView({
-      block: "nearest",
-      behavior: "smooth",
-    });
-  }, [activeTranscriptSegmentId]);
-
   function openCard(card: ResultCard) {
     if (card.action === "locate") {
       void locateArtifact(card);
@@ -664,7 +561,7 @@ function App() {
 
     if (card.action === "open") {
       setActionNotice("");
-      setDetailTab(card.id);
+      openDetailTab(card.id);
       return;
     }
 
@@ -757,7 +654,7 @@ function App() {
       return;
     }
 
-    setDetailTab(null);
+    closeDetail();
     setInsightPreferenceBusy(true);
     setActionNotice("");
     try {
@@ -836,213 +733,6 @@ function App() {
     }
   }
 
-  async function copyDetail() {
-    if (!detailTab) {
-      return;
-    }
-    const text = detailTab === "transcript" ? transcriptDraft : getDetailText(detailTab, workflow);
-    if (!text) {
-      setActionNotice("暂无可复制内容。");
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(text);
-      setActionNotice("已复制到剪贴板。");
-    } catch {
-      setActionNotice("复制失败，请手动选择内容复制。");
-    }
-  }
-
-  async function exportDetail() {
-    if (!detailTab) {
-      return;
-    }
-    if (detailTab === "transcript" && transcriptDirty) {
-      setActionNotice("文字稿有未保存修改，请先保存后再定位正式文件。");
-      return;
-    }
-    const exportPath = getExportPath(detailTab, workflow);
-    if (!exportPath) {
-      setActionNotice("暂无可导出的文件。");
-      return;
-    }
-
-    try {
-      await revealItemInDir(exportPath);
-      setActionNotice("已在文件管理器中定位导出文件。");
-    } catch {
-      setActionNotice(`无法定位文件：${exportPath}`);
-    }
-  }
-
-  async function playTranscriptSegment(segment: TranscriptSegment) {
-    if (editingTranscriptSegmentId) {
-      return;
-    }
-
-    const audio = transcriptAudioRef.current;
-    if (!audio || !transcriptDetail?.audio_asset_path) {
-      setActiveTranscriptSegmentId(segment.id);
-      setActionNotice("当前任务没有可播放的本地音频，只能编辑文字稿。");
-      return;
-    }
-
-    if (shouldPauseActiveTranscriptSegment(activeTranscriptSegmentId, segment.id, !audio.paused)) {
-      audio.pause();
-      setTranscriptAudioPlaying(false);
-      return;
-    }
-
-    setActiveTranscriptSegmentId(segment.id);
-    audio.currentTime = segment.start_ms / 1000;
-    audio.playbackRate = 1;
-    setTranscriptAudioCurrentTime(audio.currentTime);
-    try {
-      await audio.play();
-    } catch {
-      setActionNotice("音频无法自动播放，请点击回听工具条继续。");
-    }
-  }
-
-  function syncTranscriptAudioState(audio: HTMLAudioElement) {
-    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-    setTranscriptAudioDuration(duration);
-    setTranscriptAudioCurrentTime(clampAudioTime(audio.currentTime, duration));
-  }
-
-  function handleTranscriptAudioMetadata() {
-    const audio = transcriptAudioRef.current;
-    if (!audio) {
-      return;
-    }
-    audio.playbackRate = 1;
-    syncTranscriptAudioState(audio);
-  }
-
-  function handleTranscriptTimeUpdate() {
-    const audio = transcriptAudioRef.current;
-    if (!audio) {
-      return;
-    }
-    syncTranscriptAudioState(audio);
-    if (!editingTranscriptSegmentId) {
-      const activeId = findActiveTranscriptSegmentId(transcriptSegments, audio.currentTime);
-      if (activeId) {
-        setActiveTranscriptSegmentId(activeId);
-      }
-    }
-  }
-
-  async function toggleTranscriptAudio() {
-    const audio = transcriptAudioRef.current;
-    if (!audio || !transcriptDetail?.audio_asset_path) {
-      setActionNotice("当前任务没有可播放的本地音频，只能编辑文字稿。");
-      return;
-    }
-
-    if (!audio.paused) {
-      audio.pause();
-      return;
-    }
-
-    audio.playbackRate = 1;
-    try {
-      await audio.play();
-    } catch {
-      setActionNotice("音频无法播放，请确认本地音频文件仍然存在。");
-    }
-  }
-
-  function scrubTranscriptAudio(event: ChangeEvent<HTMLInputElement>) {
-    const audio = transcriptAudioRef.current;
-    const nextTime = clampAudioTime(event.currentTarget.valueAsNumber, transcriptAudioDuration);
-    if (audio) {
-      audio.currentTime = nextTime;
-    }
-    setTranscriptAudioCurrentTime(nextTime);
-    if (!editingTranscriptSegmentId) {
-      const activeId = findActiveTranscriptSegmentId(transcriptSegments, nextTime);
-      if (activeId) {
-        setActiveTranscriptSegmentId(activeId);
-      }
-    }
-  }
-
-  function beginTranscriptSegmentEdit(segmentId: string) {
-    const audio = transcriptAudioRef.current;
-    if (audio && !audio.paused) {
-      resumeTranscriptAfterSaveRef.current = true;
-      audio.pause();
-    }
-    setEditingTranscriptSegmentId(segmentId);
-    setActiveTranscriptSegmentId(segmentId);
-  }
-
-  function updateTranscriptSegmentDraft(segmentId: string, text: string) {
-    setTranscriptSegments((current) => {
-      const next = updateTranscriptSegmentText(current, segmentId, text);
-      setTranscriptDraft(transcriptTextFromSegments(next));
-      return next;
-    });
-    setTranscriptDirty(true);
-  }
-
-  function updateFullTranscriptDraft(text: string) {
-    setTranscriptDraft(text);
-    setTranscriptDirty(true);
-  }
-
-  async function saveTranscriptDraft() {
-    if (!workflow.taskId || !workflow.artifacts.transcript_txt || transcriptSaving) {
-      return;
-    }
-
-    setTranscriptSaving(true);
-    try {
-      const saved = await saveTranscriptEdit(
-        workflow.taskId,
-        transcriptDraft,
-        transcriptSegments,
-      );
-      setTranscriptDraft(saved.text);
-      setTranscriptDirty(false);
-      setEditingTranscriptSegmentId(null);
-      setTranscriptDetail((current) =>
-        current
-          ? {
-              ...current,
-              text: saved.text,
-              has_original_backup: saved.has_original_backup,
-            }
-          : current,
-      );
-      setWorkflow((current) => ({
-        ...current,
-        taskId: saved.task_id || current.taskId,
-        text: saved.text,
-        artifacts: {
-          ...current.artifacts,
-          ...(saved.artifacts ?? {}),
-        },
-      }));
-      setActionNotice("文字稿已保存，后续 AI 整理会使用保存后的正式稿。");
-
-      if (resumeTranscriptAfterSaveRef.current && transcriptAudioRef.current) {
-        resumeTranscriptAfterSaveRef.current = false;
-        try {
-          await transcriptAudioRef.current.play();
-        } catch {
-          setActionNotice("文字稿已保存。音频无法自动继续，请手动点击播放器。");
-        }
-      }
-    } catch (error) {
-      setActionNotice(`保存文字稿失败：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setTranscriptSaving(false);
-    }
-  }
-
   async function openHistory() {
     setHistoryOpen(true);
     setHistoryLoading(true);
@@ -1065,7 +755,7 @@ function App() {
       url: item.url,
       submittedUrl: item.url,
     });
-    setDetailTab(item.summary ? "summary" : item.insights.length > 0 ? "insights" : item.text ? "transcript" : null);
+    openDetailTab(item.summary ? "summary" : item.insights.length > 0 ? "insights" : item.text ? "transcript" : null);
     setActionNotice("");
     setHistoryOpen(false);
   }
@@ -1247,32 +937,6 @@ function App() {
 
   const activeCopy = stageCopy[workflow.stage];
   const progressPercent = formatProgressPercent(workflow.progressPercent);
-  const detailTitle =
-    detailTab === "insights" ? "启发灵感" : detailTab === "summary" ? "要点总结" : "完整文字稿";
-  const detailText =
-    detailTab === "transcript" ? transcriptDraft : detailTab ? getDetailText(detailTab, workflow) : "";
-  const exportPath = detailTab ? getExportPath(detailTab, workflow) : null;
-  const currentTranscriptPath = getExportPath("transcript", workflow);
-  const transcriptSourceLabel = getTranscriptSourceLabel(workflow);
-  const transcriptAudioSrc = transcriptDetail?.audio_asset_path
-    ? convertFileSrc(transcriptDetail.audio_asset_path)
-    : "";
-  const transcriptAudioProgress = audioProgressPercent(transcriptAudioCurrentTime, transcriptAudioDuration);
-  const transcriptAudioScrubberMax =
-    transcriptAudioDuration > 0 ? transcriptAudioDuration : Math.max(transcriptAudioCurrentTime, 1);
-  const transcriptAudioScrubberStyle = {
-    "--audio-progress": `${transcriptAudioProgress}%`,
-  } as CSSProperties;
-  const hasTranscriptSegments = transcriptSegments.length > 0;
-
-  useEffect(() => {
-    setTranscriptAudioCurrentTime(0);
-    setTranscriptAudioDuration(0);
-    setTranscriptAudioPlaying(false);
-    if (transcriptAudioRef.current) {
-      transcriptAudioRef.current.playbackRate = 1;
-    }
-  }, [transcriptAudioSrc]);
 
   return (
     <main className="app-shell">
@@ -1562,248 +1226,12 @@ function App() {
         />
       ) : null}
 
-      {detailTab ? (
-        <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={() => setDetailTab(null)}>
-          <section
-            className="sheet-panel detail-modal detail-sheet"
-            aria-label="结果详情"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="modal-header sheet-header">
-              <div>
-                <p className="section-label">Preview</p>
-                <h2>{detailTitle}</h2>
-              </div>
-              <button className="icon-button" type="button" onClick={() => setDetailTab(null)} aria-label="关闭详情">
-                <X size={18} />
-              </button>
-            </header>
-            <div className="tabs">
-              <button
-                className={detailTab === "summary" ? "selected" : ""}
-                type="button"
-                onClick={() => setDetailTab("summary")}
-              >
-                要点总结
-              </button>
-              <button
-                className={detailTab === "insights" ? "selected" : ""}
-                type="button"
-                onClick={() => setDetailTab("insights")}
-              >
-                启发灵感
-              </button>
-              <button
-                className={detailTab === "transcript" ? "selected" : ""}
-                type="button"
-                onClick={() => setDetailTab("transcript")}
-              >
-                完整文字稿
-              </button>
-            </div>
-            <div className="modal-tools">
-              <div className="detail-tool-status">
-                {detailTab === "transcript" ? (
-                  <span>
-                    {transcriptDirty
-                      ? "有未保存修改"
-                      : transcriptDetail?.has_original_backup
-                        ? "已创建原始备份"
-                        : "本地文字稿"}
-                  </span>
-                ) : (
-                  <span>本地结果预览</span>
-                )}
-              </div>
-              <div className="tool-actions">
-                <button type="button" onClick={copyDetail} disabled={!detailText}>
-                  <Copy size={16} />
-                  <span>复制</span>
-                </button>
-                {detailTab === "transcript" ? (
-                  <button
-                    type="button"
-                    onClick={saveTranscriptDraft}
-                    disabled={!workflow.taskId || !workflow.artifacts.transcript_txt || !transcriptDirty || transcriptSaving}
-                  >
-                    {transcriptSaving ? <LoaderCircle size={16} className="spin" /> : <CheckCircle2 size={16} />}
-                    <span>{transcriptSaving ? "保存中" : "保存"}</span>
-                  </button>
-                ) : null}
-                {detailTab === "insights" ? (
-                  <button type="button" onClick={openDirectionEditorFromDetail} disabled={!workflow.taskId || !workflow.artifacts.transcript_txt}>
-                    <RotateCcw size={16} />
-                    <span>换个方向</span>
-                  </button>
-                ) : null}
-                <button type="button" onClick={exportDetail} disabled={!exportPath}>
-                  <Download size={16} />
-                  <span>导出</span>
-                </button>
-              </div>
-            </div>
-            {actionNotice ? <p className="action-notice">{actionNotice}</p> : null}
-            <div className="modal-content">
-              {detailTab === "summary" ? (
-                <MarkdownContent markdown={workflow.summary} emptyText="要点总结生成后将在这里显示。" />
-              ) : detailTab === "insights" ? (
-                workflow.insights.length > 0 ? (
-                  <ol className="insight-detail-list">
-                    {workflow.insights.map((insight) => (
-                      <li className="insight-detail-item" key={insight.id}>
-                        <h3>{insight.topic}</h3>
-                        <dl>
-                          <div>
-                            <dt>匹配理由</dt>
-                            <dd>{insight.matchReason}</dd>
-                          </div>
-                          <div>
-                            <dt>启发问题</dt>
-                            <dd>{insight.followUpQuestions.join("；")}</dd>
-                          </div>
-                          <div>
-                            <dt>适合用途</dt>
-                            <dd>{insight.suitableUse}</dd>
-                          </div>
-                          {insight.sourceChunkId === null ? null : (
-                            <div>
-                              <dt>来源片段</dt>
-                              <dd>{insight.sourceChunkId}</dd>
-                            </div>
-                          )}
-                        </dl>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p>启发灵感尚未生成。</p>
-                )
-              ) : (
-                <div className="transcript-review">
-                  {transcriptSourceLabel ? (
-                    <p className="transcript-source">{transcriptSourceLabel}</p>
-                  ) : null}
-                  {transcriptLoading ? (
-                    <p className="transcript-status">正在读取文字稿详情...</p>
-                  ) : null}
-                  {transcriptAudioSrc ? (
-                    <>
-                      <audio
-                        ref={transcriptAudioRef}
-                        className="transcript-audio-engine"
-                        src={transcriptAudioSrc}
-                        preload="metadata"
-                        onLoadedMetadata={handleTranscriptAudioMetadata}
-                        onDurationChange={handleTranscriptAudioMetadata}
-                        onTimeUpdate={handleTranscriptTimeUpdate}
-                        onPlay={() => setTranscriptAudioPlaying(true)}
-                        onPause={() => setTranscriptAudioPlaying(false)}
-                        onEnded={() => setTranscriptAudioPlaying(false)}
-                      />
-                      <div className="audio-review-bar" aria-label="音频回听工具条">
-                        <button
-                          className="audio-play-button"
-                          type="button"
-                          onClick={() => void toggleTranscriptAudio()}
-                          aria-label={transcriptAudioPlaying ? "暂停音频" : "播放音频"}
-                        >
-                          {transcriptAudioPlaying ? <Pause size={16} /> : <Play size={16} />}
-                        </button>
-                        <div className="audio-review-timeline">
-                          <input
-                            className="audio-review-scrubber"
-                            type="range"
-                            min={0}
-                            max={transcriptAudioScrubberMax}
-                            step={0.1}
-                            style={transcriptAudioScrubberStyle}
-                            value={clampAudioTime(transcriptAudioCurrentTime, transcriptAudioScrubberMax)}
-                            onChange={scrubTranscriptAudio}
-                            disabled={transcriptAudioDuration <= 0}
-                            aria-label="音频进度"
-                            aria-valuetext={`${formatAudioClock(transcriptAudioCurrentTime)}，${Math.round(
-                              transcriptAudioProgress,
-                            )}%`}
-                          />
-                          <div className="audio-review-clock">
-                            <span>{formatAudioClock(transcriptAudioCurrentTime)}</span>
-                            <span aria-hidden="true"> / </span>
-                            <span>{formatAudioClock(transcriptAudioDuration)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="transcript-status">当前任务没有可播放的本地音频。</p>
-                  )}
-                  {hasTranscriptSegments ? (
-                    <div className="transcript-segments">
-                      {transcriptSegments.map((segment) => (
-                        <div
-                          key={segment.id}
-                          ref={(element) => {
-                            transcriptSegmentRefs.current[segment.id] = element;
-                          }}
-                          className={`transcript-segment ${
-                            activeTranscriptSegmentId === segment.id ? "active" : ""
-                          } ${editingTranscriptSegmentId === segment.id ? "editing" : ""}`}
-                        >
-                          <div className="transcript-segment-header">
-                            <button
-                              type="button"
-                              className="transcript-segment-time"
-                              onClick={() => void playTranscriptSegment(segment)}
-                              disabled={!transcriptDetail?.audio_asset_path || Boolean(editingTranscriptSegmentId)}
-                            >
-                              <Play size={14} />
-                              <span>{formatSegmentTime(segment.start_ms)}</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary-button compact-button"
-                              onClick={() => beginTranscriptSegmentEdit(segment.id)}
-                              disabled={isTranscriptSegmentEditDisabled(editingTranscriptSegmentId, segment.id)}
-                            >
-                              编辑
-                            </button>
-                          </div>
-                          {editingTranscriptSegmentId === segment.id ? (
-                            <textarea
-                              value={segment.text}
-                              onChange={(event) =>
-                                updateTranscriptSegmentDraft(segment.id, event.currentTarget.value)
-                              }
-                              autoFocus
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              className="transcript-segment-text"
-                              onClick={() => void playTranscriptSegment(segment)}
-                            >
-                              {segment.text}
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <textarea
-                      className="transcript-full-editor"
-                      value={transcriptDraft}
-                      onFocus={() => beginTranscriptSegmentEdit("full-text")}
-                      onChange={(event) => updateFullTranscriptDraft(event.currentTarget.value)}
-                      placeholder="文字稿生成后将在这里显示。"
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-      ) : null}
+      <ResultDetailSheet
+        actionNotice={actionNotice}
+        controller={transcriptDetailController}
+        workflow={workflow}
+        onOpenDirectionEditorFromDetail={openDirectionEditorFromDetail}
+      />
 
       {historyOpen ? (
         <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={() => setHistoryOpen(false)}>
