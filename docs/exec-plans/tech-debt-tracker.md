@@ -1,6 +1,6 @@
 # Tech Debt Tracker
 
-Last updated: 2026-07-07
+Last updated: 2026-07-09
 
 ## High Priority
 
@@ -9,6 +9,13 @@ Last updated: 2026-07-07
 | None | No high-priority MVP debt remains after final validation | N/A | N/A |
 
 ## Completed / Resolved
+
+### P2 God Component Split
+
+- Status: completed.
+- Resolution: `app/src/App.tsx` is now a composition root after extracting account, task processing, transcript detail, settings, history, window chrome, and insight generation controllers. `InsightPreferenceFlow` and summary confirmation JSX remain composed in `App.tsx`, while orchestration state/actions moved into focused feature hooks.
+- Evidence: commits `0ceb997`, `eaa852a`, `c1c195d`, `ba733c1`, `0dbfb3f`, `56339d3`, and `5310a48`; final review showed `App.tsx` at 800 lines with only `actionNotice` as local React state; `npm --prefix app test`, `npm --prefix app run build`, and `git diff --check` passed.
+- Residual risk: accepted as tracked deferred debt below rather than continuing P2 micro-splitting.
 
 ### Manual Audio Playback Cache Management
 
@@ -21,6 +28,9 @@ Last updated: 2026-07-07
 
 | Topic | Why it matters | Source | Removal Condition |
 |------|----------------|--------|-------------------|
+| App shell glue remains after P2 | `App.tsx` still owns app startup/deep-link effects, `openCard` / `locateArtifact`, global `actionNotice`, and top-level Sheet/Flow composition. This is acceptable for a composition root but should not grow new feature state. | `app/src/App.tsx`; P2 commits listed above | Keep new feature state/actions in focused controllers. Revisit only if App shell glue starts accumulating business rules again. |
+| Automated UI/E2E smoke coverage missing | P2 relied on focused unit tests/build plus manual smoke for history, settings, transcript detail, window chrome, and AI flow. Future wiring changes could regress UI interactions without an automated browser/Tauri smoke harness. | P2 manual smoke confirmations; no committed E2E harness | Add automated smoke coverage for history, settings, transcript, window chrome, and AI flow main paths. |
+| Orchestration hook unit coverage missing | Extracted controllers are mostly covered indirectly by existing model/client tests and TypeScript build, but key orchestration hooks lack hook-level tests for state transitions and command error paths. | `app/src/features/insightPreferences/useInsightGenerationController.ts`, `app/src/features/history/useHistoryController.ts`, `app/src/features/settings/useSettingsController.ts` | Add hook-level tests for `useInsightGenerationController`, `useHistoryController`, and `useSettingsController`. |
 | macOS notarization deferred | macOS DMGs are ad-hoc signed only (`bundle.macOS.signingIdentity = "-"`, `hardenedRuntime = false`), so first launch still shows a one-time Gatekeeper prompt that users must bypass manually. Full removal needs a paid Apple Developer ID + notarization. Ad-hoc signing is the free mitigation that avoids the non-recoverable "app is damaged" failure. | `app/src-tauri/tauri.conf.json`, README "macOS install and Gatekeeper" | Desktop app shows commercial demand → buy Apple Developer Program, add Developer ID signing + `notarytool` notarization + stapling to the macOS release jobs. |
 | macOS in-app auto-update deferred (UI gated) | `latest.json` only carries Windows platform entries and the macOS jobs upload DMGs without `.app.tar.gz` updater artifacts. The UI now gates on `get_update_delivery`: macOS skips the silent check and shows a "前往下载页" action instead of falsely reporting "up to date". Real in-app auto-update is still not wired. | `app/src-tauri/src/updates.rs` (`get_update_delivery`), `app/src/features/updates/useAppUpdateController.ts`, `.github/workflows/desktop-release.yml` | Publish signed `.app.tar.gz` + `.sig` from the macOS jobs and merge `darwin-x86_64` / `darwin-aarch64` entries into `latest.json`, then flip `in_app_updates` on for macOS. Works even ad-hoc-signed because updater downloads bypass Gatekeeper quarantine. |
 

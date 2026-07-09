@@ -1,5 +1,9 @@
 # Tasks
 
+## Refactoring and Technical Debt
+
+- [x] Close P2 God Component refactor (2026-07-09) ✅ Split `app/src/App.tsx` into focused account, workflow, transcript detail, settings, history, window chrome, and insight generation controllers. Final state: `App.tsx` is a composition root with `actionNotice`, startup/deep-link glue, `openCard` / `locateArtifact`, and Sheet/Flow composition retained. Validation passed: `npm --prefix app test`, `npm --prefix app run build`, and `git diff --check`. Remaining risks and next-stage priorities are tracked in `docs/exec-plans/tech-debt-tracker.md`.
+
 ## Account and Billing
 
 - [x] Add server-managed LLM config and monthly insight quota (2026-06-22) ✅ Admin Web owns encrypted dedicated FrameQ client LLM config and per-user quota editing; desktop accounts quota per cloud LLM API call attempt; settings no longer exposes LLM fields; server/app/Rust/worker/docs gates passed.

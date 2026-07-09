@@ -26,6 +26,7 @@ Make desktop client, Tauri bridge, and Python worker code easier to change by sp
 - [x] Tauri modules split completed.
 - [x] Worker orchestration split completed.
 - [x] Full verification completed.
+- [x] 2026-07-09: P2 God Component follow-up completed for the frontend shell. `App.tsx` now composes extracted account, task processing, transcript detail, settings, history, window chrome, and insight generation controllers while preserving behavior. Validation: `npm --prefix app test`, `npm --prefix app run build`, and `git diff --check`.
 
 ## Validation
 
@@ -64,3 +65,5 @@ Make desktop client, Tauri bridge, and Python worker code easier to change by sp
 Delivered the zero-behavior-change structure split for the React shell, Tauri bridge, and Python worker orchestration while preserving command names, CLI flags, and JSON wire shapes. Contract fixtures and cross-language tests now help prevent TS/Rust/Python drift.
 
 Residual risk: `npm --prefix app run lint` remains unavailable because the app package has no `lint` script; future large UI or Tauri changes should continue the modularization instead of rebuilding monolithic files.
+
+2026-07-09 P2 frontend follow-up: The God Component split is closed. `App.tsx` remains the composition root and still owns startup/deep-link effects, `openCard` / `locateArtifact`, global `actionNotice`, and Sheet/Flow composition. Remaining risk is tracked in `docs/exec-plans/tech-debt-tracker.md`: automated UI/E2E smoke coverage is missing, and orchestration hooks still need hook-level tests before future wiring-heavy changes.
