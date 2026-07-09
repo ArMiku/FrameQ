@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from frameq_worker.asr import (
@@ -23,6 +24,7 @@ from frameq_worker.insightflow import (
 )
 from frameq_worker.media import (
     CommandExecutionError,
+    CommandResult,
     CommandRunner,
     download_video,
     extract_audio,
@@ -58,6 +60,20 @@ CLOUD_LLM_AI_ORGANIZING_MESSAGE = (
     "正在使用配置的 LLM 生成 AI 结果，文字稿会发送到该服务。"
 )
 LOCAL_AI_ORGANIZING_MESSAGE = "正在生成 AI 结果。"
+
+
+@dataclass(frozen=True)
+class PipelineContext:
+    task_context: TaskContext
+    download_dir: Path
+    video_id: str | None
+    media_files_before_download: dict[str, tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class DownloadedVideo:
+    result: CommandResult
+    path: Path
 
 
 def run_asr_transcript_step(
@@ -253,16 +269,11 @@ def run_insight_generation_step(
     )
 
 
-def run_worker_pipeline(
+def prepare_pipeline_context(
     request: ProcessRequest,
     project_root: Path,
-    command_runner: CommandRunner,
-    transcriber: Transcriber | None,
-    insight_client: InsightClient | None,
-    allow_real_asr: bool,
     environ: dict[str, str],
-    progress_callback: ProgressCallback | None = None,
-) -> ProcessResult:
+) -> PipelineContext:
     output_dir = resolve_output_dir(project_root, environ)
     cache_dir = resolve_cache_dir(project_root, environ)
     task_context = create_task_context(request, output_root=output_dir, cache_root=cache_dir)
@@ -270,7 +281,20 @@ def run_worker_pipeline(
     download_dir = task_context.paths.download_dir
     video_id = extract_douyin_video_id(request.url) or extract_xiaohongshu_note_id(request.url)
     media_files_before_download = snapshot_video_files(download_dir)
+    return PipelineContext(
+        task_context=task_context,
+        download_dir=download_dir,
+        video_id=video_id,
+        media_files_before_download=media_files_before_download,
+    )
 
+
+def download_and_select_video(
+    request: ProcessRequest,
+    context: PipelineContext,
+    command_runner: CommandRunner,
+    progress_callback: ProgressCallback | None,
+) -> DownloadedVideo | ProcessResult:
     emit_progress(
         progress_callback,
         JobStage.VIDEO_EXTRACTING,
@@ -280,13 +304,13 @@ def run_worker_pipeline(
     try:
         download_result = download_video(
             request.url,
-            output_dir=download_dir,
+            output_dir=context.download_dir,
             runner=command_runner,
             progress_callback=progress_callback,
         )
     except CommandExecutionError as exc:
         return finalize_task_result(
-            task_context,
+            context.task_context,
             failed_result(
                 code="VIDEO_DOWNLOAD_FAILED",
                 message=str(exc),
@@ -300,16 +324,23 @@ def run_worker_pipeline(
         "正在校验视频和音频流。",
         34,
     )
-    video_path = find_video_from_download_stdout(download_result.stdout, download_dir)
+    video_path = find_video_from_download_stdout(download_result.stdout, context.download_dir)
     if video_path is None:
-        video_path = find_video_by_stem(download_dir, video_id) if video_id else None
+        video_path = (
+            find_video_by_stem(context.download_dir, context.video_id)
+            if context.video_id
+            else None
+        )
     if video_path is None:
-        video_path = find_new_or_updated_video(download_dir, media_files_before_download)
+        video_path = find_new_or_updated_video(
+            context.download_dir,
+            context.media_files_before_download,
+        )
     if video_path is None:
-        video_path = find_latest_video(download_dir)
+        video_path = find_latest_video(context.download_dir)
     if video_path is None:
         return finalize_task_result(
-            task_context,
+            context.task_context,
             failed_result(
                 code="VIDEO_DOWNLOAD_OUTPUT_MISSING",
                 message="Video download completed but no media file was found.",
@@ -317,6 +348,14 @@ def run_worker_pipeline(
             ),
         )
 
+    return DownloadedVideo(result=download_result, path=video_path)
+
+
+def validate_and_copy_video(
+    task_context: TaskContext,
+    video_path: Path,
+    command_runner: CommandRunner,
+) -> ProcessResult | None:
     try:
         media_info = probe_media_file(video_path, runner=command_runner)
     except CommandExecutionError as exc:
@@ -340,7 +379,15 @@ def run_worker_pipeline(
         )
 
     shutil.copy2(video_path, task_context.paths.video_path)
+    return None
 
+
+def prepare_audio(
+    task_context: TaskContext,
+    video_path: Path,
+    command_runner: CommandRunner,
+    progress_callback: ProgressCallback | None,
+) -> Path | ProcessResult:
     emit_progress(
         progress_callback,
         JobStage.VIDEO_EXTRACTING,
@@ -355,18 +402,64 @@ def run_worker_pipeline(
             "已复用本地音频，跳过音频提取。",
             50,
         )
-    else:
-        try:
-            extract_audio(video_path, audio_path, runner=command_runner)
-        except CommandExecutionError as exc:
-            return finalize_task_result(
-                task_context,
-                failed_result(
-                    code="AUDIO_EXTRACTION_FAILED",
-                    message=str(exc),
-                    stage=JobStage.VIDEO_EXTRACTING,
-                ),
-            )
+        return audio_path
+
+    try:
+        extract_audio(video_path, audio_path, runner=command_runner)
+    except CommandExecutionError as exc:
+        return finalize_task_result(
+            task_context,
+            failed_result(
+                code="AUDIO_EXTRACTION_FAILED",
+                message=str(exc),
+                stage=JobStage.VIDEO_EXTRACTING,
+            ),
+        )
+    return audio_path
+
+
+def run_worker_pipeline(
+    request: ProcessRequest,
+    project_root: Path,
+    command_runner: CommandRunner,
+    transcriber: Transcriber | None,
+    insight_client: InsightClient | None,
+    allow_real_asr: bool,
+    environ: dict[str, str],
+    progress_callback: ProgressCallback | None = None,
+) -> ProcessResult:
+    pipeline_context = prepare_pipeline_context(request, project_root, environ)
+    task_context = pipeline_context.task_context
+    download_dir = pipeline_context.download_dir
+
+    downloaded_video = download_and_select_video(
+        request=request,
+        context=pipeline_context,
+        command_runner=command_runner,
+        progress_callback=progress_callback,
+    )
+    if isinstance(downloaded_video, ProcessResult):
+        return downloaded_video
+    download_result = downloaded_video.result
+    video_path = downloaded_video.path
+
+    validation_failure = validate_and_copy_video(
+        task_context=task_context,
+        video_path=video_path,
+        command_runner=command_runner,
+    )
+    if validation_failure is not None:
+        return validation_failure
+
+    audio_result = prepare_audio(
+        task_context=task_context,
+        video_path=video_path,
+        command_runner=command_runner,
+        progress_callback=progress_callback,
+    )
+    if isinstance(audio_result, ProcessResult):
+        return audio_result
+    audio_path = audio_result
 
     emit_progress(
         progress_callback,
