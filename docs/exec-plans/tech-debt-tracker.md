@@ -39,6 +39,7 @@ Last updated: 2026-07-10
 - Resolution: `run_worker_pipeline` is now a high-level orchestration layer. Media download/selection, video validation, audio preparation, subtitle/ASR transcript stages, and optional AI finalization were moved into focused stage functions while preserving worker CLI flags, progress events, error codes/messages, task manifest output, artifacts, and result wire shapes.
 - Download strategy cleanup: `worker/frameq_worker/media.py` now drives platform fallback dispatch through `DownloadStrategy` and `FALLBACK_DOWNLOAD_STRATEGIES`. The fallback order remains Douyin -> Xiaohongshu -> Bilibili, and YouTube keeps the existing yt-dlp failure classification path.
 - Evidence: commits `4dcb5c9`, `acb6e16`, `f8409e9`, and `3a60dc6`; stage review passed `uv run pytest worker\tests` with 154 tests, `uv run ruff check worker`, and `git diff --check`.
+- Next-stage recommendation: run real platform smoke for Douyin / Xiaohongshu / Bilibili / YouTube with stable public samples; re-evaluate `download_strategies.py` only before adding another platform or when the strategy table grows; keep worker tests plus ruff as the refactor gate.
 - Residual risk: accepted as tracked deferred debt below rather than continuing P2 worker/media micro-splitting.
 
 ### Manual Audio Playback Cache Management
