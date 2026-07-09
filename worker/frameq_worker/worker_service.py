@@ -16,11 +16,19 @@ from frameq_worker.desktop_contract import (
     SENSEVOICE_REVISION_ENV,
     ProgressCallback,
 )
+from frameq_worker.draft_agent import run_draft
 from frameq_worker.insightflow import InsightClient
 from frameq_worker.llm import build_insight_client_from_env
 from frameq_worker.media import CommandRunner, run_command
 from frameq_worker.model_download import ModelDownloadError, download_asr_model_cache
-from frameq_worker.models import Insight, JobStage, ProcessResult, TranscriptMetadata, WorkerError
+from frameq_worker.models import (
+    DraftResult,
+    Insight,
+    JobStage,
+    ProcessResult,
+    TranscriptMetadata,
+    WorkerError,
+)
 from frameq_worker.pipeline import (
     TranscriberFactory,
     failed_result,
@@ -32,6 +40,7 @@ from frameq_worker.pipeline import (
 )
 from frameq_worker.requests import (
     optional_env,
+    parse_generate_draft_request,
     parse_process_request,
     parse_retry_insights_request,
     resolve_configured_asr_model,
@@ -41,6 +50,7 @@ from frameq_worker.source_identity import (
     resolve_source_request,
 )
 from frameq_worker.task_store import (
+    TaskPaths,
     ensure_task_dirs,
     load_task_manifest,
     task_context_from_manifest,
@@ -285,6 +295,87 @@ def read_existing_insights(paths: object) -> list[Insight]:
         )
     return insights
 
+
+def generate_draft_once(
+    request_json: str,
+    project_root: Path | None = None,
+    environ: dict[str, str] | None = None,
+    draft_runner: Callable[..., str] = run_draft,
+) -> dict[str, object]:
+    try:
+        payload = json.loads(request_json)
+    except json.JSONDecodeError:
+        return _draft_failed(
+            code="INVALID_DRAFT_JSON",
+            message="Draft payload must be valid JSON.",
+        ).to_dict()
+
+    try:
+        request = parse_generate_draft_request(payload)
+    except ValueError as exc:
+        return _draft_failed(
+            code="INVALID_DRAFT_PAYLOAD",
+            message=str(exc),
+        ).to_dict()
+
+    root = project_root or Path.cwd()
+    runtime_env = load_project_env(root, environ)
+    output_dir = resolve_output_dir(root, runtime_env)
+    cache_dir = resolve_cache_dir(root, runtime_env)
+    paths = TaskPaths(output_root=output_dir, cache_root=cache_dir, task_id=request.task_id)
+    task_dir = paths.task_dir.as_posix()
+
+    try:
+        draft_text = draft_runner(
+            request.topic,
+            request.summary,
+            request.target_platform,
+            runtime_env,
+        )
+    except Exception as exc:  # noqa: BLE001 - wraps LLM / MCP / agent-loop failures.
+        return _draft_failed(
+            code="DRAFT_GENERATION_FAILED",
+            message=str(exc),
+            task_id=request.task_id,
+            task_dir=task_dir,
+        ).to_dict()
+
+    if not draft_text or not draft_text.strip():
+        # 空串 / 纯空白判失败且不落盘（design D9）：写空文件 + 报成功是静默失败。
+        return _draft_failed(
+            code="DRAFT_EMPTY_RESULT",
+            message="Draft generation returned an empty result.",
+            task_id=request.task_id,
+            task_dir=task_dir,
+        ).to_dict()
+
+    paths.draft_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.draft_path.write_text(draft_text, encoding="utf-8")
+    return DraftResult(
+        status=JobStage.COMPLETED,
+        task_id=request.task_id,
+        task_dir=task_dir,
+        draft_path="ai/draft.md",
+        draft_text=draft_text,
+    ).to_dict()
+
+
+def _draft_failed(
+    code: str,
+    message: str,
+    task_id: str | None = None,
+    task_dir: str | None = None,
+) -> DraftResult:
+    return DraftResult(
+        status=JobStage.FAILED,
+        task_id=task_id,
+        task_dir=task_dir,
+        error=WorkerError(
+            code=code,
+            message=message,
+            stage=JobStage.DRAFT_GENERATING,
+        ),
+    )
 
 
 def failed_insight_retry_result(

@@ -15,6 +15,7 @@ class JobStage(StrEnum):
     VIDEO_EXTRACTING = "video_extracting"
     VIDEO_TRANSCRIBING = "video_transcribing"
     INSIGHTS_GENERATING = "insights_generating"
+    DRAFT_GENERATING = "draft_generating"
     COMPLETED = "completed"
     PARTIAL_COMPLETED = "partial_completed"
     FAILED = "failed"
@@ -137,6 +138,14 @@ class RetryInsightsRequest:
 
 
 @dataclass(frozen=True)
+class GenerateDraftRequest:
+    task_id: str
+    topic: str
+    summary: str
+    target_platform: str
+
+
+@dataclass(frozen=True)
 class Insight:
     id: int
     topic: str
@@ -211,5 +220,25 @@ class ProcessResult:
             "summary": self.summary,
             "insights": [insight.to_dict() for insight in self.insights],
             "transcript": self.transcript.to_dict() if self.transcript else None,
+            "error": self.error.to_dict() if self.error else None,
+        }
+
+
+@dataclass(frozen=True)
+class DraftResult:
+    status: JobStage
+    task_id: str | None = None
+    task_dir: str | None = None
+    draft_path: str | None = None
+    draft_text: str = ""
+    error: WorkerError | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status.value,
+            "task_id": self.task_id,
+            "task_dir": self.task_dir,
+            "draft_path": self.draft_path,
+            "draft_text": self.draft_text,
             "error": self.error.to_dict() if self.error else None,
         }

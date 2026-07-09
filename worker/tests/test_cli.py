@@ -537,3 +537,69 @@ def test_run_worker_once_uses_configured_asr_model_from_user_data_env(
         "cache_dir": tmp_path / "models",
     }
     assert "- Model: iic/SenseVoiceSmall" in transcript_md.read_text(encoding="utf-8")
+
+
+def test_main_dispatches_generate_draft_json(monkeypatch, capsys) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_generate_draft_once(payload, project_root=None, environ=None, draft_runner=None):
+        captured["payload"] = payload
+        captured["project_root"] = project_root
+        return {
+            "status": "completed",
+            "task_id": "20260709-120000-douyin-demo",
+            "task_dir": "outputs/tasks/20260709-120000-douyin-demo",
+            "draft_path": "ai/draft.md",
+            "draft_text": "# 稿子",
+            "error": None,
+        }
+
+    monkeypatch.setattr(cli, "generate_draft_once", fake_generate_draft_once)
+
+    payload = json.dumps(
+        {
+            "task_id": "20260709-120000-douyin-demo",
+            "topic": "t",
+            "summary": "s",
+            "target_platform": "douyin",
+        }
+    )
+    exit_code = cli.main(["--generate-draft-json", payload])
+
+    assert exit_code == 0
+    assert captured["payload"] == payload
+    assert captured["project_root"] == Path.cwd()
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "completed"
+    assert output["draft_path"] == "ai/draft.md"
+
+
+def test_main_generate_draft_json_returns_zero_for_structured_failure(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        cli,
+        "generate_draft_once",
+        lambda *args, **kwargs: {
+            "status": "failed",
+            "task_id": None,
+            "task_dir": None,
+            "draft_path": None,
+            "draft_text": "",
+            "error": {
+                "code": "DRAFT_GENERATION_FAILED",
+                "message": "missing config",
+                "stage": "draft_generating",
+            },
+        },
+    )
+
+    exit_code = cli.main(["--generate-draft-json", "{}"])
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "failed"
+    assert output["error"]["code"] == "DRAFT_GENERATION_FAILED"
+
+
+def test_main_generate_draft_json_is_mutually_exclusive_with_request_json() -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["--request-json", "{}", "--generate-draft-json", "{}"])

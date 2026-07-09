@@ -81,6 +81,10 @@ class TaskPaths:
         return self.ai_dir / "summary.md"
 
     @property
+    def draft_path(self) -> Path:
+        return self.ai_dir / "draft.md"
+
+    @property
     def mindmap_path(self) -> Path:
         return self.ai_dir / "mindmap.mmd"
 

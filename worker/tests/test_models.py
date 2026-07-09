@@ -1,4 +1,5 @@
 from frameq_worker.models import (
+    DraftResult,
     Insight,
     JobStage,
     ProcessRequest,
@@ -113,4 +114,51 @@ def test_partial_result_keeps_task_artifacts_and_structured_error() -> None:
         "code": "INSIGHTFLOW_CONFIG_MISSING",
         "message": "InsightFlow LLM configuration is missing.",
         "stage": "insights_generating",
+    }
+
+
+def test_job_stage_has_draft_generating_member() -> None:
+    assert JobStage.DRAFT_GENERATING.value == "draft_generating"
+
+
+def test_draft_result_serializes_completed_shape_with_relative_draft_path() -> None:
+    result = DraftResult(
+        status=JobStage.COMPLETED,
+        task_id="20260709-120000-douyin-demo",
+        task_dir="outputs/tasks/20260709-120000-douyin-demo",
+        draft_path="ai/draft.md",
+        draft_text="# 稿子标题\n\n正文内容",
+    )
+
+    assert result.to_dict() == {
+        "status": "completed",
+        "task_id": "20260709-120000-douyin-demo",
+        "task_dir": "outputs/tasks/20260709-120000-douyin-demo",
+        "draft_path": "ai/draft.md",
+        "draft_text": "# 稿子标题\n\n正文内容",
+        "error": None,
+    }
+
+
+def test_draft_result_serializes_failed_shape_with_null_paths() -> None:
+    result = DraftResult(
+        status=JobStage.FAILED,
+        error=WorkerError(
+            code="DRAFT_EMPTY_RESULT",
+            message="Draft generation returned an empty result.",
+            stage=JobStage.DRAFT_GENERATING,
+        ),
+    )
+
+    assert result.to_dict() == {
+        "status": "failed",
+        "task_id": None,
+        "task_dir": None,
+        "draft_path": None,
+        "draft_text": "",
+        "error": {
+            "code": "DRAFT_EMPTY_RESULT",
+            "message": "Draft generation returned an empty result.",
+            "stage": "draft_generating",
+        },
     }

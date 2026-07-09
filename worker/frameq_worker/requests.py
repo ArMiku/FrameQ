@@ -5,6 +5,7 @@ import re
 from frameq_worker.asr import DEFAULT_ASR_MODEL, resolve_asr_model_name
 from frameq_worker.desktop_contract import ASR_MODEL_ENV
 from frameq_worker.models import (
+    GenerateDraftRequest,
     GenerationPreferences,
     InspirationProfile,
     PreferenceLabelSnapshot,
@@ -202,6 +203,37 @@ def parse_retry_insights_request(payload: object) -> RetryInsightsRequest:
         task_id=task_id,
         target=target,
         preference_snapshot=parse_preference_snapshot(payload.get("preference_snapshot")),
+    )
+
+
+def parse_generate_draft_request(payload: object) -> GenerateDraftRequest:
+    if not isinstance(payload, dict):
+        raise ValueError("Draft payload must be a JSON object.")
+
+    task_id = payload.get("task_id")
+    if not isinstance(task_id, str) or not task_id.strip():
+        raise ValueError("Draft payload must include a non-empty task_id.")
+    task_id = task_id.strip()
+    if not TASK_ID_PATTERN.fullmatch(task_id):
+        raise ValueError("Draft payload task_id must be a single task directory name.")
+
+    topic = payload.get("topic")
+    if not isinstance(topic, str) or not topic.strip():
+        raise ValueError("Draft payload must include a non-empty topic.")
+
+    summary = payload.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("Draft payload must include a non-empty summary.")
+
+    target_platform = payload.get("target_platform")
+    if not isinstance(target_platform, str) or not target_platform.strip():
+        raise ValueError("Draft payload must include a non-empty target_platform.")
+
+    return GenerateDraftRequest(
+        task_id=task_id,
+        topic=topic.strip(),
+        summary=summary.strip(),
+        target_platform=target_platform.strip(),
     )
 
 

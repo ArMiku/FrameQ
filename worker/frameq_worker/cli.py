@@ -46,6 +46,7 @@ from frameq_worker.requests import (
 )
 from frameq_worker.worker_service import (
     failed_insight_retry_result,
+    generate_draft_once,
     resolve_source_identity_once,
     run_asr_model_download_once,
     should_allow_real_asr,
@@ -75,6 +76,7 @@ __all__ = [
     "find_latest_video",
     "find_new_or_updated_video",
     "find_video_by_stem",
+    "generate_draft_once",
     "main",
     "parse_process_request",
     "parse_retry_insights_request",
@@ -188,6 +190,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Read one RetryInsightsRequest JSON object from stdin.",
     )
     request_group.add_argument(
+        "--generate-draft-json",
+        help="Serialized GenerateDraftRequest payload.",
+    )
+    request_group.add_argument(
         "--download-asr-model",
         action="store_true",
         help="Download the release ASR model cache into FRAMEQ_MODEL_DIR.",
@@ -228,6 +234,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = retry_insights_once(request_json or "{}", project_root=Path.cwd())
     elif args.resolve_source_stdin:
         result = resolve_source_identity_once(request_json or "{}")
+    elif args.generate_draft_json:
+        result = generate_draft_once(args.generate_draft_json, project_root=Path.cwd())
     else:
         result = run_worker_once(
             request_json or "{}",

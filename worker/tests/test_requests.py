@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import pytest
-from frameq_worker.requests import parse_process_request, parse_retry_insights_request
+from frameq_worker.requests import (
+    parse_generate_draft_request,
+    parse_process_request,
+    parse_retry_insights_request,
+)
 
 
 def valid_preference_snapshot() -> dict[str, object]:
@@ -153,3 +157,101 @@ def test_retry_summary_request_rejects_preference_snapshot() -> None:
 def test_retry_request_rejects_task_id_path_traversal(task_id: str) -> None:
     with pytest.raises(ValueError, match="task_id"):
         parse_retry_insights_request({"task_id": task_id, "target": "insights"})
+
+
+def test_generate_draft_request_parses_valid_payload() -> None:
+    request = parse_generate_draft_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "topic": "如何把长视频拆成短视频",
+            "summary": "# 要点总结\n- 要点一",
+            "target_platform": "xiaohongshu",
+        }
+    )
+
+    assert request.task_id == "20260705-153012-douyin-demo"
+    assert request.topic == "如何把长视频拆成短视频"
+    assert request.summary == "# 要点总结\n- 要点一"
+    assert request.target_platform == "xiaohongshu"
+
+
+def test_generate_draft_request_accepts_any_non_empty_target_platform() -> None:
+    # target_platform 不校验枚举成员（design D3）：平台枚举的 source of truth 在前端，
+    # 后端只透传任意非空 id 做槽位填充。
+    request = parse_generate_draft_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "topic": "topic",
+            "summary": "summary",
+            "target_platform": "totally_unknown_platform_123",
+        }
+    )
+
+    assert request.target_platform == "totally_unknown_platform_123"
+
+
+@pytest.mark.parametrize(
+    "payload, matched_message",
+    [
+        ("not-a-dict", "JSON object"),
+        (
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "topic": "t",
+                "summary": "s",
+            },
+            "target_platform",
+        ),
+        (
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "topic": "t",
+                "summary": "s",
+                "target_platform": "",
+            },
+            "target_platform",
+        ),
+        ({"topic": "t", "summary": "s", "target_platform": "p"}, "task_id"),
+        (
+            {
+                "task_id": " ",
+                "topic": "t",
+                "summary": "s",
+                "target_platform": "p",
+            },
+            "task_id",
+        ),
+        (
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "topic": "  ",
+                "summary": "s",
+                "target_platform": "p",
+            },
+            "topic",
+        ),
+        (
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "topic": "t",
+                "summary": "",
+                "target_platform": "p",
+            },
+            "summary",
+        ),
+    ],
+)
+def test_generate_draft_request_rejects_invalid_payload(payload, matched_message) -> None:
+    with pytest.raises(ValueError, match=matched_message):
+        parse_generate_draft_request(payload)
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    ["../outside", "nested/task", "nested\\task", "20260705-153012-douyin-demo/../outside"],
+)
+def test_generate_draft_request_rejects_task_id_path_traversal(task_id: str) -> None:
+    with pytest.raises(ValueError, match="task_id"):
+        parse_generate_draft_request(
+            {"task_id": task_id, "topic": "t", "summary": "s", "target_platform": "p"}
+        )
