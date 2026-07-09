@@ -539,6 +539,71 @@ def run_asr_transcript_stage(
     )
 
 
+def complete_without_ai_stage(
+    task_context: TaskContext,
+    transcript_text: str,
+    transcript: TranscriptMetadata | None,
+) -> ProcessResult:
+    return finalize_task_result(
+        task_context,
+        ProcessResult(
+            status=JobStage.COMPLETED,
+            text=transcript_text,
+            transcript=transcript,
+        ),
+    )
+
+
+def run_optional_ai_generation_stage(
+    task_context: TaskContext,
+    transcript_text: str,
+    transcript: TranscriptMetadata | None,
+    insight_client: InsightClient | None,
+    progress_callback: ProgressCallback | None,
+) -> ProcessResult:
+    emit_progress(
+        progress_callback,
+        JobStage.INSIGHTS_GENERATING,
+        CLOUD_LLM_AI_ORGANIZING_MESSAGE
+        if insight_client is not None
+        else LOCAL_AI_ORGANIZING_MESSAGE,
+        88,
+    )
+    insight_result = run_insight_generation_step(
+        transcript_path=task_context.paths.transcript_md_path,
+        output_dir=task_context.paths.ai_dir,
+        output_stem="",
+        transcript_text=transcript_text,
+        client=insight_client,
+        transcript=transcript,
+    )
+    return finalize_task_result(task_context, insight_result)
+
+
+def finalize_transcript_stage(
+    task_context: TaskContext,
+    transcript_text: str,
+    transcript: TranscriptMetadata | None,
+    generate_insights: bool,
+    insight_client: InsightClient | None,
+    progress_callback: ProgressCallback | None,
+) -> ProcessResult:
+    if not generate_insights:
+        return complete_without_ai_stage(
+            task_context=task_context,
+            transcript_text=transcript_text,
+            transcript=transcript,
+        )
+
+    return run_optional_ai_generation_stage(
+        task_context=task_context,
+        transcript_text=transcript_text,
+        transcript=transcript,
+        insight_client=insight_client,
+        progress_callback=progress_callback,
+    )
+
+
 def run_worker_pipeline(
     request: ProcessRequest,
     project_root: Path,
@@ -590,33 +655,14 @@ def run_worker_pipeline(
         progress_callback=progress_callback,
     )
     if subtitle_result is not None:
-        if not request.generate_insights:
-            return finalize_task_result(
-                task_context,
-                ProcessResult(
-                    status=JobStage.COMPLETED,
-                    text=subtitle_result.text,
-                    transcript=subtitle_result.transcript,
-                ),
-            )
-
-        emit_progress(
-            progress_callback,
-            JobStage.INSIGHTS_GENERATING,
-            CLOUD_LLM_AI_ORGANIZING_MESSAGE
-            if insight_client is not None
-            else LOCAL_AI_ORGANIZING_MESSAGE,
-            88,
-        )
-        insight_result = run_insight_generation_step(
-            transcript_path=task_context.paths.transcript_md_path,
-            output_dir=task_context.paths.ai_dir,
-            output_stem="",
+        return finalize_transcript_stage(
+            task_context=task_context,
             transcript_text=subtitle_result.text,
-            client=insight_client,
             transcript=subtitle_result.transcript,
+            generate_insights=request.generate_insights,
+            insight_client=insight_client,
+            progress_callback=progress_callback,
         )
-        return finalize_task_result(task_context, insight_result)
 
     transcript_result = run_asr_transcript_stage(
         request=request,
@@ -631,33 +677,14 @@ def run_worker_pipeline(
     if transcript_result.status == JobStage.FAILED:
         return finalize_task_result(task_context, transcript_result)
 
-    if not request.generate_insights:
-        return finalize_task_result(
-            task_context,
-            ProcessResult(
-                status=JobStage.COMPLETED,
-                text=transcript_result.text,
-                transcript=transcript_result.transcript,
-            ),
-        )
-
-    emit_progress(
-        progress_callback,
-        JobStage.INSIGHTS_GENERATING,
-        CLOUD_LLM_AI_ORGANIZING_MESSAGE
-        if insight_client is not None
-        else LOCAL_AI_ORGANIZING_MESSAGE,
-        88,
-    )
-    insight_result = run_insight_generation_step(
-        transcript_path=task_context.paths.transcript_md_path,
-        output_dir=task_context.paths.ai_dir,
-        output_stem="",
+    return finalize_transcript_stage(
+        task_context=task_context,
         transcript_text=transcript_result.text,
-        client=insight_client,
         transcript=transcript_result.transcript,
+        generate_insights=request.generate_insights,
+        insight_client=insight_client,
+        progress_callback=progress_callback,
     )
-    return finalize_task_result(task_context, insight_result)
 
 
 def resolve_output_dir(project_root: Path, environ: dict[str, str] | None = None) -> Path:
