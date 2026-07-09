@@ -3,10 +3,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
   CheckCircle2,
   Circle,
-  Clock3,
   Download,
-  FileText,
-  FolderOpen,
   History as HistoryIcon,
   ListChecks,
   LoaderCircle,
@@ -28,7 +25,7 @@ import {
   type WorkflowState,
 } from "./workflow";
 import { cancelProcess } from "./workerClient";
-import { getHistory, historyItemToWorkerResult, type HistoryItem } from "./historyClient";
+import { historyItemToWorkerResult, type HistoryItem } from "./historyClient";
 import type { UpdateState } from "./updateState";
 import {
   canGenerateAiWithAccount,
@@ -50,6 +47,8 @@ import { AccountSheet } from "./features/account/AccountSheet";
 import { useAccountController } from "./features/account/useAccountController";
 import { ModelGuideSheet } from "./features/asrModel/ModelGuideSheet";
 import { useAsrModelDownload } from "./features/asrModel/useAsrModelDownload";
+import { HistorySheet } from "./features/history/HistorySheet";
+import { useHistoryController } from "./features/history/useHistoryController";
 import { InsightPreferenceFlow } from "./features/insightPreferences/InsightPreferenceFlow";
 import { ResultWorkspace } from "./features/results/ResultWorkspace";
 import { SettingsSheet } from "./features/settings/SettingsSheet";
@@ -111,12 +110,6 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
 const stageTitles = Object.fromEntries(
   Object.entries(stageCopy).map(([stage, copy]) => [stage, copy.title]),
 ) as Record<WorkflowState["stage"], string>;
-
-const historyStatusCopy: Record<HistoryItem["status"], string> = {
-  completed: "已完成",
-  partial_completed: "部分完成",
-  failed: "失败",
-};
 
 const asrModelLabels: Record<string, string> = {
   "Qwen/Qwen3-ASR-0.6B": "Qwen3-ASR 0.6B",
@@ -291,10 +284,22 @@ function App() {
       resetWorkflow();
     },
   });
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
-  const [historyNotice, setHistoryNotice] = useState("");
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const handleHistoryItemSelected = useCallback(
+    (item: HistoryItem) => {
+      setWorkflow({
+        ...summarizeWorkerResult(historyItemToWorkerResult(item)),
+        url: item.url,
+        submittedUrl: item.url,
+      });
+      openDetailTab(item.summary ? "summary" : item.insights.length > 0 ? "insights" : item.text ? "transcript" : null);
+      setActionNotice("");
+    },
+    [openDetailTab, setWorkflow],
+  );
+  const historyController = useHistoryController({
+    onHistoryItemSelected: handleHistoryItemSelected,
+  });
+  const { historyOpen, closeHistory, openHistory } = historyController;
   const windowDragSessionRef = useRef<WindowDragSession | null>(null);
   const queuedWindowPositionRef = useRef<WindowPosition | null>(null);
   const windowMoveInFlightRef = useRef(false);
@@ -327,7 +332,7 @@ function App() {
       }
 
       if (historyOpen) {
-        setHistoryOpen(false);
+        closeHistory();
         return;
       }
 
@@ -357,6 +362,7 @@ function App() {
     detailTab,
     closeDetail,
     historyOpen,
+    closeHistory,
     summaryConfirmOpen,
     insightPreferenceFlow,
     settingsOpen,
@@ -590,34 +596,6 @@ function App() {
       setInsightPreferenceBusy(false);
     }
   }
-
-  async function openHistory() {
-    setHistoryOpen(true);
-    setHistoryLoading(true);
-    setHistoryItems([]);
-    setHistoryNotice("正在读取历史记录。");
-    try {
-      const items = await getHistory();
-      setHistoryItems(items);
-      setHistoryNotice(items.length > 0 ? "" : "暂无历史任务。");
-    } catch (error) {
-      setHistoryNotice(`读取历史失败：${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  function openHistoryItem(item: HistoryItem) {
-    setWorkflow({
-      ...summarizeWorkerResult(historyItemToWorkerResult(item)),
-      url: item.url,
-      submittedUrl: item.url,
-    });
-    openDetailTab(item.summary ? "summary" : item.insights.length > 0 ? "insights" : item.text ? "transcript" : null);
-    setActionNotice("");
-    setHistoryOpen(false);
-  }
-
 
   function runWindowChromeAction(action: () => Promise<void>) {
     void action().catch((error) => {
@@ -999,62 +977,10 @@ function App() {
         onOpenDirectionEditorFromDetail={openDirectionEditorFromDetail}
       />
 
-      {historyOpen ? (
-        <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={() => setHistoryOpen(false)}>
-          <section
-            className="sheet-panel detail-modal history-modal history-sheet"
-            aria-label="历史任务"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="modal-header sheet-header">
-              <div>
-                <p className="section-label">History</p>
-                <h2>历史任务</h2>
-              </div>
-              <button className="icon-button" type="button" onClick={() => setHistoryOpen(false)} aria-label="关闭历史">
-                <X size={18} />
-              </button>
-            </header>
-            {historyNotice ? <p className="action-notice">{historyNotice}</p> : null}
-            <div className="history-list">
-              {historyItems.map((item) => (
-                <button
-                  className={`history-item ${item.status}`}
-                  key={item.id}
-                  type="button"
-                  onClick={() => openHistoryItem(item)}
-                >
-                  <div className="history-item-main">
-                    <span className={`history-status ${item.status}`}>
-                      {historyStatusCopy[item.status]}
-                    </span>
-                    <strong>{item.textPreview || item.url}</strong>
-                  </div>
-                  <div className="history-meta">
-                    <span>
-                      <Clock3 size={13} />
-                      {formatHistoryDate(item.createdAt)}
-                    </span>
-                    <span>
-                      <FolderOpen size={13} />
-                      {item.outputDir || "outputs"}
-                    </span>
-                    <span>{item.error ? item.error.code : `${item.insightsCount} 条灵感`}</span>
-                  </div>
-                </button>
-              ))}
-              {!historyLoading && historyItems.length === 0 ? (
-                <div className="history-empty">
-                  <FileText size={18} />
-                  <span>还没有可查看的历史任务。</span>
-                </div>
-              ) : null}
-            </div>
-          </section>
-        </div>
-      ) : null}
+      <HistorySheet
+        controller={historyController}
+        formatHistoryDate={formatHistoryDate}
+      />
 
       <SettingsSheet
         controller={settingsController}
