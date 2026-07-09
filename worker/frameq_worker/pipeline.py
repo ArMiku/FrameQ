@@ -418,6 +418,127 @@ def prepare_audio(
     return audio_path
 
 
+def try_subtitle_transcript_stage(
+    download_result: CommandResult,
+    download_dir: Path,
+    task_context: TaskContext,
+    request: ProcessRequest,
+    progress_callback: ProgressCallback | None,
+) -> ProcessResult | None:
+    emit_progress(
+        progress_callback,
+        JobStage.VIDEO_TRANSCRIBING,
+        "正在检测平台字幕。",
+        58,
+    )
+    subtitle_result = (
+        None
+        if download_result.command and download_result.command[0] == "bilibili-fallback"
+        else run_subtitle_transcript_step(
+            download_dir=download_dir,
+            output_dir=task_context.paths.transcript_dir,
+            output_stem="",
+            source_url=request.url,
+        )
+    )
+    if subtitle_result is not None:
+        emit_progress(
+            progress_callback,
+            JobStage.VIDEO_TRANSCRIBING,
+            f"已检测到 {subtitle_result.transcript.language} 字幕，跳过 ASR。",
+            68,
+        )
+    return subtitle_result
+
+
+def prepare_asr_transcriber_stage(
+    request: ProcessRequest,
+    project_root: Path,
+    transcriber: Transcriber | None,
+    allow_real_asr: bool,
+    environ: dict[str, str],
+    progress_callback: ProgressCallback | None,
+) -> Transcriber | ProcessResult:
+    if transcriber is None and not allow_real_asr:
+        return failed_result(
+            code="ASR_MODEL_NOT_READY",
+            message="Real ASR is disabled until model cache handling is configured.",
+            stage=JobStage.VIDEO_TRANSCRIBING,
+        )
+
+    if transcriber is not None:
+        return transcriber
+
+    emit_progress(
+        progress_callback,
+        JobStage.VIDEO_TRANSCRIBING,
+        f"正在准备 {asr_model_display_name(request.model)} 模型缓存。",
+        58,
+    )
+    model_cache_dir = resolve_model_cache_dir(project_root=project_root, environ=environ)
+    normalize_asr_model_cache_layout(model_cache_dir)
+    if not validate_asr_model_cache(model_cache_dir):
+        return failed_result(
+            code="ASR_MODEL_NOT_DOWNLOADED",
+            message="SenseVoice Small model is not downloaded yet.",
+            stage=JobStage.VIDEO_TRANSCRIBING,
+        )
+    try:
+        return build_asr_transcriber(
+            model_name=request.model,
+            cache_dir=model_cache_dir,
+        )
+    except OSError as exc:
+        return failed_result(
+            code="ASR_MODEL_CACHE_UNAVAILABLE",
+            message=f"Model cache directory is not writable: {exc}",
+            stage=JobStage.VIDEO_TRANSCRIBING,
+        )
+
+
+def run_asr_transcript_stage(
+    request: ProcessRequest,
+    project_root: Path,
+    audio_path: Path,
+    transcriber: Transcriber | None,
+    allow_real_asr: bool,
+    environ: dict[str, str],
+    task_context: TaskContext,
+    progress_callback: ProgressCallback | None,
+) -> ProcessResult:
+    emit_progress(
+        progress_callback,
+        JobStage.VIDEO_TRANSCRIBING,
+        "未检测到字幕，开始 ASR。",
+        58,
+    )
+    prepared_transcriber = prepare_asr_transcriber_stage(
+        request=request,
+        project_root=project_root,
+        transcriber=transcriber,
+        allow_real_asr=allow_real_asr,
+        environ=environ,
+        progress_callback=progress_callback,
+    )
+    if isinstance(prepared_transcriber, ProcessResult):
+        return prepared_transcriber
+
+    emit_progress(
+        progress_callback,
+        JobStage.VIDEO_TRANSCRIBING,
+        "正在加载模型并开始转写。",
+        68,
+    )
+    return run_asr_transcript_step(
+        audio_path=audio_path,
+        output_dir=task_context.paths.transcript_dir,
+        output_stem="",
+        transcriber=prepared_transcriber,
+        model=request.model,
+        source_url=request.url,
+    )
+
+
 def run_worker_pipeline(
     request: ProcessRequest,
     project_root: Path,
@@ -461,29 +582,14 @@ def run_worker_pipeline(
         return audio_result
     audio_path = audio_result
 
-    emit_progress(
-        progress_callback,
-        JobStage.VIDEO_TRANSCRIBING,
-        "正在检测平台字幕。",
-        58,
-    )
-    subtitle_result = (
-        None
-        if download_result.command and download_result.command[0] == "bilibili-fallback"
-        else run_subtitle_transcript_step(
-            download_dir=download_dir,
-            output_dir=task_context.paths.transcript_dir,
-            output_stem="",
-            source_url=request.url,
-        )
+    subtitle_result = try_subtitle_transcript_stage(
+        download_result=download_result,
+        download_dir=download_dir,
+        task_context=task_context,
+        request=request,
+        progress_callback=progress_callback,
     )
     if subtitle_result is not None:
-        emit_progress(
-            progress_callback,
-            JobStage.VIDEO_TRANSCRIBING,
-            f"已检测到 {subtitle_result.transcript.language} 字幕，跳过 ASR。",
-            68,
-        )
         if not request.generate_insights:
             return finalize_task_result(
                 task_context,
@@ -512,69 +618,15 @@ def run_worker_pipeline(
         )
         return finalize_task_result(task_context, insight_result)
 
-    emit_progress(
-        progress_callback,
-        JobStage.VIDEO_TRANSCRIBING,
-        "未检测到字幕，开始 ASR。",
-        58,
-    )
-
-    if transcriber is None and not allow_real_asr:
-        return finalize_task_result(
-            task_context,
-            failed_result(
-                code="ASR_MODEL_NOT_READY",
-                message="Real ASR is disabled until model cache handling is configured.",
-                stage=JobStage.VIDEO_TRANSCRIBING,
-            ),
-        )
-
-    if transcriber is None:
-        emit_progress(
-            progress_callback,
-            JobStage.VIDEO_TRANSCRIBING,
-            f"正在准备 {asr_model_display_name(request.model)} 模型缓存。",
-            58,
-        )
-        model_cache_dir = resolve_model_cache_dir(project_root=project_root, environ=environ)
-        normalize_asr_model_cache_layout(model_cache_dir)
-        if not validate_asr_model_cache(model_cache_dir):
-            return finalize_task_result(
-                task_context,
-                failed_result(
-                    code="ASR_MODEL_NOT_DOWNLOADED",
-                    message="SenseVoice Small model is not downloaded yet.",
-                    stage=JobStage.VIDEO_TRANSCRIBING,
-                ),
-            )
-        try:
-            transcriber = build_asr_transcriber(
-                model_name=request.model,
-                cache_dir=model_cache_dir,
-            )
-        except OSError as exc:
-            return finalize_task_result(
-                task_context,
-                failed_result(
-                    code="ASR_MODEL_CACHE_UNAVAILABLE",
-                    message=f"Model cache directory is not writable: {exc}",
-                    stage=JobStage.VIDEO_TRANSCRIBING,
-                ),
-            )
-
-    emit_progress(
-        progress_callback,
-        JobStage.VIDEO_TRANSCRIBING,
-        "正在加载模型并开始转写。",
-        68,
-    )
-    transcript_result = run_asr_transcript_step(
+    transcript_result = run_asr_transcript_stage(
+        request=request,
+        project_root=project_root,
         audio_path=audio_path,
-        output_dir=task_context.paths.transcript_dir,
-        output_stem="",
         transcriber=transcriber,
-        model=request.model,
-        source_url=request.url,
+        allow_real_asr=allow_real_asr,
+        environ=environ,
+        task_context=task_context,
+        progress_callback=progress_callback,
     )
     if transcript_result.status == JobStage.FAILED:
         return finalize_task_result(task_context, transcript_result)
