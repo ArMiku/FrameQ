@@ -1,4 +1,4 @@
-import { FormEvent, type CSSProperties, type ChangeEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type CSSProperties, type ChangeEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
@@ -24,29 +24,17 @@ import {
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import "./App.css";
 import {
-  canSubmitUrl,
-  cancelProcessing,
-  createInitialWorkflow,
   getDetailText,
   getExportPath,
   getInsightRetryTargetForCard,
-  getProgressSteps,
-  getResultCards,
   getTranscriptSourceLabel,
-  getToolbarNewTaskButtonState,
-  getVisibleWorkflowError,
   isProcessingStage,
-  mergeProgressEvent,
-  normalizeSubmitUrl,
-  startProcessing,
-  startInsightRetry,
   summarizeWorkerResult,
   type DetailTab,
-  type InsightRetryTarget,
   type ResultCard,
   type WorkflowState,
 } from "./workflow";
-import { cancelProcess, processVideo, retryInsights } from "./workerClient";
+import { cancelProcess } from "./workerClient";
 import {
   clearAudioReviewCache,
   getAudioReviewCacheUsage,
@@ -80,6 +68,7 @@ import { useAsrModelDownload } from "./features/asrModel/useAsrModelDownload";
 import { InsightPreferenceFlow } from "./features/insightPreferences/InsightPreferenceFlow";
 import { MarkdownContent } from "./features/results/MarkdownContent";
 import { ResultWorkspace } from "./features/results/ResultWorkspace";
+import { useTaskProcessingController } from "./features/workflow/useTaskProcessingController";
 import { useAppUpdateController } from "./features/updates/useAppUpdateController";
 import {
   loadTranscriptDetail,
@@ -120,7 +109,6 @@ import {
   summarizeInspirationProfile,
   type GenerationPreferences,
   type InspirationProfile,
-  type PreferenceSnapshot,
 } from "./insightPreferences";
 
 const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }> = {
@@ -361,7 +349,6 @@ function settingsGenerationPreferenceLines(state: InsightPreferenceState | null,
 }
 
 function App() {
-  const [workflow, setWorkflow] = useState(createInitialWorkflow);
   const [detailTab, setDetailTab] = useState<DetailTab | null>(null);
   const [summaryConfirmOpen, setSummaryConfirmOpen] = useState(false);
   const [insightPreferenceFlow, setInsightPreferenceFlow] =
@@ -407,6 +394,35 @@ function App() {
     startAsrModelDownload,
     cancelCurrentAsrModelDownload,
   } = useAsrModelDownload();
+  const resetTaskUi = useCallback(() => {
+    setDetailTab(null);
+    setSummaryConfirmOpen(false);
+    setInsightPreferenceFlow(null);
+    setActionNotice("");
+  }, []);
+  const prepareInsightRetryUi = useCallback(() => {
+    setDetailTab(null);
+    setActionNotice("");
+  }, []);
+  const {
+    workflow,
+    setWorkflow,
+    canSubmit,
+    progressSteps,
+    resultCards,
+    visibleWorkflowError,
+    toolbarNewTaskButtonState,
+    cancelCurrentProcessing,
+    resetWorkflow,
+    retryInsightGeneration,
+    startNewTaskFromToolbar,
+    submitUrl,
+  } = useTaskProcessingController({
+    onResetTaskUi: resetTaskUi,
+    onRetryStarted: prepareInsightRetryUi,
+    processBlockerMessage: accountProcessBlockerMessage,
+    aiBlockerMessage: accountAiBlockerMessage,
+  });
   const {
     account,
     accountOpen,
@@ -437,18 +453,12 @@ function App() {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyNotice, setHistoryNotice] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
-  const operationIdRef = useRef(0);
   const transcriptAudioRef = useRef<HTMLAudioElement | null>(null);
   const transcriptSegmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const resumeTranscriptAfterSaveRef = useRef(false);
   const windowDragSessionRef = useRef<WindowDragSession | null>(null);
   const queuedWindowPositionRef = useRef<WindowPosition | null>(null);
   const windowMoveInFlightRef = useRef(false);
-  const canSubmit = canSubmitUrl(workflow.url);
-  const progressSteps = useMemo(() => getProgressSteps(workflow), [workflow]);
-  const resultCards = useMemo(() => getResultCards(workflow), [workflow]);
-  const visibleWorkflowError = getVisibleWorkflowError(workflow);
-  const toolbarNewTaskButtonState = getToolbarNewTaskButtonState(workflow.stage);
   const {
     updateState,
     updateBusy,
@@ -646,64 +656,6 @@ function App() {
     });
   }, [activeTranscriptSegmentId]);
 
-  async function submitUrl(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canSubmit) {
-      return;
-    }
-    if (!canProcessWithAccount(account)) {
-      openAccountPanel(accountProcessBlockerMessage(account, "开始新任务"));
-      return;
-    }
-    const submittedUrl = normalizeSubmitUrl(workflow.url);
-    if (!submittedUrl) {
-      return;
-    }
-    const operationId = operationIdRef.current + 1;
-    operationIdRef.current = operationId;
-    setWorkflow((current) => startProcessing(current, submittedUrl));
-    const result = await processVideo(submittedUrl, undefined, (event) => {
-      if (operationIdRef.current === operationId) {
-        setWorkflow((current) => mergeProgressEvent(current, event));
-      }
-    });
-    if (operationIdRef.current !== operationId) {
-      return;
-    }
-    setWorkflow((current) => ({
-      ...summarizeWorkerResult(result),
-      url: submittedUrl,
-      submittedUrl: current.submittedUrl || submittedUrl,
-    }));
-  }
-
-  function resetWorkflow() {
-    operationIdRef.current += 1;
-    setDetailTab(null);
-    setSummaryConfirmOpen(false);
-    setInsightPreferenceFlow(null);
-    setActionNotice("");
-    setWorkflow(createInitialWorkflow());
-  }
-
-  function startNewTaskFromToolbar() {
-    if (toolbarNewTaskButtonState.disabled) {
-      return;
-    }
-
-    resetWorkflow();
-  }
-
-  async function cancelCurrentProcessing() {
-    operationIdRef.current += 1;
-    setDetailTab(null);
-    setSummaryConfirmOpen(false);
-    setInsightPreferenceFlow(null);
-    setActionNotice("");
-    setWorkflow((current) => cancelProcessing(current));
-    await cancelProcess();
-  }
-
   function openCard(card: ResultCard) {
     if (card.action === "locate") {
       void locateArtifact(card);
@@ -779,7 +731,7 @@ function App() {
 
     setSummaryConfirmOpen(false);
     try {
-      await retryInsightGeneration("summary", null);
+      await retryInsightGeneration("summary", null, account, openAccountPanel, refreshAccountStatus);
     } catch (error) {
       setActionNotice(`启动要点总结失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -876,59 +828,12 @@ function App() {
         : null;
       await saveDefaultGenerationPreferences(preferences);
       setInsightPreferenceFlow(null);
-      await retryInsightGeneration("insights", preferenceSnapshot);
+      await retryInsightGeneration("insights", preferenceSnapshot, account, openAccountPanel, refreshAccountStatus);
     } catch (error) {
       setActionNotice(`启动启发灵感失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setInsightPreferenceBusy(false);
     }
-  }
-
-  async function retryInsightGeneration(
-    target: InsightRetryTarget,
-    preferenceSnapshot: PreferenceSnapshot | null = null,
-  ) {
-    if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
-      return;
-    }
-    if (!canGenerateAiWithAccount(account)) {
-      openAccountPanel(
-        accountAiBlockerMessage(
-          account,
-          target === "summary" ? "生成要点总结" : "生成启发灵感",
-        ),
-      );
-      return;
-    }
-
-    const taskId = workflow.taskId;
-    const operationId = operationIdRef.current + 1;
-    operationIdRef.current = operationId;
-    setDetailTab(null);
-    setActionNotice("");
-    setWorkflow((current) => startInsightRetry(current, target));
-
-    const result = await retryInsights(taskId, target, preferenceSnapshot);
-    if (operationIdRef.current !== operationId) {
-      return;
-    }
-    setWorkflow((current) => ({
-      ...summarizeWorkerResult({
-        ...result,
-        task_id: result.task_id ?? current.taskId,
-        task_dir: result.task_dir ?? current.taskDir,
-        artifacts: {
-          ...current.artifacts,
-          ...(result.artifacts ?? {}),
-        },
-        text: result.text || current.text,
-        summary: result.summary || current.summary,
-        insights: result.insights.length > 0 ? result.insights : current.insights,
-      }),
-      url: current.url,
-      submittedUrl: current.submittedUrl,
-    }));
-    void refreshAccountStatus();
   }
 
   async function copyDetail() {
@@ -1448,7 +1353,10 @@ function App() {
         >
           <div className="workflow-column">
             {workflow.showUrlInput ? (
-              <form className="command-panel input-pane" onSubmit={submitUrl}>
+              <form
+                className="command-panel input-pane"
+                onSubmit={(event) => submitUrl(event, account, openAccountPanel)}
+              >
                 <div className="panel-heading">
                   <div>
                     <p className="section-label">New task</p>
