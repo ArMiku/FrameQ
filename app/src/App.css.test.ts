@@ -11,6 +11,14 @@ const transcriptDetailControllerTs = readFileSync(
   new URL("./features/transcript/useTranscriptDetailController.ts", import.meta.url),
   "utf-8",
 );
+const settingsSheetTsx = readFileSync(
+  new URL("./features/settings/SettingsSheet.tsx", import.meta.url),
+  "utf-8",
+);
+const settingsControllerTs = readFileSync(
+  new URL("./features/settings/useSettingsController.ts", import.meta.url),
+  "utf-8",
+);
 
 function getRuleBody(selectors: string[]): string {
   const selectorPattern = selectors
@@ -156,15 +164,15 @@ describe("App result workspace layout styles", () => {
     const profileEditButtonRule = getRuleBody([".profile-edit-button"]);
     const profileClearButtonRule = getRuleBody([".profile-clear-button"]);
 
-    expect(appTsx).toContain('className="settings-layout"');
-    expect(appTsx).toContain('className="settings-nav"');
-    expect(appTsx).toContain('const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("basic")');
-    expect(appTsx).toContain('data-settings-category={item.id}');
-    expect(appTsx).toContain('id="settings-inspiration"');
-    expect(appTsx).toContain('className="settings-summary-list"');
-    expect(appTsx).toContain("profile-edit-button");
-    expect(appTsx).toContain("profile-clear-button");
-    expect(appTsx).toContain('settingsCategory === "inspiration"');
+    expect(settingsSheetTsx).toContain('className="settings-layout"');
+    expect(settingsSheetTsx).toContain('className="settings-nav"');
+    expect(settingsControllerTs).toContain('const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("basic")');
+    expect(settingsSheetTsx).toContain('data-settings-category={item.id}');
+    expect(settingsSheetTsx).toContain('id="settings-inspiration"');
+    expect(settingsSheetTsx).toContain('className="settings-summary-list"');
+    expect(settingsSheetTsx).toContain("profile-edit-button");
+    expect(settingsSheetTsx).toContain("profile-clear-button");
+    expect(settingsSheetTsx).toContain('settingsCategory === "inspiration"');
     expect(settingsModalRule).toContain("max-width: 800px;");
     expect(layoutRule).toContain("grid-template-columns: 176px minmax(0, 1fr);");
     expect(navRule).toContain("border-right: 1px solid var(--border);");
