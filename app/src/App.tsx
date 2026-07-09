@@ -1,4 +1,4 @@
-import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
   CheckCircle2,
@@ -32,17 +32,6 @@ import {
   canProcessWithAccount,
   type AccountStatus,
 } from "./accountState";
-import {
-  calculateDraggedWindowPosition,
-  closeWindow,
-  getWindowPosition,
-  minimizeWindow,
-  setWindowPosition,
-  startWindowDrag,
-  toggleMaximizeWindow,
-  type WindowDragSession,
-  type WindowPosition,
-} from "./windowChrome";
 import { AccountSheet } from "./features/account/AccountSheet";
 import { useAccountController } from "./features/account/useAccountController";
 import { ModelGuideSheet } from "./features/asrModel/ModelGuideSheet";
@@ -55,6 +44,7 @@ import { SettingsSheet } from "./features/settings/SettingsSheet";
 import { useSettingsController } from "./features/settings/useSettingsController";
 import { ResultDetailSheet } from "./features/transcript/ResultDetailSheet";
 import { useTranscriptDetailController } from "./features/transcript/useTranscriptDetailController";
+import { useWindowChromeController } from "./features/window/useWindowChromeController";
 import { useTaskProcessingController } from "./features/workflow/useTaskProcessingController";
 import { useAppUpdateController } from "./features/updates/useAppUpdateController";
 import {
@@ -300,9 +290,12 @@ function App() {
     onHistoryItemSelected: handleHistoryItemSelected,
   });
   const { historyOpen, closeHistory, openHistory } = historyController;
-  const windowDragSessionRef = useRef<WindowDragSession | null>(null);
-  const queuedWindowPositionRef = useRef<WindowPosition | null>(null);
-  const windowMoveInFlightRef = useRef(false);
+  const {
+    handleToolbarMouseDown,
+    closeWindow,
+    minimizeWindow,
+    toggleMaximizeWindow,
+  } = useWindowChromeController();
   const {
     updateState,
     updateBusy,
@@ -597,88 +590,6 @@ function App() {
     }
   }
 
-  function runWindowChromeAction(action: () => Promise<void>) {
-    void action().catch((error) => {
-      console.warn("Window chrome action failed", error);
-    });
-  }
-
-  function flushQueuedWindowPosition() {
-    if (windowMoveInFlightRef.current || !queuedWindowPositionRef.current) {
-      return;
-    }
-
-    const position = queuedWindowPositionRef.current;
-    queuedWindowPositionRef.current = null;
-    windowMoveInFlightRef.current = true;
-    void setWindowPosition(position)
-      .catch((error) => {
-        console.warn("Window drag move failed", error);
-      })
-      .finally(() => {
-        windowMoveInFlightRef.current = false;
-        flushQueuedWindowPosition();
-      });
-  }
-
-  async function beginManualWindowDrag(pointerX: number, pointerY: number) {
-    try {
-      const position = await getWindowPosition();
-      windowDragSessionRef.current = {
-        pointerX,
-        pointerY,
-        windowX: position.x,
-        windowY: position.y,
-      };
-    } catch (error) {
-      console.warn("Manual window drag failed to start", error);
-      runWindowChromeAction(startWindowDrag);
-    }
-  }
-
-  function handleToolbarMouseDown(event: MouseEvent<HTMLElement>) {
-    if (event.button !== 0) {
-      return;
-    }
-
-    const target = event.target as HTMLElement;
-    if (target.closest("button, input, select, textarea, a, [role='button']")) {
-      return;
-    }
-
-    event.preventDefault();
-    void beginManualWindowDrag(event.screenX, event.screenY);
-  }
-
-  useEffect(() => {
-    function moveManualWindowDrag(event: globalThis.MouseEvent) {
-      const session = windowDragSessionRef.current;
-      if (!session) {
-        return;
-      }
-
-      queuedWindowPositionRef.current = calculateDraggedWindowPosition(session, {
-        pointerX: event.screenX,
-        pointerY: event.screenY,
-      });
-      flushQueuedWindowPosition();
-    }
-
-    function stopManualWindowDrag() {
-      windowDragSessionRef.current = null;
-      queuedWindowPositionRef.current = null;
-    }
-
-    window.addEventListener("mousemove", moveManualWindowDrag);
-    window.addEventListener("mouseup", stopManualWindowDrag);
-    window.addEventListener("blur", stopManualWindowDrag);
-    return () => {
-      window.removeEventListener("mousemove", moveManualWindowDrag);
-      window.removeEventListener("mouseup", stopManualWindowDrag);
-      window.removeEventListener("blur", stopManualWindowDrag);
-    };
-  }, []);
-
   const activeCopy = stageCopy[workflow.stage];
   const progressPercent = formatProgressPercent(workflow.progressPercent);
 
@@ -691,19 +602,19 @@ function App() {
               className="traffic-light close"
               type="button"
               aria-label="关闭窗口"
-              onClick={() => runWindowChromeAction(closeWindow)}
+              onClick={closeWindow}
             />
             <button
               className="traffic-light minimize"
               type="button"
               aria-label="最小化窗口"
-              onClick={() => runWindowChromeAction(minimizeWindow)}
+              onClick={minimizeWindow}
             />
             <button
               className="traffic-light zoom"
               type="button"
               aria-label="最大化或还原窗口"
-              onClick={() => runWindowChromeAction(toggleMaximizeWindow)}
+              onClick={toggleMaximizeWindow}
             />
           </div>
 
