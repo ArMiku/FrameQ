@@ -1,0 +1,524 @@
+{
+  "schemaVersion": 1,
+  "intent": "drift-detection-only",
+  "networkPolicy": "fake-clients-only",
+  "knownAsymmetries": {
+    "douyin-short-link-failure-gated": "Frontend admission and the fallback parser accept a Douyin short link, while worker fallback dispatch requires a recognized yt-dlp failure marker when the URL has no aweme ID.",
+    "douyin-resolved-host-worker-only": "Worker dispatch and parsing accept resolved iesdouyin.com video URLs, while frontend admission remains limited to douyin.com hosts.",
+    "douyin-parser-host-agnostic": "The Douyin parser extracts an aweme ID by syntax from a lookalike host, while frontend admission and worker dispatch enforce the host boundary.",
+    "xiaohongshu-bare-id-dispatch-gap": "Frontend admission and the fallback parser accept a bare 24-character note ID, while worker media dispatch recognizes only hosted URLs.",
+    "xiaohongshu-broad-host-dispatch": "Worker media dispatch attempts any Xiaohongshu-hosted URL after a download failure, while frontend admission and the fallback parser require a note ID.",
+    "bilibili-bare-id-parser-only": "The Bilibili fallback parser accepts bare BV and av IDs, while frontend admission and worker media dispatch require hosted URLs.",
+    "bilibili-broad-host-dispatch": "Worker media dispatch attempts Bilibili-hosted non-ordinary paths, while frontend admission rejects them and the fallback parser reports unsupported content."
+  },
+  "cases": [
+    {
+      "id": "douyin-canonical-video",
+      "platform": "douyin",
+      "input": "https://www.douyin.com/video/7653372612151692594",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.douyin.com/video/7653372612151692594"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "douyin-note-path",
+      "platform": "douyin",
+      "input": "https://www.douyin.com/note/7653372612151692594",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.douyin.com/note/7653372612151692594"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "douyin-slides-share-text",
+      "platform": "douyin",
+      "input": "copy https://www.douyin.com/share/slides/7653372612151692594 more text",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.douyin.com/share/slides/7653372612151692594"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "douyin-modal-query",
+      "platform": "douyin",
+      "input": "https://www.douyin.com/note/123?modal_id=7653372612151692594",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.douyin.com/note/123?modal_id=7653372612151692594"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "douyin-short-link-recognized-failure",
+      "platform": "douyin",
+      "input": "copy https://v.douyin.com/abc123/ more text",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://v.douyin.com/abc123/"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "Expecting value: line 1 column 1 (char 0)",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594",
+          "shortLinkResponse": {
+            "requestUrl": "https://v.douyin.com/abc123/",
+            "status": 200,
+            "headers": {},
+            "body": "",
+            "responseUrl": "https://www.douyin.com/video/7653372612151692594"
+          }
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "douyin-short-link-generic-failure",
+      "platform": "douyin",
+      "input": "copy https://v.douyin.com/abc123/ more text",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://v.douyin.com/abc123/"
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594",
+          "shortLinkResponse": {
+            "requestUrl": "https://v.douyin.com/abc123/",
+            "status": 200,
+            "headers": {},
+            "body": "",
+            "responseUrl": "https://www.douyin.com/video/7653372612151692594"
+          }
+        }
+      },
+      "knownAsymmetry": "douyin-short-link-failure-gated"
+    },
+    {
+      "id": "douyin-resolved-iesdouyin-url",
+      "platform": "douyin",
+      "input": "https://www.iesdouyin.com/share/video/7653372612151692594/",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594"
+        }
+      },
+      "knownAsymmetry": "douyin-resolved-host-worker-only"
+    },
+    {
+      "id": "douyin-lookalike-host",
+      "platform": "douyin",
+      "input": "https://evil-douyin.com/video/7653372612151692594",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "7653372612151692594"
+        }
+      },
+      "knownAsymmetry": "douyin-parser-host-agnostic"
+    },
+    {
+      "id": "xiaohongshu-note-share-text",
+      "platform": "xiaohongshu",
+      "input": "copy https://www.xiaohongshu.com/explore/0123456789abcdef01234568?xsec_token=tok more text",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568?xsec_token=tok"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "0123456789abcdef01234568"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "xiaohongshu-short-link",
+      "platform": "xiaohongshu",
+      "input": "share https://xhslink.com/demo more text",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://xhslink.com/demo"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "0123456789abcdef01234568",
+          "shortLinkResponse": {
+            "requestUrl": "https://xhslink.com/demo",
+            "status": 302,
+            "headers": {
+              "Location": "https://www.xiaohongshu.com/explore/0123456789abcdef01234568?xsec_token=tok"
+            },
+            "body": "",
+            "responseUrl": "https://xhslink.com/demo"
+          }
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "xiaohongshu-bare-note-id",
+      "platform": "xiaohongshu",
+      "input": "0123456789abcdef01234568",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "0123456789abcdef01234568"
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "0123456789abcdef01234568"
+        }
+      },
+      "knownAsymmetry": "xiaohongshu-bare-id-dispatch-gap"
+    },
+    {
+      "id": "xiaohongshu-profile-path",
+      "platform": "xiaohongshu",
+      "input": "https://www.xiaohongshu.com/user/profile/demo",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "rejected"
+        }
+      },
+      "knownAsymmetry": "xiaohongshu-broad-host-dispatch"
+    },
+    {
+      "id": "xiaohongshu-lookalike-host",
+      "platform": "xiaohongshu",
+      "input": "https://xiaohongshu.com.evil/explore/0123456789abcdef01234568",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "rejected"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "bilibili-bv-video",
+      "platform": "bilibili",
+      "input": "https://www.bilibili.com/video/BV1Aa411c7mD?p=2",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.bilibili.com/video/BV1Aa411c7mD?p=2"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "BV1Aa411c7mD"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "bilibili-av-video",
+      "platform": "bilibili",
+      "input": "https://www.bilibili.com/video/av170001",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.bilibili.com/video/av170001"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "170001"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "bilibili-short-link-share-text",
+      "platform": "bilibili",
+      "input": "copy https://b23.tv/demo more text",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://b23.tv/demo"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "BV1Aa411c7mD",
+          "shortLinkResponse": {
+            "requestUrl": "https://b23.tv/demo",
+            "status": 302,
+            "headers": {
+              "Location": "https://www.bilibili.com/video/BV1Aa411c7mD?p=2"
+            },
+            "body": "",
+            "responseUrl": "https://b23.tv/demo"
+          }
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "bilibili-bare-bv-id",
+      "platform": "bilibili",
+      "input": "BV1Aa411c7mD",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "BV1Aa411c7mD"
+        }
+      },
+      "knownAsymmetry": "bilibili-bare-id-parser-only"
+    },
+    {
+      "id": "bilibili-bare-av-id",
+      "platform": "bilibili",
+      "input": "av170001",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "accepted",
+          "mediaId": "170001"
+        }
+      },
+      "knownAsymmetry": "bilibili-bare-id-parser-only"
+    },
+    {
+      "id": "bilibili-bangumi-path",
+      "platform": "bilibili",
+      "input": "https://www.bilibili.com/bangumi/play/ep123456",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "rejected"
+        }
+      },
+      "knownAsymmetry": "bilibili-broad-host-dispatch"
+    },
+    {
+      "id": "bilibili-lookalike-host",
+      "platform": "bilibili",
+      "input": "https://bilibili.com.evil/video/BV1Aa411c7mD",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": "ERROR: Unsupported URL",
+        "parser": {
+          "outcome": "rejected"
+        }
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-watch-share-text",
+      "platform": "youtube",
+      "input": "copy https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123 more text",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-short-link",
+      "platform": "youtube",
+      "input": "https://youtu.be/dQw4w9WgXcQ",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://youtu.be/dQw4w9WgXcQ"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-shorts-path",
+      "platform": "youtube",
+      "input": "https://www.youtube.com/shorts/abcDEF_123-",
+      "frontend": {
+        "canSubmit": true,
+        "normalized": "https://www.youtube.com/shorts/abcDEF_123-"
+      },
+      "worker": {
+        "dispatch": true,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-playlist-path",
+      "platform": "youtube",
+      "input": "https://www.youtube.com/playlist?list=PL123",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-channel-path",
+      "platform": "youtube",
+      "input": "https://www.youtube.com/channel/UC123",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-music-host",
+      "platform": "youtube",
+      "input": "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-lookalike-host",
+      "platform": "youtube",
+      "input": "https://youtube.com.evil/watch?v=dQw4w9WgXcQ",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    },
+    {
+      "id": "youtube-unsupported-protocol",
+      "platform": "youtube",
+      "input": "ftp://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "frontend": {
+        "canSubmit": false,
+        "normalized": null
+      },
+      "worker": {
+        "dispatch": false,
+        "failureMessage": null,
+        "parser": null
+      },
+      "knownAsymmetry": null
+    }
+  ]
+}
