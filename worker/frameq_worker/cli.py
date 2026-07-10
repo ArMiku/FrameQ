@@ -6,7 +6,6 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from frameq_worker import pipeline as pipeline_module
 from frameq_worker import worker_service as worker_service_module
 from frameq_worker.asr import DEFAULT_ASR_MODEL, build_asr_transcriber
 from frameq_worker.desktop_contract import (
@@ -93,13 +92,13 @@ __all__ = [
 
 
 def run_worker_once(*args: object, **kwargs: object) -> dict[str, object]:
-    pipeline_module.build_asr_transcriber = build_asr_transcriber
-    worker_service_module.build_insight_client_from_env = build_insight_client_from_env
+    kwargs.setdefault("transcriber_factory", build_asr_transcriber)
+    kwargs.setdefault("insight_client_factory", build_insight_client_from_env)
     return worker_service_module.run_worker_once(*args, **kwargs)
 
 
 def retry_insights_once(*args: object, **kwargs: object) -> dict[str, object]:
-    worker_service_module.build_insight_client_from_env = build_insight_client_from_env
+    kwargs.setdefault("insight_client_factory", build_insight_client_from_env)
     return worker_service_module.retry_insights_once(*args, **kwargs)
 
 

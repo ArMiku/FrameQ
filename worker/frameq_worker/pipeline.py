@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,6 +57,7 @@ from frameq_worker.task_store import (
 )
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
+TranscriberFactory = Callable[[str, Path], Transcriber]
 CLOUD_LLM_AI_ORGANIZING_MESSAGE = (
     "正在使用配置的 LLM 生成 AI 结果，文字稿会发送到该服务。"
 )
@@ -458,6 +460,7 @@ def prepare_asr_transcriber_stage(
     allow_real_asr: bool,
     environ: dict[str, str],
     progress_callback: ProgressCallback | None,
+    transcriber_factory: TranscriberFactory | None = None,
 ) -> Transcriber | ProcessResult:
     if transcriber is None and not allow_real_asr:
         return failed_result(
@@ -483,11 +486,9 @@ def prepare_asr_transcriber_stage(
             message="SenseVoice Small model is not downloaded yet.",
             stage=JobStage.VIDEO_TRANSCRIBING,
         )
+    factory = transcriber_factory or build_asr_transcriber
     try:
-        return build_asr_transcriber(
-            model_name=request.model,
-            cache_dir=model_cache_dir,
-        )
+        return factory(request.model, model_cache_dir)
     except OSError as exc:
         return failed_result(
             code="ASR_MODEL_CACHE_UNAVAILABLE",
@@ -505,6 +506,7 @@ def run_asr_transcript_stage(
     environ: dict[str, str],
     task_context: TaskContext,
     progress_callback: ProgressCallback | None,
+    transcriber_factory: TranscriberFactory | None = None,
 ) -> ProcessResult:
     emit_progress(
         progress_callback,
@@ -516,6 +518,7 @@ def run_asr_transcript_stage(
         request=request,
         project_root=project_root,
         transcriber=transcriber,
+        transcriber_factory=transcriber_factory,
         allow_real_asr=allow_real_asr,
         environ=environ,
         progress_callback=progress_callback,
@@ -613,6 +616,7 @@ def run_worker_pipeline(
     allow_real_asr: bool,
     environ: dict[str, str],
     progress_callback: ProgressCallback | None = None,
+    transcriber_factory: TranscriberFactory | None = None,
 ) -> ProcessResult:
     pipeline_context = prepare_pipeline_context(request, project_root, environ)
     task_context = pipeline_context.task_context
@@ -669,6 +673,7 @@ def run_worker_pipeline(
         project_root=project_root,
         audio_path=audio_path,
         transcriber=transcriber,
+        transcriber_factory=transcriber_factory,
         allow_real_asr=allow_real_asr,
         environ=environ,
         task_context=task_context,

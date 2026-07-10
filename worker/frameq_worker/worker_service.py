@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from frameq_worker.asr import DEFAULT_ASR_MODEL, ASRError, Transcriber
+from frameq_worker.asr import DEFAULT_ASR_MODEL, ASRError, Transcriber, build_asr_transcriber
 from frameq_worker.config import load_project_env
 from frameq_worker.desktop_contract import (
     MODEL_DIR_ENV,
@@ -21,6 +22,7 @@ from frameq_worker.media import CommandRunner, run_command
 from frameq_worker.model_download import ModelDownloadError, download_asr_model_cache
 from frameq_worker.models import Insight, JobStage, ProcessResult, TranscriptMetadata, WorkerError
 from frameq_worker.pipeline import (
+    TranscriberFactory,
     failed_result,
     finalize_task_result,
     resolve_cache_dir,
@@ -41,6 +43,8 @@ from frameq_worker.task_store import (
     write_preference_snapshot_artifact,
 )
 
+InsightClientFactory = Callable[[dict[str, str]], InsightClient | None]
+
 
 def run_worker_once(
     request_json: str,
@@ -48,6 +52,8 @@ def run_worker_once(
     command_runner: CommandRunner = run_command,
     transcriber: Transcriber | None = None,
     insight_client: InsightClient | None = None,
+    transcriber_factory: TranscriberFactory | None = None,
+    insight_client_factory: InsightClientFactory | None = None,
     allow_real_asr: bool | None = None,
     environ: dict[str, str] | None = None,
     progress_callback: ProgressCallback | None = None,
@@ -90,7 +96,9 @@ def run_worker_once(
             ),
         ).to_dict()
 
-    configured_insight_client = insight_client or build_insight_client_from_env(runtime_env)
+    configured_insight_client = insight_client or (
+        insight_client_factory or build_insight_client_from_env
+    )(runtime_env)
     result = run_worker_pipeline(
         request=request,
         project_root=root,
@@ -101,6 +109,7 @@ def run_worker_once(
         if allow_real_asr is None
         else allow_real_asr,
         environ=runtime_env,
+        transcriber_factory=transcriber_factory or build_asr_transcriber,
         progress_callback=progress_callback,
     )
     return result.to_dict()
@@ -110,6 +119,7 @@ def retry_insights_once(
     request_json: str,
     project_root: Path | None = None,
     insight_client: InsightClient | None = None,
+    insight_client_factory: InsightClientFactory | None = None,
     environ: dict[str, str] | None = None,
 ) -> dict[str, object]:
     try:
@@ -135,7 +145,9 @@ def retry_insights_once(
 
     root = project_root or Path.cwd()
     runtime_env = load_project_env(root, environ)
-    configured_insight_client = insight_client or build_insight_client_from_env(runtime_env)
+    configured_insight_client = insight_client or (
+        insight_client_factory or build_insight_client_from_env
+    )(runtime_env)
     output_dir = resolve_output_dir(root, runtime_env)
     cache_dir = resolve_cache_dir(root, runtime_env)
     try:

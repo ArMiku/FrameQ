@@ -310,17 +310,15 @@ def test_run_worker_once_uses_download_stdout_inside_task_cache_dir(
 
 def test_run_worker_once_reports_missing_downloaded_asr_model_after_audio_extraction(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     def fail_build_asr_transcriber(model_name: str, cache_dir: Path) -> FakeTranscriber:
         raise AssertionError("ASR model should be validated before loading")
-
-    monkeypatch.setattr(cli, "build_asr_transcriber", fail_build_asr_transcriber)
 
     result = run_worker_once(
         json.dumps({"url": "https://www.douyin.com/video/7524373044106677544"}),
         project_root=tmp_path,
         command_runner=FakeMediaRunner(),
+        transcriber_factory=fail_build_asr_transcriber,
         allow_real_asr=True,
     )
 
@@ -338,7 +336,6 @@ def test_run_worker_once_reports_missing_downloaded_asr_model_after_audio_extrac
 
 def test_run_worker_once_uses_configured_asr_model_from_user_data_env(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     captured: dict[str, object] = {}
     user_data_dir = tmp_path / "user-data"
@@ -354,8 +351,6 @@ def test_run_worker_once_uses_configured_asr_model_from_user_data_env(
         captured["cache_dir"] = cache_dir
         return FakeTranscriber()
 
-    monkeypatch.setattr(cli, "build_asr_transcriber", fake_build_asr_transcriber)
-
     result = run_worker_once(
         json.dumps(
             {
@@ -365,6 +360,7 @@ def test_run_worker_once_uses_configured_asr_model_from_user_data_env(
         ),
         project_root=tmp_path,
         command_runner=FakeMediaRunner(),
+        transcriber_factory=fake_build_asr_transcriber,
         allow_real_asr=True,
         environ={"FRAMEQ_USER_DATA_DIR": user_data_dir.as_posix()},
     )
