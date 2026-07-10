@@ -2,6 +2,8 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-10-worker-stdin-request-transport-plan.md` | Removed raw source URLs and serialized requests from worker argv/environment by using bounded supervised stdin delivery. |
+| `2026-07-08-split-summary-insights-generation-plan.md` | Split summary/mindmap and inspiration generation into independent target-scoped actions with artifact-preserving manifest updates. |
 | `2026-07-10-history-task-restore-ownership-plan.md` | Moved history restore into the workflow controller, blocked active task switches, and isolated stale callbacks from restored task identity. |
 | `2026-07-10-desktop-process-supervision-cancellation-plan.md` | Unified video-worker and ASR-download cancellation supervision, process-tree/group termination, and truthful desktop cancellation state. |
 | `2026-07-10-admin-quota-audit-migration-plan.md` | Retired unaudited administrator remaining-quota edits in favor of the atomic audited additive-compensation boundary and documented WeChat Pay as disabled/unintegrated. |

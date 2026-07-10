@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const workflowPath = resolve(
+  repositoryRoot,
+  ".github/workflows/unix-process-supervisor.yml",
+);
+const supervisorPath = resolve(
+  repositoryRoot,
+  "app/src-tauri/src/worker_command.rs",
+);
+
+test("runs the Unix ProcessSupervisor fixture on Ubuntu and macOS without privileged product integrations", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const hostedRunners = [...workflow.matchAll(/^\s+- (.+-latest)\s*$/gm)].map(
+    ([, runner]) => runner,
+  );
+
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /permissions:\s*\r?\n\s+contents: read/);
+  assert.deepEqual(hostedRunners, ["ubuntu-latest", "macos-latest"]);
+  assert.match(workflow, /timeout-minutes:\s*30/);
+  assert.match(workflow, /uses:\s*actions\/checkout@v4/);
+  assert.match(workflow, /uses:\s*dtolnay\/rust-toolchain@stable/);
+  assert.match(workflow, /if:\s*runner\.os == 'Linux'/);
+  assert.match(workflow, /libwebkit2gtk-4\.1-dev/);
+  assert.match(
+    workflow,
+    /run:\s*cargo test --manifest-path app\/src-tauri\/Cargo\.toml/,
+  );
+
+  assert.doesNotMatch(workflow, /pull_request_target:/);
+  assert.doesNotMatch(workflow, /secrets\./);
+  assert.doesNotMatch(workflow, /contents:\s*write/);
+  assert.doesNotMatch(workflow, /tauri-action|gh release|WECHAT|LLM|yt-dlp|ffmpeg/i);
+});
+
+test("the hosted cargo command includes the real Unix parent-child process-group fixture", async () => {
+  const source = await readFile(supervisorPath, "utf8");
+  const fixture = source.indexOf(
+    "unix_termination_stops_a_parent_and_child_in_the_managed_process_group",
+  );
+
+  assert.notEqual(fixture, -1);
+  const fixtureContext = source.slice(Math.max(0, fixture - 300), fixture + 2_500);
+  assert.match(fixtureContext, /#\[cfg\(unix\)\]/);
+  assert.match(fixtureContext, /configure_child_process_group/);
+  assert.match(fixtureContext, /terminate_process_tree/);
+  assert.match(source, /process_group\(0\)/);
+  assert.match(source, /send_process_group_signal\(pid, ProcessSignal::Term\)/);
+  assert.match(source, /send_process_group_signal\(pid, ProcessSignal::Kill\)/);
+});

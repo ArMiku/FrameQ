@@ -1,0 +1,59 @@
+name: Unix ProcessSupervisor
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/src-tauri/**"
+      - ".github/workflows/unix-process-supervisor.yml"
+  pull_request:
+    paths:
+      - "app/src-tauri/**"
+      - ".github/workflows/unix-process-supervisor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unix-process-supervisor-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-test:
+    name: ${{ matrix.os }} Cargo tests
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tauri test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Tauri Rust tests
+        env:
+          RUST_BACKTRACE: "1"
+        run: cargo test --manifest-path app/src-tauri/Cargo.toml

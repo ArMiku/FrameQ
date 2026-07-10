@@ -19,41 +19,42 @@ Remove raw source URLs and serialized request payloads from production worker ar
 - [x] 2026-07-10: Added real-child probes for stdin EOF delivery, argv/environment absence, sanitized write failure with child reaping, and cancellation after request delivery. Focused Rust worker-command tests passed (18 tests).
 - [x] 2026-07-10: Added process/preflight/retry stdin CLI tests and malformed/oversized non-echoing failures. Focused worker CLI/source/pipeline/AI tests passed (90 tests).
 - [x] 2026-07-10: Routed cache preflight, process-video, and retry through supervised stdin delivery; verified success, fixed failure, blocked-write cancellation, cache/history/source persistence, and prompt leakage boundaries.
-- [x] 2026-07-10: Synchronized architecture/security/debt/task records and ran the complete repository gates plus packaged-worker parity. Implementation is uncommitted and this plan remains active pending user confirmation.
+- [x] 2026-07-10: Synchronized architecture/security/debt/task records and ran the complete repository gates plus packaged-worker parity.
+- [x] 2026-07-11: Confirmed the implementation was committed and pushed as `8c968bf`; reconciled every detailed task checkbox and archived this completed plan.
 
 ## TDD Tasks
 
 ### Task 1: Rust command boundary
 
-- [ ] Assert `ProcessVideo` and `ResolveSourceIdentity` specs contain only `-m frameq_worker` plus a fixed stdin mode flag, with the sensitive JSON only in `stdin_payload` and absent from all environment values and log details.
-- [ ] Run the focused Rust tests and record the expected failure against current JSON argv construction.
-- [ ] Add `stdin_payload: Option<String>` to `WorkerCommandSpec` and map serialized invocations to fixed stdin flags.
-- [ ] Re-run focused tests to green.
+- [x] Assert `ProcessVideo` and `ResolveSourceIdentity` specs contain only `-m frameq_worker` plus a fixed stdin mode flag, with the sensitive JSON only in `stdin_payload` and absent from all environment values and log details.
+- [x] Run the focused Rust tests and record the expected failure against current JSON argv construction.
+- [x] Add `stdin_payload: Option<String>` to `WorkerCommandSpec` and map serialized invocations to fixed stdin flags.
+- [x] Re-run focused tests to green.
 
 ### Task 2: Real child and delivery lifecycle
 
-- [ ] Add a real subprocess probe that reports booleans proving the secret arrived through stdin but not argv/environment; it must never print the secret.
-- [ ] Add a deterministic failing-writer test that proves delivery errors use fixed text without payload echo.
-- [ ] Run the tests red, then implement piped-stdin write-and-close in the shared spawn helper; on failure terminate the controlled child/process group and return the sanitized error.
-- [ ] Re-run the probe plus existing supervisor cancellation tests.
+- [x] Add a real subprocess probe that reports booleans proving the secret arrived through stdin but not argv/environment; it must never print the secret.
+- [x] Add a deterministic failing-writer test that proves delivery errors use fixed text without payload echo.
+- [x] Run the tests red, then implement piped-stdin write-and-close in the shared spawn helper; on failure terminate the controlled child/process group and return the sanitized error.
+- [x] Re-run the probe plus existing supervisor cancellation tests.
 
 ### Task 3: Worker CLI stdin contract
 
-- [ ] Add tests for process-video, source-identity, and retry stdin modes, plus empty/malformed/oversized payloads that return fixed structured failures without echoing fixture secrets.
-- [ ] Run the focused worker tests and record the expected missing-mode failures.
-- [ ] Add one bounded JSON-object stdin reader and fixed per-mode failure mapping; keep model download and migration as no-payload flags.
-- [ ] Re-run worker CLI and source privacy tests.
+- [x] Add tests for process-video, source-identity, and retry stdin modes, plus empty/malformed/oversized payloads that return fixed structured failures without echoing fixture secrets.
+- [x] Run the focused worker tests and record the expected missing-mode failures.
+- [x] Add one bounded JSON-object stdin reader and fixed per-mode failure mapping; keep model download and migration as no-payload flags.
+- [x] Re-run worker CLI and source privacy tests.
 
 ### Task 4: Call-site and leak regression
 
-- [ ] Update video processing, cache-only preflight, AI retry, migration/model-download constructors, and tests to the new command spec without introducing fallback argv/env transport.
-- [ ] Exercise successful stdin delivery, worker structured failure, cancellation, cache reuse, history, artifacts, diagnostic summaries, and AI prompt captures using `review-secret`.
-- [ ] Scan command specs, outputs, logs, errors, manifests, transcript artifacts, history DTOs, cache keys, and captured prompts for the raw URL, `xsec_token`, and token value.
+- [x] Update video processing, cache-only preflight, AI retry, migration/model-download constructors, and tests to the new command spec without introducing fallback argv/env transport.
+- [x] Exercise successful stdin delivery, worker structured failure, cancellation, cache reuse, history, artifacts, diagnostic summaries, and AI prompt captures using `review-secret`.
+- [x] Scan command specs, outputs, logs, errors, manifests, transcript artifacts, history DTOs, cache keys, and captured prompts for the raw URL, `xsec_token`, and token value.
 
 ### Task 5: Documentation and gates
 
 - [x] Update architecture/security/task/debt records, closing only the argv exposure debt and preserving any OS/crash-memory residual risk.
-- [x] Run all project gates required by AGENTS/WORKFLOW and this task, record counts, and leave the green worktree uncommitted for user confirmation. Archive this plan after the user confirms the handoff/commit decision.
+- [x] Run all project gates required by AGENTS/WORKFLOW and this task, record counts, retain the green worktree for user confirmation, and archive after `8c968bf` was confirmed pushed.
 
 ## Decisions
 

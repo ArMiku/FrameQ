@@ -22,10 +22,12 @@
 
 ## 进行中
 
-- [x] 移除原始 source URL 的 worker argv 暴露（2026-07-10）✅ process-video、source identity preflight 与 AI retry 统一使用 1 MiB 上限的一次性 stdin JSON；argv 仅保留固定模式旗标，环境变量、日志与错误不含请求载荷；PID/PGID 在写入前登记到 ProcessSupervisor，阻塞写入期间仍可取消并终止进程树。✅ Rust 90、worker 249、app 205、server 57、scripts 7、ruff/build/docs/diff 与打包 worker 26 文件 SHA-256 一致性门禁通过；仅保留进程内存/管道缓冲区和系统 crash dump 的本机残余风险，当前改动等待用户确认且未提交。
+- [x] 移除原始 source URL 的 worker argv 暴露（2026-07-10，`8c968bf` 已推送）✅ process-video、source identity preflight 与 AI retry 统一使用 1 MiB 上限的一次性 stdin JSON；argv 仅保留固定模式旗标，环境变量、日志与错误不含请求载荷；PID/PGID 在写入前登记到 ProcessSupervisor，阻塞写入期间仍可取消并终止进程树。✅ Rust 90、worker 249、app 205、server 57、scripts 7、ruff/build/docs/diff 与打包 worker 26 文件 SHA-256 一致性门禁通过；仅保留进程内存/管道缓冲区和系统 crash dump 的本机残余风险，ExecPlan 已归档。
+- [x] 收口要点总结与启发灵感独立生成（2026-07-11 治理归档）✅ summary/mindmap 与 insights/preference 分目标生成，manifest 合并保留另一目标产物，本地转写与 AI 额度/配置 gate 分离；实现、文档与验证均已完成，ExecPlan 已归档。
 - [x] 修复历史任务恢复绕过 workflow controller 的竞争问题（2026-07-10）✅ workflow controller 成为任务身份的唯一入口；视频处理、AI retry 与 `cancelling` 时历史可只读浏览但条目禁用，绝不自动取消后切换；稳定恢复统一失效旧 operation、关闭详情/偏好 flow 并清理 notice，文字稿保存只在预期 task 仍为当前任务时更新。✅ app 205、Rust 85、worker 244、server 57、ruff、build、文档和 diff 门禁通过；历史列表并发加载的请求排序仍登记为技术债。
 
 - [x] 修复桌面端取消任务进程树与真实终态语义（2026-07-10）✅ `ProcessSupervisor` 统一视频 worker 与 ASR 模型下载的实例化、取消占用、失败回退和终态清理；Windows 使用受控 `taskkill /T /F`，Unix 条件实现独立进程组 TERM→KILL；前端只在确认取消后重置，取消失败和自然完成仍保留真实结果。Windows 自动化覆盖已通过；Unix 父子进程实测保留为 Unix 主机发布前验证。
+- [ ] 取得 Unix ProcessSupervisor 原生主机 CI 证据（2026-07-11）⏳ 已用 TDD 增加只读的 `ubuntu-latest` / `macos-latest` Cargo 验证 workflow，不含安装包、签名、发布、支付、LLM 或媒体下载步骤；✅ 验收条件：用户确认提交/推送后取得并记录两平台真实绿灯，再关闭技术债与归档 ExecPlan。
 
 - [x] 实现桌面端一键升级（2026-06-23）— Tauri updater + GitHub Releases updater manifest/artifacts；客户端与 worker 整体升级，保留 app-local data，不打包 ASR 权重或私有配置。✅ 代码完成，自动化门禁全部通过（server 32、app 84、Rust 31、worker 99、ruff、build、docs）。✅ 2026-06-27 项目决策：因中国境内访问 GitHub Releases 速度过慢，不再执行旧版到新版的 GitHub updater 真实下载/安装测试；该项作为 v1 测试豁免，不再阻塞发布。
 
