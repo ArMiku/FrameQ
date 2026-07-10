@@ -1,7 +1,7 @@
 export type ModelDownloadOperationSnapshot = {
   operationId: number;
   activeOperationId: number;
-  cancelledOperationId: number | null;
+  phase: "running" | "cancelling" | "finished";
 };
 
 export const MODEL_DOWNLOAD_STALLED_MS = 45_000;
@@ -9,9 +9,9 @@ export const MODEL_DOWNLOAD_STALLED_MS = 45_000;
 export function shouldApplyModelDownloadUpdate({
   operationId,
   activeOperationId,
-  cancelledOperationId,
+  phase,
 }: ModelDownloadOperationSnapshot): boolean {
-  return operationId === activeOperationId && operationId !== cancelledOperationId;
+  return operationId === activeOperationId && phase !== "finished";
 }
 
 export function isModelDownloadStalled({

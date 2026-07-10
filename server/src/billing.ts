@@ -66,35 +66,27 @@ export class BillingService {
     paidAt: Date;
   }): Promise<{ entitlementExpiresAt: Date }> {
     const now = this.now();
-    const recorded = await this.store.createWebhookEvent({
+    const settled = await this.store.settlePaidOrder({
       provider: "wechat",
       eventId: input.webhookId,
       outTradeNo: input.outTradeNo,
-      payload: JSON.stringify(input),
-      createdAt: now,
+      transactionId: input.transactionId,
+      paidAt: input.paidAt,
+      now,
+      passDays: PASS_DAYS,
     });
-    const order = await this.store.findOrderByOutTradeNo(input.outTradeNo);
-    if (!order) {
-      throw new Error("Order not found.");
+    switch (settled.status) {
+      case "settled":
+        return { entitlementExpiresAt: settled.entitlement.expiresAt };
+      case "order_not_found":
+        throw new Error("Order not found.");
+      case "transaction_mismatch":
+        throw new Error("Payment transaction does not match order.");
+      case "webhook_order_mismatch":
+        throw new Error("Webhook does not match order.");
+      case "order_state_conflict":
+        throw new Error("Order cannot be settled in its current state.");
     }
-
-    if (recorded && order.status !== "paid") {
-      await this.store.markOrderPaid(input.outTradeNo, input.transactionId, input.paidAt);
-      const existing = await this.store.getEntitlement(order.userId);
-      const base =
-        existing && existing.expiresAt > input.paidAt ? existing.expiresAt : input.paidAt;
-      await this.store.upsertEntitlement(
-        order.userId,
-        new Date(base.getTime() + PASS_DAYS * 24 * 60 * 60 * 1000),
-        now,
-      );
-    }
-
-    const entitlement = await this.store.getEntitlement(order.userId);
-    if (!entitlement) {
-      throw new Error("Entitlement was not created.");
-    }
-    return { entitlementExpiresAt: entitlement.expiresAt };
   }
 
   async getOrderStatus(outTradeNo: string): Promise<OrderRecord | null> {
@@ -103,4 +95,3 @@ export class BillingService {
 }
 
 export const monthlyPassAmountFen = MONTHLY_PASS_AMOUNT_FEN;
-

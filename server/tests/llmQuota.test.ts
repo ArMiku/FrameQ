@@ -187,7 +187,7 @@ describe("server-managed LLM config and quota", () => {
     });
   });
 
-  test("admin edits a user's remaining quota", async () => {
+  test("does not expose an unaudited direct quota-write route", async () => {
     const store = new MemoryStore();
     await createAdminSession(store);
     const { user, sessionToken } = await createAuthorizedUser(store);
@@ -204,20 +204,19 @@ describe("server-managed LLM config and quota", () => {
       payload: { remaining: 7 },
     });
 
-    expect(updated.statusCode).toBe(200);
-    expect(updated.json()).toMatchObject({
-      user_id: user.id,
-      llm_quota_used: 4,
-      llm_quota_limit: 11,
-      llm_quota_remaining: 7,
-    });
+    expect(updated.statusCode).toBe(404);
+    expect((store as any).adminEntitlementAdjustments).toHaveLength(0);
 
     const account = await app.inject({
       method: "GET",
       url: "/api/desktop/account",
       headers: { authorization: `Bearer ${sessionToken}` },
     });
-    expect(account.json()).toMatchObject({ llm_quota_remaining: 7 });
+    expect(account.json()).toMatchObject({
+      llm_quota_limit: 20,
+      llm_quota_used: 4,
+      llm_quota_remaining: 16,
+    });
   });
 
   test("admin compensation extends entitlement, adds quota, and records an audit event", async () => {
@@ -277,6 +276,7 @@ describe("server-managed LLM config and quota", () => {
       afterLlmQuotaLimit: 25,
       beforeLlmQuotaUsed: 4,
       afterLlmQuotaUsed: 4,
+      createdAt: now,
     });
   });
 

@@ -258,16 +258,16 @@ describe("worker client", () => {
     const calls: Array<{ command: string; args: unknown }> = [];
     const runner: CancelCommandRunner = async (command, args) => {
       calls.push({ command, args });
-      return { cancelled: true };
+      return { status: "cancelling" };
     };
 
     const result = await cancelProcess(runner);
 
     expect(calls).toEqual([{ command: "cancel_process", args: {} }]);
-    expect(result).toEqual({ cancelled: true });
+    expect(result).toEqual({ status: "cancelling" });
   });
 
-  test("maps cancel command errors to a non-cancelled result", async () => {
+  test("maps cancel command errors to a structured failed result", async () => {
     const runner: CancelCommandRunner = async () => {
       throw new Error("worker process could not be terminated");
     };
@@ -275,7 +275,7 @@ describe("worker client", () => {
     const result = await cancelProcess(runner);
 
     expect(result).toEqual({
-      cancelled: false,
+      status: "failed",
       error: "worker process could not be terminated",
     });
   });

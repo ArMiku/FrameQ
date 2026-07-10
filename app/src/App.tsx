@@ -20,12 +20,10 @@ import {
   getExportPath,
   getInsightRetryTargetForCard,
   isProcessingStage,
-  summarizeWorkerResult,
   type ResultCard,
   type WorkflowState,
 } from "./workflow";
-import { cancelProcess } from "./workerClient";
-import { historyItemToWorkerResult, type HistoryItem } from "./historyClient";
+import type { HistoryItem } from "./historyClient";
 import type { UpdateState } from "./updateState";
 import {
   canProcessWithAccount,
@@ -52,6 +50,10 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
   waiting_input: {
     title: "等待输入",
     body: "等待用户提交视频链接。",
+  },
+  cancelling: {
+    title: "正在取消",
+    body: "正在终止当前任务及其子进程，请等待最终结果。",
   },
   video_extracting: {
     title: "视频提取中",
@@ -90,6 +92,7 @@ const asrModelLabels: Record<string, string> = {
 
 const stageSummary: Record<WorkflowState["stage"], string> = {
   waiting_input: "准备接收一个公开视频链接",
+  cancelling: "正在终止当前任务及其子进程",
   video_extracting: "正在准备媒体文件",
   video_transcribing: "正在生成本地文字稿",
   insights_generating: "正在生成所选 AI 结果",
@@ -197,14 +200,18 @@ function App() {
   }, []);
   const {
     workflow,
-    setWorkflow,
     canSubmit,
+    canRestoreHistory,
+    historyRestoreUnavailableMessage,
     progressSteps,
     resultCards,
     visibleWorkflowError,
     toolbarNewTaskButtonState,
     cancelCurrentProcessing,
     resetWorkflow,
+    updateUrlDraft,
+    applyTranscriptSave,
+    restoreHistoryItem,
     retryInsightGeneration,
     startNewTaskFromToolbar,
     submitUrl,
@@ -216,7 +223,7 @@ function App() {
   });
   const transcriptDetailController = useTranscriptDetailController({
     workflow,
-    setWorkflow,
+    applyTranscriptSave,
     setActionNotice,
   });
   const {
@@ -247,7 +254,8 @@ function App() {
     formatHistoryDate,
     onSignedOut: () => {
       if (isProcessingStage(workflow.stage)) {
-        void cancelProcess();
+        void cancelCurrentProcessing();
+        return;
       }
       resetWorkflow();
     },
@@ -282,15 +290,9 @@ function App() {
   resetInsightGenerationUiRef.current = resetInsightGenerationUi;
   const handleHistoryItemSelected = useCallback(
     (item: HistoryItem) => {
-      setWorkflow({
-        ...summarizeWorkerResult(historyItemToWorkerResult(item)),
-        url: item.url,
-        submittedUrl: item.url,
-      });
-      openDetailTab(item.summary ? "summary" : item.insights.length > 0 ? "insights" : item.text ? "transcript" : null);
-      setActionNotice("");
+      restoreHistoryItem(item);
     },
-    [openDetailTab, setWorkflow],
+    [restoreHistoryItem],
   );
   const historyController = useHistoryController({
     onHistoryItemSelected: handleHistoryItemSelected,
@@ -572,7 +574,7 @@ function App() {
                     value={workflow.url}
                     onChange={(event) => {
                       const url = event.currentTarget.value;
-                      setWorkflow((current) => ({ ...current, url }));
+                      updateUrlDraft(url);
                     }}
                     placeholder="粘贴抖音或小红书视频链接"
                   />
@@ -591,9 +593,14 @@ function App() {
                     <h2>{activeCopy.title}</h2>
                   </div>
                   {isProcessingStage(workflow.stage) ? (
-                    <button className="secondary-button danger-soft" type="button" onClick={cancelCurrentProcessing}>
+                    <button
+                      className="secondary-button danger-soft"
+                      type="button"
+                      onClick={cancelCurrentProcessing}
+                      disabled={workflow.stage === "cancelling"}
+                    >
                       <X size={17} />
-                      <span>取消任务</span>
+                      <span>{workflow.stage === "cancelling" ? "正在取消" : "取消任务"}</span>
                     </button>
                   ) : null}
                 </div>
@@ -773,6 +780,8 @@ function App() {
       <HistorySheet
         controller={historyController}
         formatHistoryDate={formatHistoryDate}
+        selectionDisabled={!canRestoreHistory}
+        selectionDisabledReason={historyRestoreUnavailableMessage}
       />
 
       <SettingsSheet

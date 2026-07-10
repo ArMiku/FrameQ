@@ -8,6 +8,7 @@ FrameQ should let paid users generate insight topics without configuring an LLM 
 - Admin Web can configure provider, base URL, model, timeout, and the dedicated FrameQ client API key.
 - The LLM API key is encrypted before being stored in SQLite and is never fully displayed in Admin responses.
 - Each 31-day activation grants 20 LLM API-call uses.
+- Administrators may add quota only through the audited entitlement-adjustment operation. FrameQ has no supported administrator flow to silently set, reduce, or reset a user's remaining quota.
 - A use is consumed per cloud LLM chat-completion/API call attempt, not per AI整理 generation attempt. A single confirmed AI整理 run may therefore consume multiple uses when the worker generates Mermaid mindmap, summary, topic planning, and insight-topic details through separate LLM calls.
 - The desktop/worker/server accounting boundary must authorize or record one quota use for each supplier LLM API call attempt. Reusing the same per-call checkout/request ID must not double-charge that same call attempt.
 - Renewing before expiry extends entitlement and adds 20 more uses; reactivating after expiry starts a fresh 31-day window with 20 uses and 0 used.
@@ -29,3 +30,4 @@ FrameQ should let paid users generate insight topics without configuring an LLM 
 - Starting AI整理 checks account/config readiness before the first LLM call, then consumes quota per LLM API call attempt made during that AI整理.
 - Reusing the same per-call checkout/request ID does not double-charge that same LLM API call attempt.
 - When uses reach 0, the desktop client blocks summary/inspiration generation with an account-panel explanation; local video extraction and ASR transcription remain available for signed-in users with active entitlement.
+- An administrator quota grant increases `llmQuotaLimit`, preserves `llmQuotaUsed`, and creates an append-only record with administrator, user, reason, before/after values, and timestamp in the same transaction.

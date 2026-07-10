@@ -6,7 +6,7 @@ import type { PreferenceSnapshot } from "./insightPreferences";
 import type { WorkerProgressEvent, WorkerResult, WorkflowStage } from "./workflow";
 
 export type CancelProcessResult = {
-  cancelled: boolean;
+  status: "cancelling" | "already_cancelling" | "not_running" | "failed";
   error?: string | null;
 };
 
@@ -123,7 +123,7 @@ export async function cancelProcess(
     return await runner("cancel_process", {});
   } catch (error) {
     return {
-      cancelled: false,
+      status: "failed",
       error: error instanceof Error ? error.message : String(error),
     };
   }

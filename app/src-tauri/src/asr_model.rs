@@ -7,15 +7,16 @@ use crate::{
     append_desktop_log, bundled_python_path, ensure_runtime_dirs, parse_worker_stdout,
     path_to_env_string, prepend_to_path, resolve_runtime_paths, run_blocking_worker_command,
     spawn_worker_command, summarize_worker_result_for_log, terminate_process_tree,
-    worker_command_log_detail, worker_exit_log_detail, CancelProcessResult, RuntimePaths,
-    WorkerCommandSpec, MODEL_DIR_ENV, RESOURCE_DIR_ENV, USER_DATA_DIR_ENV,
+    worker_command_log_detail, worker_exit_log_detail, CancelProcessResult, ProcessPhase,
+    ProcessSupervisors, RuntimePaths, WorkerCommandSpec, MODEL_DIR_ENV, RESOURCE_DIR_ENV,
+    USER_DATA_DIR_ENV,
 };
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State, Window};
 
 pub(crate) const ASR_MODEL_DOWNLOAD_EVENT_NAME: &str = "asr-model-download-progress";
@@ -38,65 +39,7 @@ pub(crate) struct FirstRunStatusView {
 #[derive(Debug, Serialize)]
 pub(crate) struct AsrModelDownloadResult {
     started: bool,
-}
-
-#[derive(Default)]
-pub(crate) struct ModelDownloadProcessState {
-    current_pid: Mutex<Option<u32>>,
-    cancelled_pid: Mutex<Option<u32>>,
-}
-
-impl ModelDownloadProcessState {
-    fn register(&self, pid: u32) -> bool {
-        let mut current_pid = self
-            .current_pid
-            .lock()
-            .expect("download state lock poisoned");
-        if current_pid.is_some() {
-            return false;
-        }
-
-        *current_pid = Some(pid);
-        true
-    }
-
-    fn current_pid(&self) -> Option<u32> {
-        *self
-            .current_pid
-            .lock()
-            .expect("download state lock poisoned")
-    }
-
-    fn clear_current(&self, pid: u32) {
-        let mut current_pid = self
-            .current_pid
-            .lock()
-            .expect("download state lock poisoned");
-        if *current_pid == Some(pid) {
-            *current_pid = None;
-        }
-    }
-
-    fn mark_cancelled(&self, pid: u32) {
-        let mut cancelled_pid = self
-            .cancelled_pid
-            .lock()
-            .expect("download cancelled state lock poisoned");
-        *cancelled_pid = Some(pid);
-    }
-
-    fn take_cancelled(&self, pid: u32) -> bool {
-        let mut cancelled_pid = self
-            .cancelled_pid
-            .lock()
-            .expect("download cancelled state lock poisoned");
-        if *cancelled_pid == Some(pid) {
-            *cancelled_pid = None;
-            return true;
-        }
-
-        false
-    }
+    status: String,
 }
 
 fn asr_model_dir(paths: &RuntimePaths) -> PathBuf {
@@ -205,22 +148,27 @@ pub(crate) fn check_first_run(app: AppHandle) -> Result<FirstRunStatusView, Stri
 pub(crate) async fn download_asr_model(
     window: Window,
     app: AppHandle,
-    download_state: State<'_, Arc<ModelDownloadProcessState>>,
+    process_supervisors: State<'_, Arc<ProcessSupervisors>>,
 ) -> Result<AsrModelDownloadResult, String> {
-    let download_state = Arc::clone(download_state.inner());
-    run_blocking_worker_command(move || download_asr_model_blocking(window, app, download_state))
-        .await
+    let process_supervisors = Arc::clone(process_supervisors.inner());
+    run_blocking_worker_command(move || {
+        download_asr_model_blocking(window, app, process_supervisors)
+    })
+    .await
 }
 
 fn download_asr_model_blocking(
     window: Window,
     app: AppHandle,
-    download_state: Arc<ModelDownloadProcessState>,
+    process_supervisors: Arc<ProcessSupervisors>,
 ) -> Result<AsrModelDownloadResult, String> {
     let paths = resolve_runtime_paths(&app)?;
     ensure_runtime_dirs(&paths)?;
     if asr_model_available(&paths) {
-        return Ok(AsrModelDownloadResult { started: false });
+        return Ok(AsrModelDownloadResult {
+            started: false,
+            status: "already_available".to_string(),
+        });
     }
 
     let config_values = parse_dotenv_values(&env_path(&paths))?;
@@ -232,13 +180,15 @@ fn download_asr_model_blocking(
     );
     let mut child = spawn_worker_command(spec)?;
     let download_pid = child.id();
-    if !download_state.register(download_pid) {
+    let Some(download_instance) = process_supervisors.asr_model_download.start(download_pid) else {
         let _ = terminate_process_tree(download_pid);
         return Err("Another ASR model download is already running.".to_string());
-    }
+    };
 
     let Some(stderr) = child.stderr.take() else {
-        download_state.clear_current(download_pid);
+        process_supervisors
+            .asr_model_download
+            .finish(download_instance.instance_id);
         let _ = terminate_process_tree(download_pid);
         return Err("Could not capture ASR model download stderr.".to_string());
     };
@@ -260,13 +210,15 @@ fn download_asr_model_blocking(
     let output = match child.wait_with_output() {
         Ok(output) => output,
         Err(error) => {
-            download_state.clear_current(download_pid);
-            let _ = download_state.take_cancelled(download_pid);
+            process_supervisors
+                .asr_model_download
+                .finish(download_instance.instance_id);
             return Err(error.to_string());
         }
     };
-    download_state.clear_current(download_pid);
-    let was_cancelled = download_state.take_cancelled(download_pid);
+    let terminal_phase = process_supervisors
+        .asr_model_download
+        .finish(download_instance.instance_id);
     let stderr = stderr_reader
         .join()
         .unwrap_or_else(|_| "ASR model download stderr reader failed.".to_string());
@@ -276,7 +228,30 @@ fn download_asr_model_blocking(
         &worker_exit_log_detail(download_pid, &output, &stderr),
     );
 
-    if was_cancelled {
+    if output.status.success()
+        && parse_worker_stdout(&output.stdout)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("status")
+                    .and_then(|status| status.as_str())
+                    .map(str::to_string)
+            })
+            .is_some_and(|status| status == "completed")
+    {
+        let result = parse_worker_stdout(&output.stdout)?;
+        let _ = append_desktop_log(
+            &paths,
+            "worker.download_asr_model.result",
+            &summarize_worker_result_for_log(&result),
+        );
+        return Ok(AsrModelDownloadResult {
+            started: true,
+            status: "completed".to_string(),
+        });
+    }
+
+    if terminal_phase == Some(ProcessPhase::Cancelling) {
         let _ = append_desktop_log(
             &paths,
             "worker.download_asr_model.cancelled",
@@ -290,7 +265,10 @@ fn download_asr_model_blocking(
                 "progress": 0
             }),
         );
-        return Ok(AsrModelDownloadResult { started: false });
+        return Ok(AsrModelDownloadResult {
+            started: false,
+            status: "cancelled".to_string(),
+        });
     }
 
     if !output.status.success() {
@@ -318,7 +296,10 @@ fn download_asr_model_blocking(
         .and_then(|status| status.as_str())
         .is_some_and(|status| status == "completed")
     {
-        return Ok(AsrModelDownloadResult { started: true });
+        return Ok(AsrModelDownloadResult {
+            started: true,
+            status: "completed".to_string(),
+        });
     }
 
     Err(result
@@ -330,29 +311,11 @@ fn download_asr_model_blocking(
 
 #[tauri::command]
 pub(crate) fn cancel_asr_model_download(
-    download_state: State<'_, Arc<ModelDownloadProcessState>>,
+    process_supervisors: State<'_, Arc<ProcessSupervisors>>,
 ) -> Result<CancelProcessResult, String> {
-    let Some(pid) = download_state.current_pid() else {
-        return Ok(CancelProcessResult {
-            cancelled: false,
-            error: None,
-        });
-    };
-
-    download_state.mark_cancelled(pid);
-    match terminate_process_tree(pid) {
-        Ok(()) => {
-            download_state.clear_current(pid);
-            Ok(CancelProcessResult {
-                cancelled: true,
-                error: None,
-            })
-        }
-        Err(error) => Ok(CancelProcessResult {
-            cancelled: false,
-            error: Some(error),
-        }),
-    }
+    Ok(crate::request_process_cancellation(
+        &process_supervisors.asr_model_download,
+    ))
 }
 
 #[cfg(test)]

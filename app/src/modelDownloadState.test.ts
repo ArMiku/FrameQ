@@ -6,12 +6,12 @@ import {
 } from "./modelDownloadState";
 
 describe("model download operation state", () => {
-  test("applies updates only for the active non-cancelled operation", () => {
+  test("applies updates for the active running operation", () => {
     expect(
       shouldApplyModelDownloadUpdate({
         operationId: 2,
         activeOperationId: 2,
-        cancelledOperationId: null,
+        phase: "running",
       }),
     ).toBe(true);
   });
@@ -21,17 +21,27 @@ describe("model download operation state", () => {
       shouldApplyModelDownloadUpdate({
         operationId: 1,
         activeOperationId: 2,
-        cancelledOperationId: null,
+        phase: "running",
       }),
     ).toBe(false);
   });
 
-  test("ignores cancelled operation settlement so cancelled UI is preserved", () => {
+  test("keeps applying matching terminal updates while cancellation is pending", () => {
     expect(
       shouldApplyModelDownloadUpdate({
         operationId: 2,
         activeOperationId: 2,
-        cancelledOperationId: 2,
+        phase: "cancelling",
+      }),
+    ).toBe(true);
+  });
+
+  test("ignores updates after a terminal outcome is confirmed", () => {
+    expect(
+      shouldApplyModelDownloadUpdate({
+        operationId: 2,
+        activeOperationId: 2,
+        phase: "finished",
       }),
     ).toBe(false);
   });

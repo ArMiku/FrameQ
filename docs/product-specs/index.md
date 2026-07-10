@@ -2,10 +2,16 @@
 
 ## Account and Billing Spec
 
+- `2026-07-10-server-entitlement-transaction-safety.md` - Atomic, retry-safe payment settlement, activation-code redemption, and administrator entitlement compensation.
 - `2026-06-27-admin-entitlement-adjustments.md` - Admin Web manual compensation for entitlement expiry and LLM API-call quota after support incidents.
 - `2026-06-22-server-managed-llm-quota.md` - Server-managed dedicated client LLM config and 20-use monthly insight quota.
 - `2026-06-21-activation-code-authorization.md` - Account login with administrator-issued activation codes for 31-day monthly pass access.
 - `2026-06-21-account-billing.md` - Retired self-serve WeChat purchase draft; current visible unlock path is administrator-issued activation-code monthly passes while WeChat purchase is paused.
+
+## Desktop Runtime Spec
+
+- `2026-07-10-history-task-restore-ownership.md` - Controller-owned history restoration that rejects active workflow switches and prevents stale operation overwrite.
+- `2026-07-10-desktop-process-supervision-cancellation.md` - Truthful cancellable worker/model-download lifecycle with platform process-tree termination and preservation of partial local artifacts.
 
 ## AI Insight Spec
 

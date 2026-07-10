@@ -57,38 +57,19 @@ export class ActivationCodeService {
     code: string;
   }): Promise<{ entitlementExpiresAt: Date }> {
     const now = this.now();
-    const session = await this.store.findSessionByTokenHash(input.sessionTokenHash, now);
-    if (!session) {
+    const redeemed = await this.store.redeemActivationCodeAndGrantEntitlement({
+      sessionTokenHash: input.sessionTokenHash,
+      codeHash: sha256(normalizeActivationCode(input.code)),
+      now,
+      llmQuotaPerActivation: LLM_QUOTA_PER_ACTIVATION,
+    });
+    if (redeemed.status === "session_invalid") {
       throw new Error("Desktop session is invalid or expired.");
     }
-
-    const codeHash = sha256(normalizeActivationCode(input.code));
-    const code = await this.store.findActivationCodeByHash(codeHash);
-    if (!code || code.status !== "active" || code.redeemedAt !== null || code.redeemBy <= now) {
+    if (redeemed.status === "code_invalid") {
       throw invalidActivationCodeError();
     }
-
-    const redeemed = await this.store.markActivationCodeRedeemed(codeHash, session.userId, now);
-    if (!redeemed) {
-      throw invalidActivationCodeError();
-    }
-
-    const existing = await this.store.getEntitlement(session.userId);
-    const existingActive = Boolean(existing && existing.expiresAt > now);
-    const base = existingActive && existing ? existing.expiresAt : now;
-    const quota = existingActive && existing
-      ? {
-          llmQuotaLimit: existing.llmQuotaLimit + LLM_QUOTA_PER_ACTIVATION,
-          llmQuotaUsed: existing.llmQuotaUsed,
-        }
-      : { llmQuotaLimit: LLM_QUOTA_PER_ACTIVATION, llmQuotaUsed: 0 };
-    const entitlement = await this.store.upsertEntitlement(
-      session.userId,
-      new Date(base.getTime() + redeemed.entitlementDays * 24 * 60 * 60 * 1000),
-      now,
-      quota,
-    );
-    return { entitlementExpiresAt: entitlement.expiresAt };
+    return { entitlementExpiresAt: redeemed.entitlement.expiresAt };
   }
 }
 

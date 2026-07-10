@@ -109,6 +109,7 @@ function createHookHarness(): HookHarness {
 function createWorkflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
   return {
     stage: "partial_completed",
+    cancellingFromStage: null,
     url: "https://example.test/video",
     submittedUrl: "https://example.test/video",
     showUrlInput: false,

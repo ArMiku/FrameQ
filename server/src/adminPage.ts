@@ -126,8 +126,7 @@ export function renderAdminPage(input: {
           const remaining = entitlement
             ? Math.max(0, entitlement.llmQuotaLimit - entitlement.llmQuotaUsed)
             : 0;
-          const disabled = entitlement ? "" : " disabled";
-          return `<tr data-user-id="${escapeHtml(user.id)}"><td>${escapeHtml(user.email)}</td><td>${entitlement?.llmQuotaLimit ?? 0}</td><td>${entitlement?.llmQuotaUsed ?? 0}</td><td><div class="quota-edit-control"><input class="quota-remaining-input" type="number" min="0" value="${remaining}"${disabled} /><button class="secondary-button quota-save" type="button" data-user-id="${escapeHtml(user.id)}"${disabled}>保存</button><span class="quota-status"></span></div></td></tr>`;
+          return `<tr data-user-id="${escapeHtml(user.id)}"><td>${escapeHtml(user.email)}</td><td>${entitlement?.llmQuotaLimit ?? 0}</td><td>${entitlement?.llmQuotaUsed ?? 0}</td><td>${remaining}</td></tr>`;
         })
         .join("")
     : `<tr><td colspan="4" class="empty-cell">暂无用户</td></tr>`;
@@ -260,7 +259,7 @@ export function renderAdminPage(input: {
         <div class="table-heading">
           <div>
             <p class="eyebrow">LLM quota</p>
-            <h2>LLM API 调用次数</h2>
+            <h2>LLM API 调用次数（只读）</h2>
           </div>
         </div>
         <div class="table-wrap">
@@ -275,7 +274,7 @@ export function renderAdminPage(input: {
         <div class="table-heading">
           <div>
             <p class="eyebrow">Compensation</p>
-            <h2>权益调整</h2>
+            <h2>权益补偿（增加额度并留痕）</h2>
           </div>
         </div>
         <div class="table-wrap">
@@ -352,39 +351,6 @@ export function renderAdminPage(input: {
           }),
         });
         setLlmConfigStatus(response.ok ? "LLM config saved." : "Could not save LLM config.", response.ok ? "success" : "error");
-      });
-
-      document.querySelectorAll(".quota-save").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const userId = button.dataset.userId;
-          const row = button.closest("tr");
-          const input = row?.querySelector(".quota-remaining-input");
-          const status = row?.querySelector(".quota-status");
-          if (!userId || !input || !status) return;
-          button.disabled = true;
-          status.textContent = "保存中...";
-          const remaining = Number(input.value || 0);
-          try {
-            const response = await fetch("/admin/api/users/" + encodeURIComponent(userId) + "/llm-quota", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "x-frameq-csrf": csrfToken },
-              body: JSON.stringify({ remaining }),
-            });
-            const data = await response.json().catch(() => null);
-            if (!response.ok) {
-              status.textContent = "保存失败";
-              return;
-            }
-            if (data && typeof data.llm_quota_remaining === "number") {
-              input.value = String(data.llm_quota_remaining);
-            }
-            status.textContent = "已保存";
-          } catch {
-            status.textContent = "无法连接";
-          } finally {
-            button.disabled = false;
-          }
-        });
       });
 
       document.querySelectorAll(".adjustment-save").forEach((button) => {
@@ -653,14 +619,6 @@ function adminStyles(): string {
       padding: 12px;
     }
     .created-code-card span { color: var(--success); font-size: 0.82rem; font-weight: 760; }
-    .quota-edit-control {
-      align-items: center;
-      display: grid;
-      gap: 8px;
-      grid-template-columns: 100px auto minmax(70px, 1fr);
-    }
-    .quota-edit-control input { min-height: 36px; }
-    .quota-status { color: var(--muted); font-size: 0.78rem; }
     code {
       background: var(--surface-soft);
       border: 1px solid var(--border);
@@ -711,7 +669,6 @@ function adminStyles(): string {
       .admin-session { align-items: stretch; flex-direction: column; width: 100%; }
       .session-chip { text-align: center; }
       .create-controls { align-items: stretch; flex-direction: column; }
-      .quota-edit-control { grid-template-columns: 1fr; }
       .primary-button,
       .secondary-button { width: 100%; }
       .created-code-card { grid-template-columns: 1fr; }

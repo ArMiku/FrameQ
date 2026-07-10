@@ -35,12 +35,13 @@ pub(crate) use asr_model::{ASR_MODEL_DOWNLOAD_EVENT_NAME, MODEL_DOWNLOAD_EVENT_P
 
 pub(crate) use worker_command::{
     build_worker_command_spec, migrate_legacy_source_data_if_needed,
-    parse_worker_output_or_fallback, parse_worker_stdout, run_blocking_worker_command,
-    spawn_worker_command, terminate_process_tree, worker_command_log_detail,
-    worker_exit_log_detail, WorkerCommandSpec, WorkerInvocation, WorkerProcessState,
+    parse_worker_output_or_fallback, parse_worker_stdout, request_process_cancellation,
+    run_blocking_worker_command, spawn_worker_command, terminate_process_tree,
+    worker_command_log_detail, worker_exit_log_detail, CancelProcessResult, ProcessPhase,
+    ProcessSupervisors, WorkerCommandSpec, WorkerInvocation,
 };
 
-pub(crate) use video_processing::{CancelProcessResult, ProcessVideoResult};
+pub(crate) use video_processing::ProcessVideoResult;
 
 #[cfg(test)]
 pub(crate) use video_processing::WorkerError;
@@ -56,8 +57,7 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(Arc::new(WorkerProcessState::default()))
-        .manage(Arc::new(asr_model::ModelDownloadProcessState::default()))
+        .manage(Arc::new(ProcessSupervisors::default()))
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 deep_link::activate_main_window_for_deep_link(&window, argv);

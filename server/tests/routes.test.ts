@@ -175,14 +175,16 @@ describe("desktop account routes", () => {
       wechatPayEnabled: false,
     });
 
-    const response = await app.inject({
-      method: "POST",
-      url: "/api/wechat/notify",
-      payload: { id: "notice-1" },
-    });
+    const responses = await Promise.all([
+      app.inject({ method: "POST", url: "/api/desktop/billing/wechat-native" }),
+      app.inject({ method: "GET", url: "/api/desktop/billing/orders/fq_disabled" }),
+      app.inject({ method: "POST", url: "/api/wechat/notify", payload: { id: "notice-1" } }),
+    ]);
 
-    expect(response.statusCode).toBe(404);
-    expect(response.json()).toEqual({ error: "WECHAT_PAY_DISABLED" });
+    for (const response of responses) {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ error: "WECHAT_PAY_DISABLED" });
+    }
   });
 
   test("returns a generic error when email delivery fails", async () => {

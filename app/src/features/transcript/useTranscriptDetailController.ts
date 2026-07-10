@@ -21,6 +21,7 @@ import {
 import {
   loadTranscriptDetail,
   saveTranscriptEdit,
+  type SaveTranscriptEditResponse,
   type TranscriptDetailResponse,
   type TranscriptSegment,
 } from "../../transcriptDetailClient";
@@ -37,13 +38,13 @@ import {
 
 type UseTranscriptDetailControllerOptions = {
   workflow: WorkflowState;
-  setWorkflow: Dispatch<SetStateAction<WorkflowState>>;
+  applyTranscriptSave: (expectedTaskId: string | null, saved: SaveTranscriptEditResponse) => void;
   setActionNotice: Dispatch<SetStateAction<string>>;
 };
 
 export function useTranscriptDetailController({
   workflow,
-  setWorkflow,
+  applyTranscriptSave,
   setActionNotice,
 }: UseTranscriptDetailControllerOptions) {
   const [detailTab, setDetailTab] = useState<DetailTab | null>(null);
@@ -356,15 +357,7 @@ export function useTranscriptDetailController({
             }
           : current,
       );
-      setWorkflow((current) => ({
-        ...current,
-        taskId: saved.task_id || current.taskId,
-        text: saved.text,
-        artifacts: {
-          ...current.artifacts,
-          ...(saved.artifacts ?? {}),
-        },
-      }));
+      applyTranscriptSave(workflow.taskId, saved);
       setActionNotice("文字稿已保存，后续 AI 整理会使用保存后的正式稿。");
 
       if (resumeTranscriptAfterSaveRef.current && transcriptAudioRef.current) {
@@ -382,7 +375,7 @@ export function useTranscriptDetailController({
     }
   }, [
     setActionNotice,
-    setWorkflow,
+    applyTranscriptSave,
     transcriptDraft,
     transcriptSaving,
     transcriptSegments,

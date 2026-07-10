@@ -1,5 +1,11 @@
 # FrameQ Design Guidelines
 
+## 2026-07-10 History Restore While Processing
+
+- The history panel may stay open during a running, retrying, or cancelling task, but its task rows are visibly read-only native disabled buttons with a short explanation. Disabled rows must not be reachable as selectable controls by keyboard.
+- The UI must not silently cancel a current task when a user views history. A history task can be restored only after the current task reaches a stable terminal state.
+- Restoring a history task closes task-specific detail and AI-preference flows and clears transient notices before presenting the selected task. The result workspace must never visually combine artifacts or text from two tasks.
+
 ## 2026-07-05 Diagnostics UX
 
 - The main task workflow should not add a new diagnostic panel for normal use.
@@ -92,6 +98,7 @@ UI 必须围绕以下状态组织：
 | 状态 | 展示原则 |
 |------|----------|
 | `等待输入` | 首页内容区只显示 `粘贴视频链接` 输入卡，包含 URL 输入、主按钮和简短等待文案；不显示结果工作区 |
+| `正在取消` | 保留当前任务、URL、阶段进度和结果区，取消按钮显示“正在取消”并禁用；等待 worker 或模型下载给出真实终态 |
 | `视频提取中` | 隐藏输入区，展示下载、校验和音频提取进度 |
 | `视频转译中` | 展示 ASR 进度、当前 ASR 模型识别文案，以及模型缓存/加载状态 |
 | `AI 整理中` | 可先展示文字稿，正在生成的要点总结或启发灵感卡片显示生成中 |
@@ -111,8 +118,8 @@ UI 必须围绕以下状态组织：
 - 导出按钮在对应 artifact 生成前置灰；启用后定位当前任务目录中的正式 artifact。
 - 进度区优先展示 worker 事件中的具体阶段文案；没有事件时回退到当前阶段默认文案。
 - `要点总结` 或 `启发灵感` 待生成或失败时，点击卡片先打开各自确认流程；`要点总结` 确认后只生成总结和隐藏 Mermaid mindmap，`启发灵感` 确认后只生成灵感，不重新下载视频、重新提取音频或重新转写。Mermaid 文本只写入本地文件，不在 UI 中展示或渲染。
-- 取消任务只在处理中显示；点击后必须终止当前 worker 进程树，返回输入态并保留刚提交的 URL。
-- 取消后的晚到进度事件或 worker 结果不得覆盖当前 UI 状态。
+- 取消任务只在处理中显示；点击后先显示“正在取消”并保留当前任务和 operation ID，直到 worker 或模型下载确认取消后才返回输入态并保留刚提交的 URL。
+- 取消信号发送失败时必须恢复可观察的原处理态并显示简明错误；自然完成或失败与取消竞争时，真实终态优先显示，不能被“正在取消”覆盖。
 - 顶部工具区提供设置入口；设置面板用于管理本机 ASR、输出目录和 app-local `.env` 配置文件位置，AI 结果 LLM 由服务端管理员配置。
 - 顶部工具区提供历史入口；历史面板展示最近任务列表，支持查看可用结果和定位输出文件。
 - 设置面板字段包含 ASR 模型、结果输出目录和本机配置文件路径；首版 release UI 的 ASR 模型只显示 SenseVoice Small，并展示模型是否已下载、下载入口和 app-local data 缓存位置。

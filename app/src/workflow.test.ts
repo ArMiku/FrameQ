@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   cancelProcessing,
   canSubmitUrl,
+  confirmProcessingCancellation,
   createInitialWorkflow,
   formatWorkerError,
   getDetailText,
@@ -15,6 +16,8 @@ import {
   isProcessingStage,
   mergeProgressEvent,
   normalizeSubmitUrl,
+  requestProcessingCancellation,
+  restoreProcessingAfterCancellationFailure,
   startProcessing,
   startInsightRetry,
   summarizeWorkerResult,
@@ -802,5 +805,39 @@ describe("workflow state model", () => {
     expect(cancelled.submittedUrl).toBe("");
     expect(cancelled.statusMessage).toBe("");
     expect(cancelled.error).toBeNull();
+  });
+
+  test("keeps the workflow active while cancellation is pending and restores it when signalling fails", () => {
+    const running = startProcessing(
+      createInitialWorkflow(),
+      "https://www.douyin.com/video/7524373044106677544",
+    );
+
+    const cancelling = requestProcessingCancellation(running);
+
+    expect(cancelling.stage).toBe("cancelling");
+    expect(cancelling.cancellingFromStage).toBe("video_extracting");
+    expect(cancelling.showUrlInput).toBe(false);
+    expect(cancelling.submittedUrl).toBe(running.submittedUrl);
+    expect(isProcessingStage(cancelling.stage)).toBe(true);
+
+    const restored = restoreProcessingAfterCancellationFailure(cancelling, "tree termination failed");
+    expect(restored.stage).toBe("video_extracting");
+    expect(restored.statusMessage).toContain("tree termination failed");
+    expect(restored.submittedUrl).toBe(running.submittedUrl);
+  });
+
+  test("returns to input only after cancellation is confirmed", () => {
+    const cancelling = requestProcessingCancellation(
+      startProcessing(
+        createInitialWorkflow(),
+        "https://www.douyin.com/video/7524373044106677544",
+      ),
+    );
+
+    const cancelled = confirmProcessingCancellation(cancelling);
+    expect(cancelled.stage).toBe("waiting_input");
+    expect(cancelled.showUrlInput).toBe(true);
+    expect(cancelled.url).toBe("https://www.douyin.com/video/7524373044106677544");
   });
 });

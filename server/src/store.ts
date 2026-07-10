@@ -128,6 +128,23 @@ export type WebhookEventRecord = {
   createdAt: Date;
 };
 
+export type PaidOrderSettlement =
+  | { status: "settled"; entitlement: EntitlementRecord }
+  | { status: "order_not_found" }
+  | { status: "order_state_conflict" }
+  | { status: "webhook_order_mismatch" }
+  | { status: "transaction_mismatch" };
+
+export type ActivationRedemption =
+  | { status: "redeemed"; entitlement: EntitlementRecord }
+  | { status: "session_invalid" }
+  | { status: "code_invalid" };
+
+export type EntitlementAdjustmentApplication =
+  | { status: "applied"; entitlement: EntitlementRecord; adjustment: AdminEntitlementAdjustmentRecord }
+  | { status: "user_not_found" }
+  | { status: "expiry_required" };
+
 export type Store = {
   upsertUserByEmail(email: string, now: Date): Promise<UserRecord>;
   getUserById(userId: string): Promise<UserRecord | null>;
@@ -143,6 +160,15 @@ export type Store = {
   createOrder(input: Omit<OrderRecord, "id" | "paidAt" | "transactionId">): Promise<OrderRecord>;
   findOrderByOutTradeNo(outTradeNo: string): Promise<OrderRecord | null>;
   markOrderPaid(outTradeNo: string, transactionId: string, paidAt: Date): Promise<OrderRecord>;
+  settlePaidOrder(input: {
+    provider: string;
+    eventId: string;
+    outTradeNo: string;
+    transactionId: string;
+    paidAt: Date;
+    now: Date;
+    passDays: number;
+  }): Promise<PaidOrderSettlement>;
   getEntitlement(userId: string): Promise<EntitlementRecord | null>;
   upsertEntitlement(
     userId: string,
@@ -150,13 +176,18 @@ export type Store = {
     now: Date,
     quota?: { llmQuotaLimit?: number; llmQuotaUsed?: number },
   ): Promise<EntitlementRecord>;
-  updateEntitlementQuota(userId: string, llmQuotaLimit: number, llmQuotaUsed: number, now: Date): Promise<EntitlementRecord | null>;
   consumeLlmQuota(userId: string, requestId: string, now: Date): Promise<{ entitlement: EntitlementRecord; reused: boolean } | null>;
   getLlmConfig(): Promise<LlmConfigRecord | null>;
   upsertLlmConfig(input: Omit<LlmConfigRecord, "id" | "createdAt" | "updatedAt">, now: Date): Promise<LlmConfigRecord>;
   createActivationCode(input: Omit<ActivationCodeRecord, "id">): Promise<ActivationCodeRecord>;
   findActivationCodeByHash(codeHash: string): Promise<ActivationCodeRecord | null>;
   markActivationCodeRedeemed(codeHash: string, userId: string, redeemedAt: Date): Promise<ActivationCodeRecord | null>;
+  redeemActivationCodeAndGrantEntitlement(input: {
+    sessionTokenHash: string;
+    codeHash: string;
+    now: Date;
+    llmQuotaPerActivation: number;
+  }): Promise<ActivationRedemption>;
   listActivationCodes(): Promise<ActivationCodeRecord[]>;
   listUsers(): Promise<UserRecord[]>;
   createAdminSession(input: Omit<AdminSessionRecord, "id" | "revokedAt">): Promise<AdminSessionRecord>;
@@ -165,6 +196,16 @@ export type Store = {
   createAdminEntitlementAdjustment(
     input: AdminEntitlementAdjustmentRecord,
   ): Promise<AdminEntitlementAdjustmentRecord>;
+  applyEntitlementAdjustmentWithAudit(input: {
+    adminEmail: string;
+    userId: string;
+    reason: string;
+    note: string | null;
+    extendDays?: number;
+    expiresAt?: Date;
+    quotaAdd?: number;
+    now: Date;
+  }): Promise<EntitlementAdjustmentApplication>;
   listAdminEntitlementAdjustments(limit?: number): Promise<AdminEntitlementAdjustmentRecord[]>;
   createWebhookEvent(input: Omit<WebhookEventRecord, "id" | "createdAt"> & { createdAt: Date }): Promise<boolean>;
 };
@@ -182,6 +223,7 @@ export class MemoryStore implements Store {
   adminSessions: AdminSessionRecord[] = [];
   adminEntitlementAdjustments: AdminEntitlementAdjustmentRecord[] = [];
   webhookEvents: WebhookEventRecord[] = [];
+  private atomicTail: Promise<void> = Promise.resolve();
 
   async upsertUserByEmail(email: string, now: Date): Promise<UserRecord> {
     const existing = this.users.find((user) => user.email === email);
@@ -304,6 +346,87 @@ export class MemoryStore implements Store {
     return order;
   }
 
+  async settlePaidOrder(input: {
+    provider: string;
+    eventId: string;
+    outTradeNo: string;
+    transactionId: string;
+    paidAt: Date;
+    now: Date;
+    passDays: number;
+  }): Promise<PaidOrderSettlement> {
+    return this.runAtomically(async () => {
+      const existingEvent = this.webhookEvents.find(
+        (event) => event.provider === input.provider && event.eventId === input.eventId,
+      );
+      if (existingEvent && existingEvent.outTradeNo !== input.outTradeNo) {
+        return { status: "webhook_order_mismatch" };
+      }
+      const existingEventTransactionId = existingEvent
+        ? storedWebhookTransactionId(existingEvent.payload)
+        : null;
+      if (existingEvent && existingEventTransactionId !== input.transactionId) {
+        return { status: "transaction_mismatch" };
+      }
+      const order = await this.findOrderByOutTradeNo(input.outTradeNo);
+      if (!order) {
+        return { status: "order_not_found" };
+      }
+      if (order.status === "paid") {
+        if (!order.transactionId || order.transactionId !== input.transactionId) {
+          return { status: "transaction_mismatch" };
+        }
+        const entitlement = await this.getEntitlement(order.userId);
+        if (entitlement) {
+          if (!existingEvent) {
+            const created = await this.createWebhookEvent({
+              provider: input.provider,
+              eventId: input.eventId,
+              outTradeNo: input.outTradeNo,
+              payload: JSON.stringify({
+                outTradeNo: input.outTradeNo,
+                transactionId: input.transactionId,
+                paidAt: input.paidAt.toISOString(),
+              }),
+              createdAt: input.now,
+            });
+            if (!created) {
+              return { status: "webhook_order_mismatch" };
+            }
+          }
+          return { status: "settled", entitlement };
+        }
+        if (!existingEvent) {
+          return { status: "order_state_conflict" };
+        }
+        const recovered = await this.extendMonthlyPass(order.userId, order.paidAt ?? input.paidAt, input);
+        return { status: "settled", entitlement: recovered };
+      }
+      if (order.status !== "pending" || order.transactionId !== null || order.paidAt !== null) {
+        return { status: "order_state_conflict" };
+      }
+      if (!existingEvent) {
+        const created = await this.createWebhookEvent({
+          provider: input.provider,
+          eventId: input.eventId,
+          outTradeNo: input.outTradeNo,
+          payload: JSON.stringify({
+            outTradeNo: input.outTradeNo,
+            transactionId: input.transactionId,
+            paidAt: input.paidAt.toISOString(),
+          }),
+          createdAt: input.now,
+        });
+        if (!created) {
+          return { status: "webhook_order_mismatch" };
+        }
+      }
+      await this.markOrderPaid(input.outTradeNo, input.transactionId, input.paidAt);
+      const entitlement = await this.extendMonthlyPass(order.userId, input.paidAt, input);
+      return { status: "settled", entitlement };
+    });
+  }
+
   async getEntitlement(userId: string): Promise<EntitlementRecord | null> {
     return this.entitlements.find((entitlement) => entitlement.userId === userId) ?? null;
   }
@@ -337,22 +460,6 @@ export class MemoryStore implements Store {
       updatedAt: now,
     };
     this.entitlements.push(entitlement);
-    return entitlement;
-  }
-
-  async updateEntitlementQuota(
-    userId: string,
-    llmQuotaLimit: number,
-    llmQuotaUsed: number,
-    now: Date,
-  ): Promise<EntitlementRecord | null> {
-    const entitlement = await this.getEntitlement(userId);
-    if (!entitlement) {
-      return null;
-    }
-    entitlement.llmQuotaLimit = llmQuotaLimit;
-    entitlement.llmQuotaUsed = llmQuotaUsed;
-    entitlement.updatedAt = now;
     return entitlement;
   }
 
@@ -432,6 +539,44 @@ export class MemoryStore implements Store {
     return code;
   }
 
+  async redeemActivationCodeAndGrantEntitlement(input: {
+    sessionTokenHash: string;
+    codeHash: string;
+    now: Date;
+    llmQuotaPerActivation: number;
+  }): Promise<ActivationRedemption> {
+    return this.runAtomically(async () => {
+      const session = await this.findSessionByTokenHash(input.sessionTokenHash, input.now);
+      if (!session) {
+        return { status: "session_invalid" };
+      }
+      const code = await this.findActivationCodeByHash(input.codeHash);
+      if (!code || code.status !== "active" || code.redeemedAt !== null || code.redeemBy <= input.now) {
+        return { status: "code_invalid" };
+      }
+      const redeemed = await this.markActivationCodeRedeemed(input.codeHash, session.userId, input.now);
+      if (!redeemed) {
+        return { status: "code_invalid" };
+      }
+      const existing = await this.getEntitlement(session.userId);
+      const active = Boolean(existing && existing.expiresAt > input.now);
+      const base = active && existing ? existing.expiresAt : input.now;
+      const quota = active && existing
+        ? {
+            llmQuotaLimit: existing.llmQuotaLimit + input.llmQuotaPerActivation,
+            llmQuotaUsed: existing.llmQuotaUsed,
+          }
+        : { llmQuotaLimit: input.llmQuotaPerActivation, llmQuotaUsed: 0 };
+      const entitlement = await this.upsertEntitlement(
+        session.userId,
+        new Date(base.getTime() + redeemed.entitlementDays * 24 * 60 * 60 * 1000),
+        input.now,
+        quota,
+      );
+      return { status: "redeemed", entitlement };
+    });
+  }
+
   async listActivationCodes(): Promise<ActivationCodeRecord[]> {
     return [...this.activationCodes].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   }
@@ -468,6 +613,55 @@ export class MemoryStore implements Store {
     return input;
   }
 
+  async applyEntitlementAdjustmentWithAudit(input: {
+    adminEmail: string;
+    userId: string;
+    reason: string;
+    note: string | null;
+    extendDays?: number;
+    expiresAt?: Date;
+    quotaAdd?: number;
+    now: Date;
+  }): Promise<EntitlementAdjustmentApplication> {
+    return this.runAtomically(async () => {
+      const user = await this.getUserById(input.userId);
+      if (!user) {
+        return { status: "user_not_found" };
+      }
+      const before = await this.getEntitlement(input.userId);
+      const beforeExpiresAt = before ? new Date(before.expiresAt) : null;
+      const beforeLlmQuotaLimit = before?.llmQuotaLimit ?? 0;
+      const beforeLlmQuotaUsed = before?.llmQuotaUsed ?? 0;
+      const extensionBase = beforeExpiresAt && beforeExpiresAt > input.now ? beforeExpiresAt : input.now;
+      const extendedExpiry = input.extendDays !== undefined
+        ? new Date(extensionBase.getTime() + input.extendDays * 24 * 60 * 60 * 1000)
+        : null;
+      const afterExpiresAt = input.expiresAt ?? extendedExpiry ?? beforeExpiresAt;
+      if (!afterExpiresAt) {
+        return { status: "expiry_required" };
+      }
+      const entitlement = await this.upsertEntitlement(input.userId, afterExpiresAt, input.now, {
+        llmQuotaLimit: beforeLlmQuotaLimit + (input.quotaAdd ?? 0),
+        llmQuotaUsed: beforeLlmQuotaUsed,
+      });
+      const adjustment = await this.createAdminEntitlementAdjustment({
+        id: `adj_${randomUUID()}`,
+        adminEmail: input.adminEmail,
+        userId: input.userId,
+        reason: input.reason,
+        note: input.note,
+        beforeExpiresAt,
+        afterExpiresAt: entitlement.expiresAt,
+        beforeLlmQuotaLimit,
+        afterLlmQuotaLimit: entitlement.llmQuotaLimit,
+        beforeLlmQuotaUsed,
+        afterLlmQuotaUsed: entitlement.llmQuotaUsed,
+        createdAt: input.now,
+      });
+      return { status: "applied", entitlement, adjustment };
+    });
+  }
+
   async listAdminEntitlementAdjustments(limit = 50): Promise<AdminEntitlementAdjustmentRecord[]> {
     return [...this.adminEntitlementAdjustments]
       .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
@@ -486,5 +680,70 @@ export class MemoryStore implements Store {
     }
     this.webhookEvents.push({ ...input, id: randomUUID() });
     return true;
+  }
+
+  private async extendMonthlyPass(
+    userId: string,
+    paidAt: Date,
+    input: { now: Date; passDays: number },
+  ): Promise<EntitlementRecord> {
+    const existing = await this.getEntitlement(userId);
+    const base = existing && existing.expiresAt > paidAt ? existing.expiresAt : paidAt;
+    return this.upsertEntitlement(
+      userId,
+      new Date(base.getTime() + input.passDays * 24 * 60 * 60 * 1000),
+      input.now,
+    );
+  }
+
+  private async runAtomically<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.atomicTail;
+    let release = () => {};
+    this.atomicTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    const snapshot = structuredClone({
+      users: this.users,
+      emailOtps: this.emailOtps,
+      desktopLoginTickets: this.desktopLoginTickets,
+      sessions: this.sessions,
+      orders: this.orders,
+      entitlements: this.entitlements,
+      llmConfig: this.llmConfig,
+      llmUsageEvents: this.llmUsageEvents,
+      activationCodes: this.activationCodes,
+      adminSessions: this.adminSessions,
+      adminEntitlementAdjustments: this.adminEntitlementAdjustments,
+      webhookEvents: this.webhookEvents,
+    });
+    try {
+      return await operation();
+    } catch (error) {
+      this.users = snapshot.users;
+      this.emailOtps = snapshot.emailOtps;
+      this.desktopLoginTickets = snapshot.desktopLoginTickets;
+      this.sessions = snapshot.sessions;
+      this.orders = snapshot.orders;
+      this.entitlements = snapshot.entitlements;
+      this.llmConfig = snapshot.llmConfig;
+      this.llmUsageEvents = snapshot.llmUsageEvents;
+      this.activationCodes = snapshot.activationCodes;
+      this.adminSessions = snapshot.adminSessions;
+      this.adminEntitlementAdjustments = snapshot.adminEntitlementAdjustments;
+      this.webhookEvents = snapshot.webhookEvents;
+      throw error;
+    } finally {
+      release();
+    }
+  }
+}
+
+function storedWebhookTransactionId(payload: string): string | null {
+  try {
+    const value = JSON.parse(payload) as { transactionId?: unknown };
+    return typeof value.transactionId === "string" ? value.transactionId : null;
+  } catch {
+    return null;
   }
 }

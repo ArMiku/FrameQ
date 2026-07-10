@@ -43,7 +43,7 @@ FrameQ is still stabilizing. When a user loses time or LLM API-call quota becaus
 - `quota_add` must be non-negative in v1 and should have a practical upper bound to prevent accidental large grants.
 - `extend_days` should have a practical upper bound, for example 365 days per operation.
 - Store an audit record, for example `AdminEntitlementAdjustment`, containing `id`, `adminEmail`, `userId`, `reason`, `note`, before/after expiry, before/after quota limit, before/after quota used, and `createdAt`.
-- The existing direct remaining-quota edit route may remain for repair, but compensation should prefer the new additive adjustment path because it better matches "奖励用户" and preserves usage history.
+- The additive adjustment route is the only supported administrator quota-write path. Direct remaining-quota editing, quota reduction, and quota reset are not supported without a separately specified, audited operation type.
 
 ## User-visible Behavior
 

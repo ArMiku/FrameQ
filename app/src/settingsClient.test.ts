@@ -44,14 +44,17 @@ describe("settings client", () => {
     const runner: SettingsCommandRunner = async (command, args) => {
       calls.push({ command, args });
       if (command === "download_asr_model") {
-        return { started: true };
+        return { started: true, status: "completed" };
       }
-      return { cancelled: true, error: null };
+      return { status: "cancelling", error: null };
     };
 
-    await expect(downloadAsrModel(runner)).resolves.toEqual({ started: true });
+    await expect(downloadAsrModel(runner)).resolves.toEqual({
+      started: true,
+      status: "completed",
+    });
     await expect(cancelAsrModelDownload(runner)).resolves.toEqual({
-      cancelled: true,
+      status: "cancelling",
       error: null,
     });
 

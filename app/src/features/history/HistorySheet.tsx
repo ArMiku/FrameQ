@@ -12,11 +12,15 @@ const historyStatusCopy: Record<HistoryItem["status"], string> = {
 type HistorySheetProps = {
   controller: HistoryController;
   formatHistoryDate: (value: string) => string;
+  selectionDisabled: boolean;
+  selectionDisabledReason: string;
 };
 
 export function HistorySheet({
   controller,
   formatHistoryDate,
+  selectionDisabled,
+  selectionDisabledReason,
 }: HistorySheetProps) {
   const {
     historyOpen,
@@ -50,6 +54,11 @@ export function HistorySheet({
           </button>
         </header>
         {historyNotice ? <p className="action-notice">{historyNotice}</p> : null}
+        {selectionDisabled ? (
+          <p id="history-selection-disabled-reason" className="action-notice" role="status">
+            {selectionDisabledReason}
+          </p>
+        ) : null}
         <div className="history-list">
           {historyItems.map((item) => (
             <button
@@ -57,6 +66,10 @@ export function HistorySheet({
               key={item.id}
               type="button"
               onClick={() => openHistoryItem(item)}
+              disabled={selectionDisabled}
+              aria-describedby={
+                selectionDisabled ? "history-selection-disabled-reason" : undefined
+              }
             >
               <div className="history-item-main">
                 <span className={`history-status ${item.status}`}>

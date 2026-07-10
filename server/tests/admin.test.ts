@@ -181,11 +181,15 @@ describe("admin activation code routes", () => {
     expect(response.body).toContain("llm-config-form");
     expect(response.body).toContain("llm-quota-table");
     expect(response.body).toContain("entitlement-adjustment-table");
+    expect(response.body).toContain("/entitlement-adjustments");
+    expect(response.body).not.toContain("/llm-quota");
+    expect(response.body).not.toContain("quota-remaining-input");
+    expect(response.body).not.toContain("quota-save");
     expect(response.body).toContain("权益调整");
     expect(response.body).toContain("增加 LLM API 调用次数");
     expect(response.body).toContain("延长天数");
     expect(response.body).toContain(`data-user-id="${user.id}"`);
-    expect(response.body).toContain('value="15"');
+    expect(response.body).toContain("<td>15</td>");
     expect(response.body).toContain("生成月卡激活码");
     expect(response.body).toContain("兑换后获得 31 天月卡权益");
     expect(response.body).toContain("激活码有效期");

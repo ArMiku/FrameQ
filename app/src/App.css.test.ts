@@ -98,7 +98,19 @@ describe("App result workspace layout styles", () => {
   });
 
   test("uses explicit task copy for the processing cancel action", () => {
-    expect(appTsx).toContain("<span>取消任务</span>");
+    expect(appTsx).toContain('workflow.stage === "cancelling" ? "正在取消" : "取消任务"');
+    expect(appTsx).toContain('disabled={workflow.stage === "cancelling"}');
+  });
+
+  test("routes sign-out cancellation through the workflow controller", () => {
+    expect(appTsx).not.toContain("void cancelProcess();");
+    expect(appTsx).toContain("void cancelCurrentProcessing();");
+  });
+
+  test("keeps history task replacement inside the workflow controller", () => {
+    expect(appTsx).toContain("restoreHistoryItem(item);");
+    expect(appTsx).toContain("selectionDisabled={!canRestoreHistory}");
+    expect(appTsx).not.toContain("setWorkflow({");
   });
 
   test("uses a custom compact audio review bar instead of the browser audio controls", () => {

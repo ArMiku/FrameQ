@@ -1,5 +1,29 @@
 # Security and Compliance
 
+## 2026-07-10 Desktop Task-Identity Isolation Boundary
+
+- Desktop workflow state is task-scoped user data. A history selection must not replace task identity while a worker, AI retry, or cancellation operation is active, because late callbacks could otherwise expose one task's transcript, artifacts, summary, or insights in another task's UI.
+- The workflow controller owns operation invalidation and complete history restoration. App, history loading, and detail features must use narrow semantic actions rather than a generic workflow-state setter.
+- Task-local transcript saves must include the expected task ID and are ignored if the visible task changed before the save returns. Resetting for a permitted history restore closes detail/preference transient UI, preventing task-local controls from continuing to act on a prior task.
+
+## 2026-07-10 Desktop Process-Tree Cancellation Boundary
+
+- The desktop may signal only a PID/PGID recorded by `ProcessSupervisor` for the current in-process worker or model-download instance. It must not accept a PID, PGID, command, or shell fragment from IPC, UI, worker output, task data, or a log entry.
+- Windows cancellation uses the fixed `taskkill /T /F` argument vector. Unix cancellation uses a fixed `kill` argument vector directed at the worker-created process group, first `TERM` and then bounded-grace `KILL` only if the group remains. No shell interpolation is permitted.
+- A delivered termination signal is not proof of a final cancelled state. State rollback after a signal error and terminal cleanup after child observation must match the same instance ID, so stale cancellation/exit handling cannot hide a real result or interfere with a newer process.
+- Cancellation must preserve existing task artifacts, cache, and model files. It must not log raw worker arguments, source URLs, credentials, descendant command lines, or arbitrary termination diagnostics; public UI status uses structured cancellation states rather than parsing error text.
+- The Unix parent-plus-child fixture is conditional on a Unix host. Windows command/state coverage does not prove macOS/Linux signal delivery; release validation on those platforms remains required before making a platform-specific release claim.
+
+## 2026-07-10 Entitlement Transaction Integrity Boundary
+
+- A payment webhook, activation-code redemption, and administrator entitlement adjustment are security-sensitive state transitions. Their related data changes must commit or roll back together; partial-write compensation is not an acceptable consistency mechanism.
+- Store-level semantic operations must validate current state and make all related writes in one transaction. Prisma transaction callbacks must remain inside PrismaStore; routes and services must not compose a persistence transaction from generic read/write calls.
+- Webhook replays are safe only when provider event, order binding, and transaction identity agree. Conflicts must return a structured public error without overwriting the recorded transaction; unique-event handling must inspect Prisma known error codes, never fragile exception text.
+- Administrator compensation audit records are required evidence, not best-effort telemetry. A failure to write the append-only audit record rolls back the entitlement mutation. Logs may identify record IDs and users but must not include payment payloads, activation-code plaintext, session tokens, or free-form support notes.
+- All administrator quota grants are additive, require an audit reason, preserve `llmQuotaUsed`, and use the same entitlement-adjustment transaction. Direct remaining-quota edits, reductions, and resets are not supported without a separately approved audited operation.
+- Historical automatic recovery is limited to a verified, deterministic payment replay. Ambiguous redeemed-code and missing-audit states require an administrator `manual_repair` adjustment so the repair itself is append-only and auditable.
+- WeChat Pay routes are disabled by default and must not be represented as production payment support. Local billing tests exercise only internal state transitions; they do not use provider credentials, call the provider, validate a live callback, or establish end-to-end payment readiness.
+
 ## 2026-07-10 Source URL Secret Boundary
 
 - A submitted source URL is credential-bearing input even when it points to public content. `xsec_token`, access/session/auth tokens, signatures, expiries, cookies encoded in queries, URL userinfo, and fragments must be treated as secrets or volatile request material.

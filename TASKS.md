@@ -12,6 +12,8 @@
 
 ## Account and Billing
 
+- [x] Make payment settlement, activation-code redemption, and administrator compensation transactional (2026-07-10) ✅ Store semantic transaction boundaries now commit all related state together; administrator quota grants use the same audited additive adjustment and have no remaining-quota bypass; verified webhook replays recover only deterministic old payment states, while ambiguous old activation/admin states require audited `manual_repair`. WeChat billing remains disabled/unintegrated. Server/worker/app/Rust/docs/diff gates passed.
+
 - [x] Add server-managed LLM config and monthly insight quota (2026-06-22) ✅ Admin Web owns encrypted dedicated FrameQ client LLM config and per-user quota editing; desktop accounts quota per cloud LLM API call attempt; settings no longer exposes LLM fields; server/app/Rust/worker/docs gates passed.
 
 - [x] Use administrator-issued activation codes as the visible entitlement unlock path (2026-06-21) ✅ Admin OTP login, hash-only one-time 31-day activation codes, desktop redemption, entitlement reuse, Admin Web list/create flow, and client-side processing gate; server/app/Rust/docs gates passed.
@@ -19,6 +21,10 @@
 - [x] Add account login and entitlement foundation (2026-06-21) ✅ TypeScript Fastify service with Prisma SQLite, email OTP login, desktop deep-link session exchange, entitlement model, and client-side processing gate; server/app/Rust/docs gates passed.
 
 ## 进行中
+
+- [x] 修复历史任务恢复绕过 workflow controller 的竞争问题（2026-07-10）✅ workflow controller 成为任务身份的唯一入口；视频处理、AI retry 与 `cancelling` 时历史可只读浏览但条目禁用，绝不自动取消后切换；稳定恢复统一失效旧 operation、关闭详情/偏好 flow 并清理 notice，文字稿保存只在预期 task 仍为当前任务时更新。✅ app 205、Rust 85、worker 244、server 57、ruff、build、文档和 diff 门禁通过；历史列表并发加载的请求排序仍登记为技术债。
+
+- [x] 修复桌面端取消任务进程树与真实终态语义（2026-07-10）✅ `ProcessSupervisor` 统一视频 worker 与 ASR 模型下载的实例化、取消占用、失败回退和终态清理；Windows 使用受控 `taskkill /T /F`，Unix 条件实现独立进程组 TERM→KILL；前端只在确认取消后重置，取消失败和自然完成仍保留真实结果。Windows 自动化覆盖已通过；Unix 父子进程实测保留为 Unix 主机发布前验证。
 
 - [x] 实现桌面端一键升级（2026-06-23）— Tauri updater + GitHub Releases updater manifest/artifacts；客户端与 worker 整体升级，保留 app-local data，不打包 ASR 权重或私有配置。✅ 代码完成，自动化门禁全部通过（server 32、app 84、Rust 31、worker 99、ruff、build、docs）。✅ 2026-06-27 项目决策：因中国境内访问 GitHub Releases 速度过慢，不再执行旧版到新版的 GitHub updater 真实下载/安装测试；该项作为 v1 测试豁免，不再阻塞发布。
 
@@ -61,7 +67,7 @@
 
 - [x] 早期 UI 层 LLM 配置入口（2026-06-17，已废弃）✅ 曾支持桌面 UI 保存 OpenAI-compatible base URL、API key、model 和 timeout；当前已由 server-managed LLM 取代，桌面设置不再输入、保存或回显 LLM 信息。
 - [x] MVP 最终验收和残余风险整理（2026-06-17）✅ 真实 InsightFlow LLM retry smoke 返回 `completed` 且生成 8 个话题点；自动化测试、文档门禁和 Tauri no-bundle 构建均通过；高优先级技术债已关闭
-- [x] 完善真正取消任务语义（2026-06-17）✅ 取消会终止运行中的 worker 进程树，UI 返回输入态并忽略晚到结果
+- [x] 早期取消任务语义（2026-06-17，已由 2026-07-10 ProcessSupervisor 方案取代）✅ 曾在 UI 点击后立即返回输入态；当前不再忽略可能先到的真实终态。
 - [x] 早期 `.env` LLM smoke（2026-06-16，已废弃）✅ 曾用项目根 `.env` 验证 OpenAI-compatible Chat Completions；当前桌面 worker 不再读取项目根或 app-local `.env` 中的 `FRAMEQ_LLM_*`，LLM key/config 只由 FrameQ server 管理。
 - [x] 完善话题点重试交互（2026-06-16）✅ `部分完成` 状态的话题点卡片可重新触发 InsightFlow，保留既有文字稿并只重跑话题点生成
 - [x] 完善模型下载/加载进度展示（2026-06-16）✅ worker 进度事件经 Tauri 转发到 UI，展示下载、校验、音频提取、模型缓存、模型加载、转写和话题点生成文案

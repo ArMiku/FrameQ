@@ -2,16 +2,21 @@ import { type FormEvent, useCallback, useMemo, useRef, useState } from "react";
 
 import type { AccountStatus } from "../../accountState";
 import { canGenerateAiWithAccount, canProcessWithAccount } from "../../accountState";
+import { historyItemToWorkerResult, type HistoryItem } from "../../historyClient";
+import type { SaveTranscriptEditResponse } from "../../transcriptDetailClient";
 import {
   canSubmitUrl,
-  cancelProcessing,
+  confirmProcessingCancellation,
   createInitialWorkflow,
   getProgressSteps,
   getResultCards,
   getToolbarNewTaskButtonState,
   getVisibleWorkflowError,
+  isProcessingStage,
   mergeProgressEvent,
   normalizeSubmitUrl,
+  requestProcessingCancellation,
+  restoreProcessingAfterCancellationFailure,
   startInsightRetry,
   startProcessing,
   summarizeWorkerResult,
@@ -21,6 +26,9 @@ import { cancelProcess, processVideo, retryInsights } from "../../workerClient";
 import type { PreferenceSnapshot } from "../../insightPreferences";
 
 type OpenAccountPanel = (notice?: string) => void;
+
+export const HISTORY_RESTORE_UNAVAILABLE_MESSAGE =
+  "当前任务仍在处理中，完成或取消确认后才能恢复历史任务。";
 
 type UseTaskProcessingControllerOptions = {
   onResetTaskUi: () => void;
@@ -37,15 +45,53 @@ export function useTaskProcessingController({
 }: UseTaskProcessingControllerOptions) {
   const [workflow, setWorkflow] = useState(createInitialWorkflow);
   const operationIdRef = useRef(0);
+  const cancellationOperationIdRef = useRef<number | null>(null);
 
   const canSubmit = canSubmitUrl(workflow.url);
   const progressSteps = useMemo(() => getProgressSteps(workflow), [workflow]);
   const resultCards = useMemo(() => getResultCards(workflow), [workflow]);
   const visibleWorkflowError = getVisibleWorkflowError(workflow);
   const toolbarNewTaskButtonState = getToolbarNewTaskButtonState(workflow.stage);
+  const canRestoreHistory = !isProcessingStage(workflow.stage);
+
+  const updateUrlDraft = useCallback((url: string) => {
+    setWorkflow((current) =>
+      current.stage === "waiting_input"
+        ? {
+            ...current,
+            url,
+          }
+        : current,
+    );
+  }, []);
+
+  const applyTranscriptSave = useCallback(
+    (expectedTaskId: string | null, saved: SaveTranscriptEditResponse) => {
+      setWorkflow((current) => {
+        if (
+          !expectedTaskId ||
+          current.taskId !== expectedTaskId ||
+          saved.task_id !== expectedTaskId
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          text: saved.text,
+          artifacts: {
+            ...current.artifacts,
+            ...saved.artifacts,
+          },
+        };
+      });
+    },
+    [],
+  );
 
   const resetWorkflow = useCallback(() => {
     operationIdRef.current += 1;
+    cancellationOperationIdRef.current = null;
     onResetTaskUi();
     setWorkflow(createInitialWorkflow());
   }, [onResetTaskUi]);
@@ -57,6 +103,25 @@ export function useTaskProcessingController({
 
     resetWorkflow();
   }, [resetWorkflow, toolbarNewTaskButtonState.disabled]);
+
+  const restoreHistoryItem = useCallback(
+    (item: HistoryItem): boolean => {
+      if (isProcessingStage(workflow.stage)) {
+        return false;
+      }
+
+      operationIdRef.current += 1;
+      cancellationOperationIdRef.current = null;
+      onResetTaskUi();
+      setWorkflow({
+        ...summarizeWorkerResult(historyItemToWorkerResult(item)),
+        url: item.url,
+        submittedUrl: item.url,
+      });
+      return true;
+    },
+    [onResetTaskUi, workflow.stage],
+  );
 
   const submitUrl = useCallback(
     async (
@@ -87,21 +152,44 @@ export function useTaskProcessingController({
       if (operationIdRef.current !== operationId) {
         return;
       }
+      cancellationOperationIdRef.current = null;
+      if (result.error?.code === "WORKER_CANCELLED") {
+        operationIdRef.current += 1;
+        onResetTaskUi();
+        setWorkflow((current) => confirmProcessingCancellation(current));
+        return;
+      }
       setWorkflow((current) => ({
         ...summarizeWorkerResult(result),
         url: submittedUrl,
         submittedUrl: current.submittedUrl || submittedUrl,
       }));
     },
-    [canSubmit, processBlockerMessage, workflow.url],
+    [canSubmit, onResetTaskUi, processBlockerMessage, workflow.url],
   );
 
   const cancelCurrentProcessing = useCallback(async () => {
-    operationIdRef.current += 1;
-    onResetTaskUi();
-    setWorkflow((current) => cancelProcessing(current));
-    await cancelProcess();
-  }, [onResetTaskUi]);
+    const operationId = operationIdRef.current;
+    if (cancellationOperationIdRef.current === operationId) {
+      return;
+    }
+
+    cancellationOperationIdRef.current = operationId;
+    setWorkflow((current) => requestProcessingCancellation(current));
+    const result = await cancelProcess();
+    if (operationIdRef.current !== operationId) {
+      return;
+    }
+    if (result.status === "failed") {
+      cancellationOperationIdRef.current = null;
+      setWorkflow((current) =>
+        restoreProcessingAfterCancellationFailure(
+          current,
+          result.error || "无法终止当前进程树。",
+        ),
+      );
+    }
+  }, []);
 
   const retryInsightGeneration = useCallback(
     async (
@@ -134,6 +222,13 @@ export function useTaskProcessingController({
       if (operationIdRef.current !== operationId) {
         return;
       }
+      cancellationOperationIdRef.current = null;
+      if (result.error?.code === "WORKER_CANCELLED") {
+        operationIdRef.current += 1;
+        onResetTaskUi();
+        setWorkflow((current) => confirmProcessingCancellation(current));
+        return;
+      }
       setWorkflow((current) => ({
         ...summarizeWorkerResult({
           ...result,
@@ -152,19 +247,29 @@ export function useTaskProcessingController({
       }));
       onRetryCompleted?.();
     },
-    [aiBlockerMessage, onRetryStarted, workflow.artifacts.transcript_txt, workflow.taskId],
+    [
+      aiBlockerMessage,
+      onResetTaskUi,
+      onRetryStarted,
+      workflow.artifacts.transcript_txt,
+      workflow.taskId,
+    ],
   );
 
   return {
     workflow,
-    setWorkflow,
     canSubmit,
+    canRestoreHistory,
+    historyRestoreUnavailableMessage: HISTORY_RESTORE_UNAVAILABLE_MESSAGE,
     progressSteps,
     resultCards,
     visibleWorkflowError,
     toolbarNewTaskButtonState,
     cancelCurrentProcessing,
     resetWorkflow,
+    updateUrlDraft,
+    applyTranscriptSave,
+    restoreHistoryItem,
     retryInsightGeneration,
     startNewTaskFromToolbar,
     submitUrl,

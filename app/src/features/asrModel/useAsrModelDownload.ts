@@ -30,9 +30,10 @@ export function useAsrModelDownload() {
   const [modelDownloadNotice, setModelDownloadNotice] = useState("");
   const [modelDownloadStalled, setModelDownloadStalled] = useState(false);
   const modelDownloadOperationIdRef = useRef(0);
-  const cancelledModelDownloadOperationIdRef = useRef<number | null>(null);
+  const modelDownloadPhaseRef = useRef<"running" | "cancelling" | "finished">("finished");
+  const modelDownloadProgressBeforeCancellationRef = useRef<AsrModelDownloadProgress | null>(null);
   const modelDownloadProgressUpdatedAtRef = useRef(Date.now());
-  const modelDownloadActive = ["started", "downloading", "extracting"].includes(
+  const modelDownloadActive = ["started", "downloading", "extracting", "cancelling"].includes(
     modelDownloadProgress.status,
   );
 
@@ -77,7 +78,8 @@ export function useAsrModelDownload() {
 
     const operationId = modelDownloadOperationIdRef.current + 1;
     modelDownloadOperationIdRef.current = operationId;
-    cancelledModelDownloadOperationIdRef.current = null;
+    modelDownloadPhaseRef.current = "running";
+    modelDownloadProgressBeforeCancellationRef.current = null;
     setModelGuideOpen(true);
     setModelDownloadNotice("");
     setModelDownloadStalled(false);
@@ -97,7 +99,7 @@ export function useAsrModelDownload() {
           shouldApplyModelDownloadUpdate({
             operationId,
             activeOperationId: modelDownloadOperationIdRef.current,
-            cancelledOperationId: cancelledModelDownloadOperationIdRef.current,
+            phase: modelDownloadPhaseRef.current,
           })
         ) {
           modelDownloadProgressUpdatedAtRef.current = Date.now();
@@ -106,14 +108,25 @@ export function useAsrModelDownload() {
         }
       });
 
-      await downloadAsrModel();
+      const downloadResult = await downloadAsrModel();
       if (
         !shouldApplyModelDownloadUpdate({
           operationId,
           activeOperationId: modelDownloadOperationIdRef.current,
-          cancelledOperationId: cancelledModelDownloadOperationIdRef.current,
+          phase: modelDownloadPhaseRef.current,
         })
       ) {
+        return;
+      }
+      if (downloadResult.status === "cancelled") {
+        modelDownloadPhaseRef.current = "finished";
+        setModelDownloadStalled(false);
+        setModelDownloadProgress({
+          status: "cancelled",
+          message: "模型下载已取消。",
+          progress: 0,
+        });
+        setModelDownloadNotice("模型下载已取消。已下载的模型文件会保留以便下次继续。 ");
         return;
       }
       const status = await refreshAsrModelStatus();
@@ -121,11 +134,12 @@ export function useAsrModelDownload() {
         !shouldApplyModelDownloadUpdate({
           operationId,
           activeOperationId: modelDownloadOperationIdRef.current,
-          cancelledOperationId: cancelledModelDownloadOperationIdRef.current,
+          phase: modelDownloadPhaseRef.current,
         })
       ) {
         return;
       }
+      modelDownloadPhaseRef.current = "finished";
       if (status.asrModelAvailable) {
         setModelDownloadStalled(false);
         setModelDownloadProgress({
@@ -148,12 +162,13 @@ export function useAsrModelDownload() {
         !shouldApplyModelDownloadUpdate({
           operationId,
           activeOperationId: modelDownloadOperationIdRef.current,
-          cancelledOperationId: cancelledModelDownloadOperationIdRef.current,
+          phase: modelDownloadPhaseRef.current,
         })
       ) {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
+      modelDownloadPhaseRef.current = "finished";
       setModelDownloadStalled(false);
       setModelDownloadProgress((current) => ({
         status: "failed",
@@ -169,21 +184,57 @@ export function useAsrModelDownload() {
   }
 
   async function cancelCurrentAsrModelDownload() {
+    const operationId = modelDownloadOperationIdRef.current;
+    if (modelDownloadPhaseRef.current !== "running") {
+      return;
+    }
+
+    modelDownloadPhaseRef.current = "cancelling";
+    setModelDownloadProgress((current) => {
+      modelDownloadProgressBeforeCancellationRef.current = current;
+      return {
+        status: "cancelling",
+        message: "正在取消模型下载，请等待当前进程结束。",
+        progress: current.progress,
+      };
+    });
+    setModelDownloadStalled(false);
+    setModelDownloadNotice("正在取消模型下载，请等待当前进程结束。");
     try {
-      const operationId = modelDownloadOperationIdRef.current;
       const result = await cancelAsrModelDownload();
-      if (result.cancelled) {
-        cancelledModelDownloadOperationIdRef.current = operationId;
+      if (operationId !== modelDownloadOperationIdRef.current) {
+        return;
       }
-      setModelDownloadProgress((current) => ({
-        status: result.cancelled ? "cancelled" : current.status,
-        message: result.cancelled ? "模型下载已取消。" : result.error || "当前没有正在下载的模型。",
-        progress: result.cancelled ? 0 : current.progress,
-      }));
-      setModelDownloadStalled(false);
-      setModelDownloadNotice(result.cancelled ? "模型下载已取消。" : result.error || "当前没有正在下载的模型。");
+      if (result.status === "failed") {
+        modelDownloadPhaseRef.current = "running";
+        const previous = modelDownloadProgressBeforeCancellationRef.current;
+        setModelDownloadProgress(
+          previous
+            ? { ...previous, message: `取消失败：${result.error || "无法终止下载进程。"}` }
+            : {
+                status: "downloading",
+                message: `取消失败：${result.error || "无法终止下载进程。"}`,
+                progress: 0,
+              },
+        );
+        setModelDownloadNotice(`取消失败：${result.error || "无法终止下载进程。"}`);
+        return;
+      }
+      setModelDownloadNotice(
+        result.status === "not_running"
+          ? "下载已接近结束，正在等待最终结果。"
+          : "正在取消模型下载，请等待当前进程结束。",
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (operationId !== modelDownloadOperationIdRef.current) {
+        return;
+      }
+      modelDownloadPhaseRef.current = "running";
+      const previous = modelDownloadProgressBeforeCancellationRef.current;
+      if (previous) {
+        setModelDownloadProgress({ ...previous, message: `取消失败：${message}` });
+      }
       setModelDownloadStalled(false);
       setModelDownloadNotice(`取消失败：${message}`);
     }

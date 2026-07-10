@@ -33,10 +33,11 @@ export type FirstRunStatusResponse = {
 
 export type AsrModelDownloadResult = {
   started: boolean;
+  status: "completed" | "cancelled" | "already_available";
 };
 
 export type CancelAsrModelDownloadResult = {
-  cancelled: boolean;
+  status: "cancelling" | "already_cancelling" | "not_running" | "failed";
   error?: string | null;
 };
 

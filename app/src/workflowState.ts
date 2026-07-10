@@ -2,6 +2,7 @@ import type { Insight } from "./insightPreferences";
 
 export type WorkflowStage =
   | "waiting_input"
+  | "cancelling"
   | "video_extracting"
   | "video_transcribing"
   | "insights_generating"
@@ -70,6 +71,7 @@ export type ToolbarNewTaskButtonState = {
 
 export type WorkflowState = {
   stage: WorkflowStage;
+  cancellingFromStage: Exclude<WorkflowStage, "waiting_input" | "cancelling" | "completed" | "partial_completed" | "failed"> | null;
   url: string;
   submittedUrl: string;
   showUrlInput: boolean;
@@ -92,6 +94,7 @@ const PROGRESS_STEP_LABELS: Array<Pick<ProgressStep, "id" | "label">> = [
 export function createInitialWorkflow(): WorkflowState {
   return {
     stage: "waiting_input",
+    cancellingFromStage: null,
     url: "",
     submittedUrl: "",
     showUrlInput: true,
@@ -111,6 +114,7 @@ export function startProcessing(state: WorkflowState, url: string): WorkflowStat
   return {
     ...state,
     stage: "video_extracting",
+    cancellingFromStage: null,
     url,
     submittedUrl: url,
     showUrlInput: false,
@@ -130,6 +134,7 @@ export function startInsightRetry(state: WorkflowState, target: InsightRetryTarg
   return {
     ...state,
     stage: "insights_generating",
+    cancellingFromStage: null,
     showUrlInput: false,
     statusMessage:
       target === "summary"
@@ -141,6 +146,42 @@ export function startInsightRetry(state: WorkflowState, target: InsightRetryTarg
 }
 
 export function cancelProcessing(state: WorkflowState): WorkflowState {
+  return confirmProcessingCancellation(state);
+}
+
+export function requestProcessingCancellation(state: WorkflowState): WorkflowState {
+  const cancellingFromStage = state.stage;
+  if (
+    cancellingFromStage !== "video_extracting" &&
+    cancellingFromStage !== "video_transcribing" &&
+    cancellingFromStage !== "insights_generating"
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    stage: "cancelling",
+    cancellingFromStage,
+    statusMessage: "正在取消任务，请等待当前进程结束。",
+    error: null,
+  };
+}
+
+export function restoreProcessingAfterCancellationFailure(
+  state: WorkflowState,
+  message: string,
+): WorkflowState {
+  const stage = state.cancellingFromStage ?? "video_extracting";
+  return {
+    ...state,
+    stage,
+    cancellingFromStage: null,
+    statusMessage: `取消失败：${message}`,
+  };
+}
+
+export function confirmProcessingCancellation(state: WorkflowState): WorkflowState {
   return {
     ...createInitialWorkflow(),
     url: state.submittedUrl || state.url,
@@ -148,7 +189,8 @@ export function cancelProcessing(state: WorkflowState): WorkflowState {
 }
 
 export function getProgressSteps(state: WorkflowState): ProgressStep[] {
-  const activeIndex = PROGRESS_STEP_LABELS.findIndex((step) => step.id === state.stage);
+  const progressStage = state.stage === "cancelling" ? state.cancellingFromStage : state.stage;
+  const activeIndex = PROGRESS_STEP_LABELS.findIndex((step) => step.id === progressStage);
 
   return PROGRESS_STEP_LABELS.map((step, index) => {
     if (state.stage === "completed" || state.stage === "partial_completed") {
@@ -171,7 +213,8 @@ export function isProcessingStage(stage: WorkflowStage): boolean {
   return (
     stage === "video_extracting" ||
     stage === "video_transcribing" ||
-    stage === "insights_generating"
+    stage === "insights_generating" ||
+    stage === "cancelling"
   );
 }
 

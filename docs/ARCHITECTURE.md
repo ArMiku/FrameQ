@@ -1,5 +1,29 @@
 # FrameQ Architecture
 
+## 2026-07-10 History Task-Restore Ownership Boundary
+
+- `useTaskProcessingController` is the only owner that may replace a workflow task identity. It exposes semantic actions for stable history restoration, waiting-input URL drafts, and a guarded task-local transcript-save result; it must not expose its internal React setter to App, history, or detail features.
+- A history restore is permitted only when the shared `isProcessingStage` predicate is false. Video processing, AI retry, and `cancelling` all reject restoration without cancelling or invalidating the current worker operation, so that operation continues to publish its real terminal state.
+- A permitted restore increments the controller operation ID, clears task-scoped transient UI through the existing reset callback, and installs one complete history-derived workflow. Task ID, task directory, artifacts, transcript text, summary, and insights are therefore always from the same selected task.
+- Worker progress/result callbacks and transcript-save callbacks must prove that their captured task/operation is still current before merging state. History loading and panel visibility remain in `useHistoryController`; App remains composition-only and does not own a task-identity state machine.
+
+## 2026-07-10 Desktop Process Supervision and Cancellation Boundary
+
+- `ProcessSupervisor` is the one reusable state machine for the video-worker lane and the ASR-model-download lane. Each lane admits one child at a time and records a monotonically increasing instance ID, PID, Unix PGID (equal to the controlled child PID), and `Running` or `Cancelling` phase; absence is the only finished state.
+- Start, cancellation claim, signal-failure rollback, and terminal cleanup must match the running instance ID. A stale waiter or PID cannot clear or restore a newer child. A duplicate cancellation request returns structured `already_cancelling` and sends no second signal.
+- Windows terminates the controlled PID with `taskkill /PID <pid> /T /F`. Unix starts each worker in a fresh process group, sends `TERM` to the negative PGID, waits only for the bounded escalation grace, and sends `KILL` to the same group only if it remains alive. Commands receive only supervisor-owned numeric IDs and are never built through a shell.
+- Signal delivery exposes `cancelling`, never a fabricated completed cancellation. The waiter owns the terminal result: a structured worker success or failure that wins the race is preserved; only an unstructured termination outcome while the matching instance remains `Cancelling` becomes `WORKER_CANCELLED`.
+- React keeps the operation ID and task UI while cancellation is pending. It resets only after a confirmed cancelled worker/model-download terminal result; a signal failure restores the prior observable processing state so progress and the real later result remain visible. Cancellation deliberately preserves existing outputs, cache, and model files.
+
+## 2026-07-10 Server Entitlement Transaction Boundary
+
+- `Store` is the only persistence boundary for payment settlement, activation-code redemption, and administrator entitlement compensation. Its semantic methods return the final entitlement and, for compensation, its audit record; no caller coordinates those writes itself.
+- `PrismaStore` owns one interactive `this.prisma.$transaction(...)` per semantic operation. The transaction callback is not exposed to services or Fastify routes and contains all validation reads, conditional state transitions, entitlement writes, webhook/audit writes, and final reads.
+- `BillingService`, `ActivationCodeService`, and the entitlement-adjustment use case own policy invocation and compatible error mapping. Fastify routes own only authentication, CSRF, request parsing, and HTTP mapping.
+- Payment idempotency is keyed by provider event and reconciled with immutable order transaction identity. A verified replay can complete a deterministically incomplete historical payment once; conflicting order/event/transaction state fails without overwriting. Activation and administrator adjustments have no automatic legacy compensation path when their intended grant cannot be reconstructed safely.
+- Administrator quota display is read-only. Every administrator quota grant goes through `applyEntitlementAdjustmentWithAudit` with positive `quota_add` and a reason; there is no parallel remaining-quota write route or Store method.
+- WeChat billing code remains a disabled future integration. The server enables its routes only when `WECHAT_PAY_ENABLED` is exactly `"1"`; ordinary release behavior keeps the channel closed and does not imply provider readiness.
+
 ## 2026-07-10 Source Identity and AI Input Boundary
 
 - The worker owns one source boundary for every request. `SourceRequest` contains transient `download_url` for the current downloader/fallback call and has no persistence/result serialization path. The raw submission crosses IPC and redacted worker command payloads only for a cache-only identity preflight or the current full processing call. The separate persistable `SourceIdentity` contains only version, platform, stable id, effective part, and canonical URL.

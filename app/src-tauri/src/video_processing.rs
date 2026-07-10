@@ -6,8 +6,8 @@ use crate::{
     migrate_legacy_source_data_if_needed, parse_worker_output_or_fallback, parse_worker_stdout,
     path_to_env_string, resolve_runtime_paths, run_blocking_worker_command, spawn_worker_command,
     summarize_worker_result_for_log, terminate_process_tree, worker_command_log_detail,
-    worker_exit_log_detail, WorkerInvocation, WorkerProcessState, PROGRESS_EVENT_NAME,
-    PROGRESS_EVENT_PREFIX,
+    worker_exit_log_detail, CancelProcessResult, ProcessPhase, ProcessSupervisors,
+    WorkerInvocation, PROGRESS_EVENT_NAME, PROGRESS_EVENT_PREFIX,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -55,17 +55,11 @@ pub(crate) struct ProcessVideoResult {
     pub(crate) error: Option<WorkerError>,
 }
 
-#[derive(Debug, Serialize)]
-pub(crate) struct CancelProcessResult {
-    pub(crate) cancelled: bool,
-    pub(crate) error: Option<String>,
-}
-
 #[tauri::command]
 pub(crate) async fn process_video(
     window: Window,
     app: AppHandle,
-    process_state: State<'_, Arc<WorkerProcessState>>,
+    process_state: State<'_, Arc<ProcessSupervisors>>,
     request: ProcessVideoRequest,
 ) -> Result<serde_json::Value, String> {
     let process_state = Arc::clone(process_state.inner());
@@ -76,7 +70,7 @@ pub(crate) async fn process_video(
 fn process_video_blocking(
     window: Window,
     app: AppHandle,
-    process_state: Arc<WorkerProcessState>,
+    process_state: Arc<ProcessSupervisors>,
     mut request: ProcessVideoRequest,
 ) -> Result<serde_json::Value, String> {
     let paths = resolve_runtime_paths(&app)?;
@@ -98,7 +92,7 @@ fn process_video_blocking(
                 stage: "video_transcribing".to_string(),
             }),
         }));
-    }
+    };
     let _ = migrate_legacy_source_data_if_needed(&paths);
     if let Some(cached) = cached_process_result_for_request(&output_root, &request)? {
         let _ = append_desktop_log(
@@ -131,7 +125,7 @@ fn process_video_blocking(
     );
     let mut child = spawn_worker_command(spec)?;
     let worker_pid = child.id();
-    if !process_state.register(worker_pid) {
+    let Some(worker_instance) = process_state.video.start(worker_pid) else {
         let _ = terminate_process_tree(worker_pid);
         return Ok(serde_json::json!(ProcessVideoResult {
             status: "failed".to_string(),
@@ -148,10 +142,10 @@ fn process_video_blocking(
                 stage: "video_extracting".to_string(),
             }),
         }));
-    }
+    };
 
     let Some(stderr) = child.stderr.take() else {
-        process_state.clear_current(worker_pid);
+        process_state.video.finish(worker_instance.instance_id);
         let _ = terminate_process_tree(worker_pid);
         return Err("Could not capture worker stderr.".to_string());
     };
@@ -173,13 +167,11 @@ fn process_video_blocking(
     let output = match child.wait_with_output() {
         Ok(output) => output,
         Err(error) => {
-            process_state.clear_current(worker_pid);
-            let _ = process_state.take_cancelled(worker_pid);
+            process_state.video.finish(worker_instance.instance_id);
             return Err(error.to_string());
         }
     };
-    process_state.clear_current(worker_pid);
-    let was_cancelled = process_state.take_cancelled(worker_pid);
+    let terminal_phase = process_state.video.finish(worker_instance.instance_id);
     let stderr = stderr_reader
         .join()
         .unwrap_or_else(|_| "Worker stderr reader failed.".to_string());
@@ -189,7 +181,21 @@ fn process_video_blocking(
         &worker_exit_log_detail(worker_pid, &output, &stderr),
     );
 
-    if was_cancelled {
+    let parsed = match parse_worker_stdout(&output.stdout) {
+        Ok(value) => Some(value),
+        Err(error) if output.status.success() => return Err(error),
+        Err(_) => None,
+    };
+    if let Some(parsed) = parsed {
+        let _ = append_desktop_log(
+            &paths,
+            "worker.process_video.result",
+            &summarize_worker_result_for_log(&parsed),
+        );
+        return Ok(parsed);
+    };
+
+    if terminal_phase == Some(ProcessPhase::Cancelling) {
         let _ = append_desktop_log(
             &paths,
             "worker.process_video.cancelled",
@@ -210,7 +216,7 @@ fn process_video_blocking(
                 stage: "video_extracting".to_string(),
             }),
         }));
-    }
+    };
 
     let parsed = parse_worker_output_or_fallback(
         &output,
@@ -438,7 +444,7 @@ fn resolve_source_identity_for_cache(
 #[tauri::command]
 pub(crate) async fn retry_insights(
     app: AppHandle,
-    process_state: State<'_, Arc<WorkerProcessState>>,
+    process_state: State<'_, Arc<ProcessSupervisors>>,
     request: RetryInsightsRequest,
 ) -> Result<serde_json::Value, String> {
     let process_state = Arc::clone(process_state.inner());
@@ -447,7 +453,7 @@ pub(crate) async fn retry_insights(
 
 fn retry_insights_blocking(
     app: AppHandle,
-    process_state: Arc<WorkerProcessState>,
+    process_state: Arc<ProcessSupervisors>,
     request: RetryInsightsRequest,
 ) -> Result<serde_json::Value, String> {
     let paths = resolve_runtime_paths(&app)?;
@@ -467,7 +473,7 @@ fn retry_insights_blocking(
     );
     let child = spawn_worker_command(spec)?;
     let worker_pid = child.id();
-    if !process_state.register(worker_pid) {
+    let Some(worker_instance) = process_state.video.start(worker_pid) else {
         let _ = terminate_process_tree(worker_pid);
         return Ok(serde_json::json!(ProcessVideoResult {
             status: "partial_completed".to_string(),
@@ -484,18 +490,16 @@ fn retry_insights_blocking(
                 stage: "insights_generating".to_string(),
             }),
         }));
-    }
+    };
 
     let output = match child.wait_with_output() {
         Ok(output) => output,
         Err(error) => {
-            process_state.clear_current(worker_pid);
-            let _ = process_state.take_cancelled(worker_pid);
+            process_state.video.finish(worker_instance.instance_id);
             return Err(error.to_string());
         }
     };
-    process_state.clear_current(worker_pid);
-    let was_cancelled = process_state.take_cancelled(worker_pid);
+    let terminal_phase = process_state.video.finish(worker_instance.instance_id);
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let _ = append_desktop_log(
         &paths,
@@ -503,7 +507,21 @@ fn retry_insights_blocking(
         &worker_exit_log_detail(worker_pid, &output, &stderr),
     );
 
-    if was_cancelled {
+    let parsed = match parse_worker_stdout(&output.stdout) {
+        Ok(value) => Some(value),
+        Err(error) if output.status.success() => return Err(error),
+        Err(_) => None,
+    };
+    if let Some(parsed) = parsed {
+        let _ = append_desktop_log(
+            &paths,
+            "worker.retry_insights.result",
+            &summarize_worker_result_for_log(&parsed),
+        );
+        return Ok(parsed);
+    }
+
+    if terminal_phase == Some(ProcessPhase::Cancelling) {
         let _ = append_desktop_log(
             &paths,
             "worker.retry_insights.cancelled",
@@ -555,29 +573,9 @@ fn retry_insights_blocking(
 
 #[tauri::command]
 pub(crate) fn cancel_process(
-    process_state: State<'_, Arc<WorkerProcessState>>,
+    process_state: State<'_, Arc<ProcessSupervisors>>,
 ) -> Result<CancelProcessResult, String> {
-    let Some(pid) = process_state.current_pid() else {
-        return Ok(CancelProcessResult {
-            cancelled: false,
-            error: None,
-        });
-    };
-
-    process_state.mark_cancelled(pid);
-    match terminate_process_tree(pid) {
-        Ok(()) => {
-            process_state.clear_current(pid);
-            Ok(CancelProcessResult {
-                cancelled: true,
-                error: None,
-            })
-        }
-        Err(error) => Ok(CancelProcessResult {
-            cancelled: false,
-            error: Some(error),
-        }),
-    }
+    Ok(crate::request_process_cancellation(&process_state.video))
 }
 
 fn apply_configured_asr_model_to_request(
