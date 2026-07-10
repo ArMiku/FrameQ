@@ -22,6 +22,8 @@
 
 ## 进行中
 
+- [x] 补齐 React/UI 自动化 smoke（2026-07-11）✅ 复用现有 Vite + CDP 与 mock Tauri bridge，新增设置加载/失败/缓存清理、processing/retry/cancelling 历史只读、稳定恢复、延迟文字稿保存隔离和 summary/insights target 确认；focused 16/16 连续通过，app 211、Rust 90、worker 249、server 57、scripts 9 及构建/lint 门禁通过。真实 Tauri WebView、安装包和 OS 行为仍明确保留为残余风险。
+
 - [x] 移除原始 source URL 的 worker argv 暴露（2026-07-10，`8c968bf` 已推送）✅ process-video、source identity preflight 与 AI retry 统一使用 1 MiB 上限的一次性 stdin JSON；argv 仅保留固定模式旗标，环境变量、日志与错误不含请求载荷；PID/PGID 在写入前登记到 ProcessSupervisor，阻塞写入期间仍可取消并终止进程树。✅ Rust 90、worker 249、app 205、server 57、scripts 7、ruff/build/docs/diff 与打包 worker 26 文件 SHA-256 一致性门禁通过；仅保留进程内存/管道缓冲区和系统 crash dump 的本机残余风险，ExecPlan 已归档。
 - [x] 收口要点总结与启发灵感独立生成（2026-07-11 治理归档）✅ summary/mindmap 与 insights/preference 分目标生成，manifest 合并保留另一目标产物，本地转写与 AI 额度/配置 gate 分离；实现、文档与验证均已完成，ExecPlan 已归档。
 - [x] 修复历史任务恢复绕过 workflow controller 的竞争问题（2026-07-10）✅ workflow controller 成为任务身份的唯一入口；视频处理、AI retry 与 `cancelling` 时历史可只读浏览但条目禁用，绝不自动取消后切换；稳定恢复统一失效旧 operation、关闭详情/偏好 flow 并清理 notice，文字稿保存只在预期 task 仍为当前任务时更新。✅ app 205、Rust 85、worker 244、server 57、ruff、build、文档和 diff 门禁通过；历史列表并发加载的请求排序仍登记为技术债。

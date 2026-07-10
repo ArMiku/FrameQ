@@ -9,6 +9,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer as createNetServer, type AddressInfo } from "node:net";
 
+import {
+  createUiSmokeBridgeScript,
+  type UiSmokeScenario,
+} from "./support/mockTauriBridge";
+
 type CdpEvent = {
   method: string;
   params: unknown;
@@ -19,6 +24,7 @@ type CdpTarget = {
 };
 
 const pastedUrl = "https://www.douyin.com/video/7646789377271647540";
+const smokeVideoUrl = "https://www.douyin.com/video/7000000000000000003";
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 let viteServer: ViteDevServer | null = null;
@@ -170,7 +176,7 @@ describe("App browser input interactions", () => {
       expect(structure.result.value.commandPanelWidth).toBeLessThanOrEqual(820);
       expect(structure.result.value.desktopWindowWidth).toBe(1180);
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
 
@@ -244,7 +250,7 @@ describe("App browser input interactions", () => {
       expect(afterSubmit.result.value.resultTop).toBeGreaterThan(afterSubmit.result.value.processBottom);
       expect(afterSubmit.result.value.resultWidth).toBe(afterSubmit.result.value.processWidth);
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
 
@@ -328,7 +334,7 @@ describe("App browser input interactions", () => {
       expect(completedLayout.result.value.resultVerticalOverflow).toBeLessThanOrEqual(1);
       expect(completedLayout.result.value.maxResultCardHeight).toBeLessThanOrEqual(132);
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
 
@@ -356,7 +362,10 @@ describe("App browser input interactions", () => {
         expression: "document.querySelector('#video-url').focus()",
       });
       await page.send("Input.insertText", { text: pastedUrl });
-      await delay(300);
+      await waitForRuntimeCondition(
+        page,
+        `document.querySelector('#video-url')?.value === ${JSON.stringify(pastedUrl)} && !document.querySelector('.primary-button')?.disabled`,
+      );
 
       const after = await page.send<{ result: { value: Record<string, unknown> } }>(
         "Runtime.evaluate",
@@ -379,7 +388,7 @@ describe("App browser input interactions", () => {
       expect(afterState.bodyText).toContain("FrameQ");
       expect(afterState.primaryDisabled).toBe(false);
     } finally {
-      page.close();
+      await page.close();
     }
   });
 
@@ -508,7 +517,7 @@ describe("App browser input interactions", () => {
         submittedUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123",
       });
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
 
@@ -675,12 +684,16 @@ describe("App browser input interactions", () => {
       });
       expect(afterSignOut.result.value.commands).toContain("logout_account");
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
 });
 
 describe("App desktop sheet structure", () => {
+  test("uses a deterministic mock bridge for UI lifecycle smoke", () => {
+    expect(createUiSmokeBridgeScript({})).toContain("__FRAMEQ_UI_SMOKE__");
+  });
+
   test("opens settings as a grouped macOS-style sheet", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
@@ -782,7 +795,7 @@ describe("App desktop sheet structure", () => {
         actionsSameRow: true,
       });
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
 
@@ -911,9 +924,246 @@ describe("App desktop sheet structure", () => {
       expect(commands.result.value.hasAudioCacheSection).toBe(true);
       expect(commands.result.value.text).toContain("0 B");
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
+});
+
+describe.sequential("App controller-owned lifecycle UI smoke", () => {
+  test("renders settings loading and failure states and clears only the audio review cache", async () => {
+    const page = await openUiSmokePage({ deferredCommands: ["get_llm_config"] });
+
+    try {
+      await clickSelector(page, 'button[aria-label="应用设置"]');
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelector('.settings-sheet .inline-notice')?.textContent.includes('正在读取配置')",
+      );
+
+      await resolveUiSmokeCommand(page, "get_llm_config");
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('[data-settings-category=\"storage\"]')) && !document.querySelector('.settings-sheet .inline-notice')?.textContent.includes('正在读取配置')",
+      );
+      await clickSelector(page, '[data-settings-category="storage"]');
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelector('.audio-cache-settings-section')?.textContent.includes('1.5 MB')",
+      );
+      await clickSelector(page, ".audio-cache-settings-section button");
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelector('.audio-cache-settings-section')?.textContent.includes('0 B')",
+      );
+
+      const commands = await readUiSmokeCommands(page);
+      expect(commands.map((entry) => entry.command)).toContain("clear_audio_review_cache");
+      expect(
+        commands
+          .map((entry) => entry.command)
+          .filter((command) => command.startsWith("clear_")),
+      ).toEqual(["clear_audio_review_cache"]);
+      expectForbiddenProductCommandsAbsent(commands);
+    } finally {
+      await page.close();
+    }
+
+    const failedPage = await openUiSmokePage({
+      rejectedCommands: { get_llm_config: "settings unavailable" },
+    });
+    try {
+      await clickSelector(failedPage, 'button[aria-label="应用设置"]');
+      await waitForRuntimeCondition(
+        failedPage,
+        "document.querySelector('.settings-sheet .inline-notice')?.textContent.includes('读取配置失败：settings unavailable')",
+      );
+      const failureState = await evaluateValue<Record<string, unknown>>(
+        failedPage,
+        `({
+          notice: document.querySelector('.settings-sheet .inline-notice')?.textContent ?? '',
+          saveDisabled: document.querySelector('.settings-sheet .sheet-footer .primary-button')?.disabled ?? null
+        })`,
+      );
+      expect(failureState.notice).toContain("读取配置失败：settings unavailable");
+      expect(failureState.saveDisabled).toBe(false);
+      expectForbiddenProductCommandsAbsent(await readUiSmokeCommands(failedPage));
+    } finally {
+      await failedPage.close();
+    }
+  }, 20_000);
+
+  test("keeps history read-only during processing and restores one stable completed task", async () => {
+    const page = await openUiSmokePage({ deferredCommands: ["process_video"] });
+
+    try {
+      await submitSmokeVideo(page);
+      await openSmokeHistory(page);
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelectorAll('.history-item[disabled]').length === 2 && document.body.innerText.includes('当前任务仍在处理中')",
+      );
+
+      await resolveUiSmokeCommand(page, "process_video");
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelectorAll('.history-item:not([disabled])').length === 2 && document.body.innerText.includes('视频、音频和文字稿已可查看')",
+      );
+      await clickButtonContaining(page, ".history-item", "历史任务甲文字稿");
+      await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
+      await clickButtonContaining(page, ".result-card", "完整文字稿");
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelector('.transcript-full-editor')?.value === '历史任务甲完整文字稿'",
+      );
+
+      const load = (await readUiSmokeCommands(page)).find(
+        (entry) => entry.command === "load_transcript_detail",
+      );
+      expect(load?.args).toMatchObject({ request: { task_id: "history-task-a" } });
+    } finally {
+      await page.close();
+    }
+  }, 15_000);
+
+  test("keeps history read-only while cancelling and waits for the confirmed worker terminal result", async () => {
+    const page = await openUiSmokePage({ deferredCommands: ["process_video"] });
+
+    try {
+      await submitSmokeVideo(page);
+      await clickButtonContaining(page, ".process-monitor button", "取消任务");
+      await waitForRuntimeCondition(page, "document.body.innerText.includes('正在取消')");
+      await openSmokeHistory(page);
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelectorAll('.history-item[disabled]').length === 2 && document.body.innerText.includes('当前任务仍在处理中')",
+      );
+
+      await resolveUiSmokeCommand(page, "process_video", cancelledWorkerResult());
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('.command-panel')) && document.querySelectorAll('.history-item:not([disabled])').length === 2",
+      );
+      await clickSelector(page, 'button[aria-label="关闭历史"]');
+      await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
+      const state = await evaluateValue<Record<string, unknown>>(
+        page,
+        `({
+          hasInput: Boolean(document.querySelector('.command-panel')),
+          hasResults: Boolean(document.querySelector('.result-workspace')),
+          draft: document.querySelector('#video-url')?.value ?? ''
+        })`,
+      );
+      expect(state).toMatchObject({ hasInput: true, hasResults: false });
+      expect(state.draft).toBe(smokeVideoUrl);
+    } finally {
+      await page.close();
+    }
+  }, 15_000);
+
+  test("ignores a late transcript save after restoring a different history task", async () => {
+    const page = await openUiSmokePage({ deferredCommands: ["save_transcript_edit"] });
+
+    try {
+      await restoreSmokeHistoryItem(page, "历史任务甲文字稿");
+      await clickButtonContaining(page, ".result-card", "完整文字稿");
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelector('.transcript-full-editor')?.value === '历史任务甲完整文字稿'",
+      );
+      await replaceTextAreaValue(page, ".transcript-full-editor", "甲任务延迟保存后的长文字稿内容");
+      await clickButtonContaining(page, ".detail-sheet .tool-actions button", "保存");
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(window.__FRAMEQ_UI_SMOKE__.pending.save_transcript_edit?.length)",
+      );
+
+      await clickSelector(page, 'button[aria-label="关闭详情"]');
+      await restoreSmokeHistoryItem(page, "历史任务乙文字稿");
+      await resolveUiSmokeCommand(page, "save_transcript_edit", {
+        task_id: "history-task-a",
+        text: "甲任务延迟保存后的长文字稿内容",
+        artifacts: { transcript_txt: "transcript/late-a.txt" },
+        has_original_backup: true,
+      });
+      await waitForRuntimeCondition(
+        page,
+        "Array.from(document.querySelectorAll('.result-card')).some((card) => card.textContent.includes('完整文字稿') && card.textContent.includes('10 字'))",
+      );
+      await clickButtonContaining(page, ".result-card", "完整文字稿");
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelector('.transcript-full-editor')?.value === '历史任务乙完整文字稿'",
+      );
+
+      const transcriptLoads = (await readUiSmokeCommands(page)).filter(
+        (entry) => entry.command === "load_transcript_detail",
+      );
+      expect(transcriptLoads.at(-1)?.args).toMatchObject({
+        request: { task_id: "history-task-b" },
+      });
+    } finally {
+      await page.close();
+    }
+  }, 15_000);
+
+  test("routes summary and inspiration confirmations to separate mocked retry targets", async () => {
+    const page = await openUiSmokePage({
+      deferredCommands: ["retry_insights"],
+      responses: { retry_insights: completedSummaryResult() },
+    });
+
+    try {
+      await restoreSmokeHistoryItem(page, "历史任务甲文字稿");
+      await clickButtonContaining(page, ".result-card", "要点总结");
+      await waitForRuntimeCondition(page, "Boolean(document.querySelector('[aria-label=\"确认要点总结\"]'))");
+      await clickButtonContaining(page, '[aria-label="确认要点总结"] .primary-button', "确认");
+      await waitForRuntimeCondition(
+        page,
+        "window.__FRAMEQ_UI_SMOKE__.commands.some((entry) => entry.command === 'retry_insights' && entry.args?.request?.target === 'summary')",
+      );
+      await openSmokeHistory(page);
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelectorAll('.history-item[disabled]').length === 2",
+      );
+      await resolveUiSmokeCommand(page, "retry_insights");
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelectorAll('.history-item:not([disabled])').length === 2",
+      );
+      await clickSelector(page, 'button[aria-label="关闭历史"]');
+
+      await clickButtonContaining(page, ".result-card", "启发灵感");
+      await waitForRuntimeCondition(page, "document.body.innerText.includes('直接生成')");
+      await clickButtonContaining(page, ".preference-flow-sheet .primary-button", "直接生成");
+      await waitForRuntimeCondition(page, "Boolean(document.querySelector('[aria-label=\"确认启发灵感\"]'))");
+      await clickButtonContaining(page, '[aria-label="确认启发灵感"] .primary-button', "确认");
+      await waitForRuntimeCondition(
+        page,
+        "window.__FRAMEQ_UI_SMOKE__.commands.filter((entry) => entry.command === 'retry_insights').length === 2",
+      );
+
+      const commands = await readUiSmokeCommands(page);
+      const retries = commands.filter((entry) => entry.command === "retry_insights");
+      expect(retries).toHaveLength(2);
+      expect(retries[0].args).toMatchObject({
+        request: { task_id: "history-task-a", target: "summary" },
+      });
+      expect((retries[0].args.request as Record<string, unknown>).preference_snapshot).toBeUndefined();
+      expect(retries[1].args).toMatchObject({
+        request: {
+          task_id: "history-task-a",
+          target: "insights",
+          preference_snapshot: {
+            generationPreferences: expect.any(Object),
+          },
+        },
+      });
+      expectForbiddenProductCommandsAbsent(commands);
+    } finally {
+      await page.close();
+    }
+  }, 20_000);
 });
 
 describe("App result detail modal layout", () => {
@@ -980,9 +1230,9 @@ describe("App result detail modal layout", () => {
       expect(value.contentScrollTop).toBeGreaterThan(0);
       expect(value.contentOverflowY).toBe("auto");
     } finally {
-      page.close();
+      await page.close();
     }
-  });
+  }, 10_000);
 
   test("keeps long settings forms scrollable inside the settings modal", async () => {
     const target = await requestJson<CdpTarget>(
@@ -1050,13 +1300,15 @@ describe("App result detail modal layout", () => {
       expect(value.formScrollTop).toBeGreaterThan(0);
       expect(value.formOverflowY).toBe("auto");
     } finally {
-      page.close();
+      await page.close();
     }
   }, 10_000);
 });
 
 async function connectToCdp(webSocketDebuggerUrl: string) {
   const socket = new WebSocket(webSocketDebuggerUrl);
+  const targetId = new URL(webSocketDebuggerUrl).pathname.split("/").at(-1);
+  let closePromise: Promise<void> | null = null;
   const events: CdpEvent[] = [];
   const pending = new Map<
     number,
@@ -1092,7 +1344,21 @@ async function connectToCdp(webSocketDebuggerUrl: string) {
 
   return {
     events,
-    close: () => socket.close(),
+    close: () => {
+      closePromise ??= (async () => {
+        try {
+          if (targetId) {
+            const response = await fetch(`http://127.0.0.1:${cdpPort}/json/close/${targetId}`);
+            if (!response.ok) {
+              throw new Error(`Could not close CDP target: ${response.status}`);
+            }
+          }
+        } finally {
+          socket.close();
+        }
+      })();
+      return closePromise;
+    },
     send: <T>(method: string, params: Record<string, unknown> = {}) => {
       const id = ++nextId;
       const response = new Promise<T>((resolve, reject) => {
@@ -1231,6 +1497,177 @@ async function waitForRuntimeCondition(
     await delay(100);
   }
   throw new Error(`Runtime condition did not become true: ${expression}`);
+}
+
+type CdpPage = Awaited<ReturnType<typeof connectToCdp>>;
+type UiSmokeCommand = {
+  command: string;
+  args: Record<string, unknown>;
+};
+
+async function openUiSmokePage(scenario: UiSmokeScenario): Promise<CdpPage> {
+  const target = await requestJson<CdpTarget>(
+    cdpPort,
+    `/json/new?${encodeURIComponent(appUrl)}`,
+    "PUT",
+  );
+  const page = await connectToCdp(target.webSocketDebuggerUrl);
+  try {
+    await page.send("Page.enable");
+    await page.send("Runtime.enable");
+    await page.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: createUiSmokeBridgeScript(scenario),
+    });
+    const loaded = page.waitForEvent("Page.loadEventFired");
+    await page.send("Page.navigate", { url: appUrl });
+    await loaded;
+    await waitForRuntimeCondition(
+      page,
+      "window.__FRAMEQ_UI_SMOKE__?.ready === true && Boolean(document.querySelector('.app-shell'))",
+      10_000,
+    );
+    return page;
+  } catch (error) {
+      await page.close();
+    throw error;
+  }
+}
+
+async function clickSelector(page: CdpPage, selector: string): Promise<void> {
+  await page.send("Runtime.evaluate", {
+    expression: `(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element) throw new Error("Missing smoke selector");
+      element.click();
+    })()`,
+  });
+}
+
+async function clickButtonContaining(
+  page: CdpPage,
+  selector: string,
+  text: string,
+): Promise<void> {
+  await page.send("Runtime.evaluate", {
+    expression: `(() => {
+      const element = Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+        .find((candidate) => candidate.textContent.includes(${JSON.stringify(text)}));
+      if (!element) throw new Error("Missing smoke button");
+      element.click();
+    })()`,
+  });
+}
+
+async function evaluateValue<T>(page: CdpPage, expression: string): Promise<T> {
+  const evaluated = await page.send<{ result: { value: T } }>("Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+  });
+  return evaluated.result.value;
+}
+
+async function readUiSmokeCommands(page: CdpPage): Promise<UiSmokeCommand[]> {
+  return evaluateValue<UiSmokeCommand[]>(
+    page,
+    "window.__FRAMEQ_UI_SMOKE__.commands.map((entry) => ({ command: entry.command, args: entry.args }))",
+  );
+}
+
+async function resolveUiSmokeCommand(
+  page: CdpPage,
+  command: string,
+  value?: unknown,
+): Promise<void> {
+  await page.send("Runtime.evaluate", {
+    expression: `window.__FRAMEQ_UI_SMOKE__.resolve(${JSON.stringify(command)}, ${
+      value === undefined ? "undefined" : JSON.stringify(value)
+    })`,
+  });
+}
+
+async function submitSmokeVideo(page: CdpPage): Promise<void> {
+  await page.send("Runtime.evaluate", {
+    expression: "document.querySelector('#video-url').focus()",
+  });
+  await page.send("Input.insertText", { text: smokeVideoUrl });
+  await waitForRuntimeCondition(page, "!document.querySelector('.primary-button').disabled");
+  await clickSelector(page, ".primary-button");
+  await waitForRuntimeCondition(
+    page,
+    "Boolean(window.__FRAMEQ_UI_SMOKE__.pending.process_video?.length) && Boolean(document.querySelector('.process-monitor'))",
+  );
+}
+
+async function openSmokeHistory(page: CdpPage): Promise<void> {
+  await clickSelector(page, 'button[aria-label="查看历史"]');
+  await waitForRuntimeCondition(
+    page,
+    "Boolean(document.querySelector('.history-sheet')) && document.querySelectorAll('.history-item').length === 2",
+  );
+}
+
+async function restoreSmokeHistoryItem(page: CdpPage, preview: string): Promise<void> {
+  await openSmokeHistory(page);
+  await clickButtonContaining(page, ".history-item", preview);
+  await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
+}
+
+async function replaceTextAreaValue(
+  page: CdpPage,
+  selector: string,
+  value: string,
+): Promise<void> {
+  await page.send("Runtime.evaluate", {
+    expression: `(() => {
+      const textarea = document.querySelector(${JSON.stringify(selector)});
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+      setter.call(textarea, ${JSON.stringify(value)});
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`,
+  });
+  await waitForRuntimeCondition(
+    page,
+    `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`,
+  );
+}
+
+function cancelledWorkerResult() {
+  return {
+    status: "failed",
+    task_id: null,
+    task_dir: null,
+    artifacts: {},
+    text: "",
+    summary: "",
+    insights: [],
+    transcript: null,
+    error: {
+      code: "WORKER_CANCELLED",
+      message: "任务已取消。",
+      stage: "video_extracting",
+    },
+  };
+}
+
+function completedSummaryResult() {
+  return {
+    status: "completed",
+    task_id: "history-task-a",
+    task_dir: "C:/FrameQ/outputs/tasks/history-task-a",
+    artifacts: { summary: "ai/summary.md", mindmap: "ai/mindmap.mmd" },
+    text: "历史任务甲完整文字稿",
+    summary: "模拟要点总结",
+    insights: [],
+    transcript: null,
+    error: null,
+  };
+}
+
+function expectForbiddenProductCommandsAbsent(commands: UiSmokeCommand[]): void {
+  const commandNames = commands.map((entry) => entry.command);
+  expect(commandNames.some((command) => /wechat|checkout|redeem|download_asr|process_video/i.test(command)))
+    .toBe(false);
 }
 
 function delay(ms: number) {

@@ -2,6 +2,7 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-11-react-ui-smoke-coverage-plan.md` | Added deterministic real-React/CDP smoke for settings, history task ownership, transcript-save isolation, and target-scoped AI confirmation using mocked Tauri IPC only. |
 | `2026-07-11-unix-process-supervisor-ci-validation-plan.md` | Verified the real macOS ProcessSupervisor parent-child process-group cancellation fixture in a complete 90-test hosted Cargo run; Linux is not a supported target. |
 | `2026-07-10-worker-stdin-request-transport-plan.md` | Removed raw source URLs and serialized requests from worker argv/environment by using bounded supervised stdin delivery. |
 | `2026-07-08-split-summary-insights-generation-plan.md` | Split summary/mindmap and inspiration generation into independent target-scoped actions with artifact-preserving manifest updates. |
