@@ -338,7 +338,7 @@ graph LR
 - `AGENTS.md`：AI 协作入口地图和最高优先级约束摘要。
 - `docs/product-specs/index.md`：产品规格入口；根目录历史方案已迁移进 `docs/` 并删除。
 - `docs/product-specs/2026-06-16-douyin-video-transcription-client.md`：首个用户可见 MVP 规格。
-- `docs/exec-plans/active/2026-06-18-installer-distribution-runtime-plan.md`：当前 active 执行计划；首个 MVP 计划已归档到 `docs/exec-plans/completed/2026-06-16-mvp-desktop-client-plan.md`。
+- `docs/exec-plans/completed/2026-06-18-installer-distribution-runtime-plan.md`：已完成的轻量安装包、首启模型下载与 clean-machine 验证计划；首个 MVP 计划已归档到 `docs/exec-plans/completed/2026-06-16-mvp-desktop-client-plan.md`。
 - `ruff.toml`：Python worker 初始 lint 约束。
 - `pyproject.toml`：Python worker 项目元数据和 `uv` 依赖入口（初始化后维护）。
 - `app/src/workflow.ts`：前端工作流状态模型。

@@ -140,3 +140,14 @@ Superseded release checks: this full-bundle installer path is no longer the ordi
 - Added `npm --prefix app run tauri:dev:fresh-worker` so local Tauri dev runs can refresh the generated `resources/worker/frameq_worker` mirror before starting, avoiding stale worker code during development.
 - Final local release-readiness gates passed: `node --test scripts\tests\*.test.mjs`, `npm --prefix app test`, `npm --prefix app run build`, `uv run pytest worker\tests`, `uv run ruff check worker`, `cargo test --manifest-path app\src-tauri\Cargo.toml`, `python scripts\validate_agents_docs.py --level WARN`, `node --check scripts\tauri-dev-fresh-worker.mjs`, and `git diff --check`.
 - If final public artifacts are unsigned or not notarized, that status must be disclosed in the release note even though the clean-machine functional validation gate is now closed.
+
+## Outcome and Residual Risk
+
+The ordinary-user installer plan is complete: the lightweight package contains the runtime and
+media tools but not ASR weights, SenseVoice Small downloads into app-local data on first use, and
+the package includes Deno for public YouTube extraction. The user confirmed clean Windows and
+macOS installation and first-run processing on 2026-07-08. Automated packaging, worker, Rust,
+frontend, script, documentation, and diff gates are recorded above.
+
+Residual risk: public artifacts may still be unsigned or not notarized. This is a release-note
+disclosure and distribution-signing decision, not an unfinished installer-runtime implementation.

@@ -1,5 +1,7 @@
 # Local Transcript and AI Workspaces Implementation Plan
 
+> Archived on 2026-07-11 after the recorded final gates and native Windows/WebView2 acceptance passed.
+
 > This living ExecPlan follows `WORKFLOW.md`. Keep Progress, Decision Log, and validation
 > evidence current. Do not commit or push until the user reviews the finished workspace.
 

@@ -1,5 +1,7 @@
 # History vNext Strict Boundary ExecPlan
 
+> Archived on 2026-07-11 after the recorded cross-change gates and native acceptance passed.
+
 > This ExecPlan is a living document. The sections Progress, Surprises & Discoveries,
 > Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 

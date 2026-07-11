@@ -1,7 +1,7 @@
 # Source URL Privacy Boundary Plan
 
 > Historical note: the bounded legacy migration delivered by this completed plan was
-> superseded on 2026-07-11 by `../active/2026-07-11-history-vnext-strict-boundary-plan.md`.
+> superseded on 2026-07-11 by `2026-07-11-history-vnext-strict-boundary-plan.md`.
 > Runtime migration and compatibility reads are being removed; legacy directories now remain
 > physically untouched and product-isolated.
 

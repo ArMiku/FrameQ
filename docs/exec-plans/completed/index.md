@@ -2,6 +2,9 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-11-local-transcript-ai-workspaces-plan.md` | Split one task into independent local transcript and confirmed AI-generation workspaces, and made `retry_insights` the sole AI command. |
+| `2026-07-11-history-vnext-strict-boundary-plan.md` | Replaced legacy-compatible history with schema-v3 manifest-only list/detail loading and complete product isolation of unsupported task data. |
+| `2026-06-18-installer-distribution-runtime-plan.md` | Completed lightweight Windows/macOS installer runtime packaging, first-run SenseVoice download, bundled Deno, and user-confirmed clean-machine validation. |
 | `2026-07-11-react-ui-smoke-coverage-plan.md` | Added deterministic real-React/CDP smoke for settings, history task ownership, transcript-save isolation, and target-scoped AI confirmation using mocked Tauri IPC only. |
 | `2026-07-11-unix-process-supervisor-ci-validation-plan.md` | Verified the real macOS ProcessSupervisor parent-child process-group cancellation fixture in a complete 90-test hosted Cargo run; Linux is not a supported target. |
 | `2026-07-10-worker-stdin-request-transport-plan.md` | Removed raw source URLs and serialized requests from worker argv/environment by using bounded supervised stdin delivery. |
