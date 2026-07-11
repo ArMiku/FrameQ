@@ -14,4 +14,14 @@ describe("account copy", () => {
       expect(content, label).not.toContain("月卡");
     }
   });
+
+  test("describes the AI balance as Credits rather than generation times", () => {
+    for (const [label, url] of accountCopyFiles) {
+      const content = readFileSync(url, "utf8");
+
+      expect(content, label).toContain("AI Credits");
+      expect(content, label).not.toContain("次可用");
+      expect(content, label).not.toContain("LLM API 调用次数");
+    }
+  });
 });

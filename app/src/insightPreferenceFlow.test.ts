@@ -178,12 +178,14 @@ describe("insight preference flow", () => {
     expect(advanceGenerationStep(flow).screen).toBe("confirmation");
   });
 
-  test("confirmation quota copy describes per-LLM-call accounting", () => {
+  test("confirmation Credits copy explains variable per-call cost", () => {
     const copy = getQuotaDisclosureCopy();
 
-    expect(copy).toContain("1 次额度 = 1 次云端 LLM API 调用尝试");
-    expect(copy).toContain("按实际 LLM 调用次数扣除");
-    expect(copy).toContain("失败、超时或部分失败的已发起调用也会扣除");
+    expect(copy).toContain("1 AI Credit = 1 次云端 LLM API 调用尝试");
+    expect(copy).toContain("一次 AI 整理可能消耗多个 Credits");
+    expect(copy).toContain("按实际云端 LLM API 调用扣除 Credits");
+    expect(copy).toContain("失败、超时或部分失败的已发起调用仍会扣除 Credits");
+    expect(copy).not.toContain("次额度");
     expect(copy).not.toContain("确认后消耗 1 次");
   });
 });

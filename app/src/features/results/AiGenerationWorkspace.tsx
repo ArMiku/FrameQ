@@ -1,5 +1,6 @@
 import { AlertTriangle, Lightbulb, ListChecks, LoaderCircle, X } from "lucide-react";
 
+import { formatAiCreditsBalance, getAiCreditsCostHint } from "../../aiCreditsCopy";
 import type { TaskWorkspaceViewModel, AiTargetViewModel } from "../../taskWorkspaceViewModel";
 import type { InsightRetryTarget, WorkflowState } from "../../workflow";
 
@@ -26,7 +27,7 @@ export function AiGenerationWorkspace({
 }: AiGenerationWorkspaceProps) {
   const blocker =
     model.availability === "quota_exhausted"
-      ? "AI 调用额度已用完，请联系管理员补充额度。"
+      ? "AI Credits 已用完，请联系管理员补充余额。"
       : model.availability === "unavailable"
         ? "当前账号或 AI 服务暂不可用。"
         : null;
@@ -134,7 +135,7 @@ function AiTargetCard({
         <span className="ai-target-status">{targetStatusLabel(target.status)}</span>
       </div>
       {target.errorCode ? <p className="ai-target-error">{target.errorCode}</p> : null}
-      <small>当前可用 {quotaRemaining} 次；按实际云端 API 调用次数扣减。</small>
+      <small>{formatAiCreditsBalance(quotaRemaining)}。{getAiCreditsCostHint()}</small>
       <div className="ai-target-actions">
         {active ? <LoaderCircle size={17} className="spin" aria-label="生成中" /> : null}
         {ready ? (

@@ -71,7 +71,7 @@ or ProcessSupervisor internals.
 - Before a usable saved transcript exists, the workspace is quiet and says it is waiting
   for the transcript. Local processing controls remain in the local workspace.
 - Summary and inspirations are two compact, independent target cards. Each shows target
-  status, availability/quota blocker, actual-call quota explanation, and its own confirm,
+  status, availability/Credits blocker, actual-call Credits explanation, and its own confirm,
   retry, progress, error, and view action.
 - Summary is labelled `要点总结（同时生成思维导图文件）`. Summary still generates
   summary plus the hidden/local Mermaid file. There is no independent mindmap target or
@@ -79,8 +79,10 @@ or ProcessSupervisor internals.
 - Inspiration alone may open the preference flow and send a preference snapshot. Summary
   always invokes `retry_insights("summary", null)` and must never carry a snapshot.
 - Each target keeps its existing independent confirmation. Opening a flow consumes no
-  quota; confirmed generation consumes quota per actual supplier API-call attempt. No
-  multi-select or batch generation is introduced.
+  Credits; confirmed generation consumes one Credit per actual supplier API-call attempt.
+  The UI calls the balance `AI Credits` and explicitly states that one confirmed generation
+  may consume multiple Credits; it must never describe the balance as a number of available
+  generation actions. No multi-select or batch generation is introduced.
 - AI result viewing may use a lightweight target-specific sheet or inline preview, but it
   must not share a tab container with transcript review.
 

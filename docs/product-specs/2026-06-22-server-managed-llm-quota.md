@@ -7,14 +7,14 @@ FrameQ should let paid users generate insight topics without configuring an LLM 
 - Desktop settings no longer expose insight LLM base URL, API key, model, or timeout.
 - Admin Web can configure provider, base URL, model, timeout, and the dedicated FrameQ client API key.
 - The LLM API key is encrypted before being stored in SQLite and is never fully displayed in Admin responses.
-- Each 31-day activation grants 20 LLM API-call uses.
+- Each 31-day activation grants 20 AI Credits.
 - Administrators may add quota only through the audited entitlement-adjustment operation. FrameQ has no supported administrator flow to silently set, reduce, or reset a user's remaining quota.
-- A use is consumed per cloud LLM chat-completion/API call attempt, not per AI整理 generation attempt. A single confirmed AI整理 run may therefore consume multiple uses when the worker generates Mermaid mindmap, summary, topic planning, and insight-topic details through separate LLM calls.
-- The desktop/worker/server accounting boundary must authorize or record one quota use for each supplier LLM API call attempt. Reusing the same per-call checkout/request ID must not double-charge that same call attempt.
-- Renewing before expiry extends entitlement and adds 20 more uses; reactivating after expiry starts a fresh 31-day window with 20 uses and 0 used.
-- Account status shows entitlement and remaining LLM API-call uses.
+- One AI Credit is consumed per cloud LLM chat-completion/API call attempt, not per AI整理 generation attempt. A single confirmed AI整理 run may therefore consume multiple Credits when the worker generates Mermaid mindmap, summary, topic planning, and insight-topic details through separate LLM calls.
+- The desktop/worker/server accounting boundary must authorize or record one AI Credit for each supplier LLM API call attempt. Reusing the same per-call checkout/request ID must not double-charge that same call attempt.
+- Renewing before expiry extends entitlement and adds 20 more AI Credits; reactivating after expiry starts a fresh 31-day window with 20 Credits and 0 used.
+- Account status shows entitlement and remaining AI Credits. User-facing copy must not present this balance as a guaranteed number of AI-generation actions.
 - `/api/desktop/account` exposes separate gates: `can_process` means the signed-in user has an active entitlement for local video/audio/ASR processing; `can_generate_ai` means the user can start a confirmed AI output and therefore also requires server LLM config plus remaining quota.
-- Users with no entitlement or expired entitlement cannot start local processing or AI generation. Users with no remaining uses or missing server LLM config can still run local transcription, but cannot start summary or inspiration generation.
+- Users with no entitlement or expired entitlement cannot start local processing or AI generation. Users with no remaining Credits or missing server LLM config can still run local transcription, but cannot start summary or inspiration generation.
 
 ## Security Boundary
 
@@ -26,8 +26,8 @@ FrameQ should let paid users generate insight topics without configuring an LLM 
 ## Acceptance Criteria
 
 - Admin can save and replace the LLM config, including a new API key, without the key being exposed back in full.
-- A desktop user can redeem an activation code and see 20 available LLM API-call uses.
-- Starting AI整理 checks account/config readiness before the first LLM call, then consumes quota per LLM API call attempt made during that AI整理.
+- A desktop user can redeem an activation code and see 20 available AI Credits.
+- Starting AI整理 checks account/config readiness before the first LLM call, then consumes one AI Credit per LLM API call attempt made during that AI整理; one AI整理 may consume multiple Credits.
 - Reusing the same per-call checkout/request ID does not double-charge that same LLM API call attempt.
-- When uses reach 0, the desktop client blocks summary/inspiration generation with an account-panel explanation; local video extraction and ASR transcription remain available for signed-in users with active entitlement.
+- When Credits reach 0, the desktop client blocks summary/inspiration generation with an account-panel explanation; local video extraction and ASR transcription remain available for signed-in users with active entitlement.
 - An administrator quota grant increases `llmQuotaLimit`, preserves `llmQuotaUsed`, and creates an append-only record with administrator, user, reason, before/after values, and timestamp in the same transaction.

@@ -190,6 +190,9 @@ describe("task domain workspaces", () => {
     expect(markup).toContain("同时生成思维导图文件");
     expect(markup).toContain('data-ai-target="insights"');
     expect(markup).toContain("启发灵感");
+    expect(markup).toContain("AI Credits 余额：8");
+    expect(markup).toContain("一次 AI 整理可能消耗多个 Credits。");
+    expect(markup).not.toContain("当前可用 8 次");
     expect(markup).not.toContain('data-ai-target="mindmap"');
   });
 
@@ -240,7 +243,7 @@ describe("task domain workspaces", () => {
       />,
     );
 
-    expect(markup).toContain("AI 调用额度已用完");
+    expect(markup).toContain("AI Credits 已用完");
     expect(markup).toContain('class="ai-workspace-notice"');
     expect(markup).toContain("无法读取本次 AI 偏好");
     expect(markup).toContain('disabled=""');

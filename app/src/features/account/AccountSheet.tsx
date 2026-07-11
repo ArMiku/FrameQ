@@ -1,5 +1,6 @@
 import { KeyRound, ShieldCheck, UserRound, X } from "lucide-react";
 
+import { formatAiCreditsAllocation } from "../../aiCreditsCopy";
 import { canProcessWithAccount, type AccountStatus } from "../../accountState";
 
 type AccountSheetProps = {
@@ -59,7 +60,7 @@ export function AccountSheet({
           <p className="settings-warning privacy-callout">
             <ShieldCheck size={16} />
             <span>
-              账号服务只验证登录、激活码、授权状态和 LLM API 调用额度；视频、音频、文字稿和历史记录仍保留在本机，LLM 配置由管理员统一管理。
+              账号服务只验证登录、激活码、授权状态和 AI Credits 余额；视频、音频、文字稿和历史记录仍保留在本机，LLM 配置由管理员统一管理。
             </span>
           </p>
           <div className={`account-status-card ${canProcessWithAccount(account) ? "active" : "inactive"}`}>
@@ -73,14 +74,12 @@ export function AccountSheet({
           {account.authenticated ? (
             <div className="account-quota-grid">
               <div>
-                <span className="account-status-label">LLM API 调用额度</span>
-                <strong>
-                  {account.llmQuotaRemaining} / {account.llmQuotaLimit}
-                </strong>
+                <span className="account-status-label">AI Credits</span>
+                <strong>{formatAiCreditsAllocation(account.llmQuotaRemaining, account.llmQuotaLimit)}</strong>
                 <small>
                   {account.llmQuotaResetsAt
                     ? `随授权到期重置：${formatHistoryDate(account.llmQuotaResetsAt)}`
-                    : "激活后获得 LLM API 调用次数"}
+                    : "激活后获得 AI Credits"}
                 </small>
               </div>
               <div>

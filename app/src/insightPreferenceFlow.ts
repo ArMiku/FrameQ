@@ -5,6 +5,7 @@ import {
   type InspirationProfile,
 } from "./insightPreferences";
 import type { InsightPreferenceState } from "./insightPreferencesClient";
+import { getAiCreditsDisclosureCopy } from "./aiCreditsCopy";
 
 export type InsightPreferenceFlowScreen =
   | "profile_intro"
@@ -74,10 +75,7 @@ export function createInsightPreferenceFlow(
 }
 
 export function getQuotaDisclosureCopy(): string {
-  return (
-    "1 次额度 = 1 次云端 LLM API 调用尝试；本次生成会按实际 LLM 调用次数扣除；" +
-    "失败、超时或部分失败的已发起调用也会扣除；换个方向后再次确认会按新的调用次数再次扣除。"
-  );
+  return getAiCreditsDisclosureCopy();
 }
 
 export function skipProfileSetupInFlow(

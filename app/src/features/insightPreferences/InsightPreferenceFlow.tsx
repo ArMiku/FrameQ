@@ -323,8 +323,8 @@ function ConfirmationStep({
           <small>{transcriptPath || "文字稿文件生成后才能继续。"}</small>
         </div>
         <div>
-          <span className="account-status-label">账号额度</span>
-          <strong>{accountQuotaRemaining} 次可用</strong>
+          <span className="account-status-label">AI Credits</span>
+          <strong>余额 {accountQuotaRemaining}</strong>
           <small>{getQuotaDisclosureCopy()}</small>
         </div>
       </div>

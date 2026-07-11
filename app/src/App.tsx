@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import "./App.css";
+import { getAiCreditsCostHint } from "./aiCreditsCopy";
 import {
   getExportPath,
   isProcessingStage,
@@ -131,7 +132,7 @@ function accountAiBlockerMessage(account: AccountStatus, actionLabel: string): s
   }
 
   if (account.llmQuotaRemaining <= 0) {
-    return "LLM API 调用额度已用完，请联系管理员补充额度或兑换新的激活码。";
+    return "AI Credits 已用完，请联系管理员补充余额或兑换新的激活码。";
   }
 
   return account.serverError
@@ -654,9 +655,9 @@ function App() {
                   <small>{currentTranscriptPath || "文字稿文件生成后才能继续。"}</small>
                 </div>
                 <div>
-                  <span className="account-status-label">账号额度</span>
-                  <strong>{account.llmQuotaRemaining} 次可用</strong>
-                  <small>1 次额度 = 1 次云端 LLM API 调用尝试；本次会按实际调用次数扣除。</small>
+                  <span className="account-status-label">AI Credits</span>
+                  <strong>余额 {account.llmQuotaRemaining}</strong>
+                  <small>{getAiCreditsCostHint()}</small>
                 </div>
               </div>
               <div className="settings-actions sheet-footer">

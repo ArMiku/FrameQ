@@ -2,6 +2,7 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-11-ai-credits-terminology-plan.md` | Replaced misleading generation-count wording with transparent AI Credits balance and variable-cost disclosure without changing quota accounting. |
 | `2026-07-11-local-transcript-ai-workspaces-plan.md` | Split one task into independent local transcript and confirmed AI-generation workspaces, and made `retry_insights` the sole AI command. |
 | `2026-07-11-history-vnext-strict-boundary-plan.md` | Replaced legacy-compatible history with schema-v3 manifest-only list/detail loading and complete product isolation of unsupported task data. |
 | `2026-06-18-installer-distribution-runtime-plan.md` | Completed lightweight Windows/macOS installer runtime packaging, first-run SenseVoice download, bundled Deno, and user-confirmed clean-machine validation. |

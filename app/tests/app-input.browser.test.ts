@@ -1295,7 +1295,7 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
         expect(state.disabledTargets).toBe(2);
         expect(state.localTask).toBe("history-task-a");
         expect(state.localEditorDisabled).toBe(false);
-        expect(String(state.blocker)).toMatch(/额度已用完|暂不可用/);
+        expect(String(state.blocker)).toMatch(/AI Credits 已用完|暂不可用/);
       } finally {
         await page.close();
       }
