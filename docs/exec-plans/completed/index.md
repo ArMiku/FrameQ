@@ -2,6 +2,7 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-12-github-actions-node24-upgrade-plan.md` | Upgraded checkout, setup-node, setup-uv, and artifact upload to Node.js 24 runtimes with TDD and clean hosted macOS annotations, without triggering Desktop Release. |
 | `2026-07-12-v0.2.16-open-source-release-plan.md` | Published v0.2.16 as a three-platform stable GitHub Release after version-drift TDD, full local gates, Draft artifact/runtime/codesign validation, checksum inspection, and explicit Gatekeeper disclosure. |
 | `2026-07-12-macos-intel-acceptance-artifact-plan.md` | Verified permanent deletion and ProcessSupervisor fixtures on hosted Intel macOS and produced a checksum-verified internal x86_64 DMG Actions Artifact without creating a release. |
 | `2026-07-12-history-task-permanent-deletion-plan.md` | Added strict, accessible permanent deletion for supported History vNext tasks and playback cache with truthful partial-failure semantics and Windows/macOS filesystem evidence. |

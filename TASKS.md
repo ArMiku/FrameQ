@@ -2,11 +2,12 @@
 
 ## Active UI Work
 
-- [ ] Upgrade GitHub Actions from Node.js 20-era runtimes (2026-07-12) — ✅ Acceptance gate:
-  checkout/setup-node/setup-uv contract tests pass on Node.js 24-capable majors, hosted macOS
-  ProcessSupervisor and Intel acceptance runs are green without the Node.js 20 warning, and no
-  Desktop Release is triggered. ExecPlan:
-  `docs/exec-plans/active/2026-07-12-github-actions-node24-upgrade-plan.md`.
+- [x] Upgrade GitHub Actions from Node.js 20-era runtimes (2026-07-12) ✅ Checkout v5, setup-node
+  v5, setup-uv v8.3.2, and upload-artifact v6 now use Node.js 24. ✅ Focused workflow contracts
+  passed 6/6, the complete script suite passed 15/15, hosted ProcessSupervisor run `29199050303`
+  and Intel acceptance run `29199051507` passed at `04b2a92` without Node.js 20 annotations, and no
+  Desktop Release was triggered. ExecPlan:
+  `docs/exec-plans/completed/2026-07-12-github-actions-node24-upgrade-plan.md`.
 
 - [x] Publish FrameQ v0.2.16 open-source stable release (2026-07-12) — ✅ Version-drift TDD,
   complete local gates, Windows/Intel/Apple Silicon hosted builds, runtime/Deno/codesign evidence,
