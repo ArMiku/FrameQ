@@ -72,4 +72,3 @@ ran. The internal DMG remains explicitly non-release and must not be described a
 - Runtime URLs stay in GitHub Secrets and are consumed only by the existing resource builder.
 - The artifact contains application/runtime files and checksums only; no `.env`, credentials,
   logs, task outputs, user data, ASR model weights, or LLM key is added.
-
