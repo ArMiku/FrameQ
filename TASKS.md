@@ -2,6 +2,13 @@
 
 ## Active UI Work
 
+- [ ] Prepare FrameQ v0.2.16 open-source stable release (2026-07-12) — ✅ Acceptance gate: Align desktop version
+  metadata, add a drift guard, prepare transparent Gatekeeper release notes, run full local gates,
+  and create/inspect a three-platform Draft Release before a separate stable-publication checkpoint.
+  All local release commands and all three Desktop Release jobs must pass, Draft
+  assets/notes are inspected, and stable publication waits for explicit final confirmation.
+  ExecPlan: `docs/exec-plans/active/2026-07-12-v0.2.16-open-source-release-plan.md`.
+
 - [x] Add permanent History task deletion (2026-07-12) — Delete one explicitly confirmed supported History vNext task, its video/audio/transcript/AI artifacts, and per-task playback cache to release disk space immediately. Active processing, AI generation, cancellation, transcript save, legacy tasks, and linked storage remain ineligible. Partial filesystem deletion remains an accepted and explicitly reported residual risk. ✅ Windows/local gates passed app 256, Rust 104, worker 231, server 57, scripts 11, builds, Ruff, docs and diff checks; hosted Intel macOS run `29187106602` passed Cargo 103/103 and produced checksum-verified internal DMG artifact `frameq-macos-intel-2-eb5ed4122c0c`. ExecPlans: `docs/exec-plans/completed/2026-07-12-history-task-permanent-deletion-plan.md` and `docs/exec-plans/completed/2026-07-12-macos-intel-acceptance-artifact-plan.md`.
 
 - [x] Polish History height, typography rhythm, and toolbar grouping (2026-07-12) — Applied option A without changing short transcript height or product data flows. ✅ TDD and acceptance: History CSS RED/GREEN, short/long History geometry, toolbar 1366/720 alignment, browser 22/22, app 35 files / 244 tests, production build, docs 0/0, and diff check passed. ExecPlan: `docs/exec-plans/completed/2026-07-12-desktop-density-history-toolbar-polish-plan.md`.
