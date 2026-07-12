@@ -2,6 +2,8 @@
 
 | File | Focus |
 |------|-------|
+| `2026-07-12-macos-intel-acceptance-artifact-plan.md` | Verified permanent deletion and ProcessSupervisor fixtures on hosted Intel macOS and produced a checksum-verified internal x86_64 DMG Actions Artifact without creating a release. |
+| `2026-07-12-history-task-permanent-deletion-plan.md` | Added strict, accessible permanent deletion for supported History vNext tasks and playback cache with truthful partial-failure semantics and Windows/macOS filesystem evidence. |
 | `2026-07-12-desktop-density-history-toolbar-polish-plan.md` | Made History intrinsically sized, clarified secondary typography and active-task rhythm, and grouped compact desktop toolbar utilities. |
 | `2026-07-12-task-workspace-visual-hierarchy-plan.md` | Reduced nested card weight, clarified status ownership, removed duplicate eyebrow labels, quieted pre-confirmation AI actions, and separated transcript playback/edit/focus states. |
 | `2026-07-11-ai-credits-terminology-plan.md` | Replaced misleading generation-count wording with transparent AI Credits balance and variable-cost disclosure without changing quota accounting. |

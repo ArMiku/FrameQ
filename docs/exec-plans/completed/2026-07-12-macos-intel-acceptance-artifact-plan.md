@@ -1,8 +1,7 @@
 # macOS Intel Acceptance Artifact Implementation Plan
 
-> **For agentic workers:** Execute inline with TDD. Keep this plan active until the hosted Intel
-> macOS job is green, its artifact is downloaded and hashed, and the permanent-deletion plan is
-> closed with immutable run evidence.
+> This ExecPlan is a living document. Progress, Surprises & Discoveries, Decision Log, and
+> Outcomes & Retrospective must be kept up to date as work proceeds.
 
 **Goal:** Run the complete Tauri Rust suite on a real GitHub-hosted Intel Mac and produce a
 downloadable internal x86_64 FrameQ DMG without creating a release or requesting Apple credentials.
@@ -39,6 +38,12 @@ installer scripts, `actions/upload-artifact@v4`, GitHub CLI.
   preparation, and Tauri app build, then failed before packaging because the verification step
   hard-coded the bundle executable name. Added a RED contract for `CFBundleExecutable`, changed
   verification to resolve it from `Info.plist`, and restored focused GREEN 2/2.
+- [x] 2026-07-12: Follow-up run `29187106602`, job `86635119860`, passed all 18 steps at commit
+  `eb5ed4122c0c8a8e66cebfddd03110629dce564f`. Native Cargo passed 103/103; the x86_64 app,
+  bundled runtime, Deno, ad-hoc codesign, DMG creation, checksum, and upload all passed.
+- [x] 2026-07-12: Downloaded artifact `frameq-macos-intel-2-eb5ed4122c0c` (artifact ID
+  `8258582095`) and independently verified `FrameQ_0.2.15_x64.dmg` at 509,419,917 bytes against
+  SHA-256 `780ed6e62a52b993b928b243febbac945329497964fca95b0ddc692118b5bc79`.
 
 ## Task 1: Lock the workflow contract with TDD
 
@@ -138,7 +143,7 @@ gh workflow run macos-intel-acceptance.yml --ref codex/history-delete-macos-inte
 Resolve the newly created run ID from the exact branch and workflow, then monitor it to a terminal
 result. Do not trigger `desktop-release.yml`.
 
-- [ ] **Step 4: Verify hosted logs and artifact**
+- [x] **Step 4: Verify hosted logs and artifact**
 
 Require the hosted log to show:
 
@@ -164,24 +169,35 @@ binary on Windows.
 - Move after green evidence: both completed plans to `docs/exec-plans/completed/`
 - Modify: active/completed ExecPlan indexes
 
-- [ ] **Step 1: Record immutable hosted evidence**
+- [x] **Step 1: Record immutable hosted evidence**
 
 Record run URL/ID, job ID, full commit SHA, runner label, Rust test count, named deletion/link tests,
 artifact name, size, retention, and verified SHA-256. State explicitly that the DMG is ad-hoc-signed,
 not notarized, and not production-release evidence.
 
-- [ ] **Step 2: Close macOS deletion validation debt**
+- [x] **Step 2: Close macOS deletion validation debt**
 
 Only after the hosted job and downloaded checksum are green, remove the pending macOS validation
 debt, mark the permanent-deletion task complete, archive both plans, and update indexes. If the run
 fails, keep both plans active and record the exact sanitized blocker instead.
 
-- [ ] **Step 3: Re-run documentation and diff gates, then push evidence**
+- [x] **Step 3: Re-run documentation and diff gates, then push evidence**
 
 Run docs validation and `git diff --check`, commit only the evidence/plan closure, and push without
 force. Do not publish a release or merge to `main` in this task.
 
-## Decisions
+## Surprises & Discoveries
+
+- A new `workflow_dispatch` file cannot be invoked until that workflow exists on the default
+  branch. One exact-branch push trigger was used only to bootstrap hosted evidence and was removed
+  immediately afterward.
+- Tauri's `.app` product name and its `CFBundleExecutable` are independent. The first hosted build
+  proved the app existed but the verification path was wrong; resolving the executable from
+  `Info.plist` is both stricter and portable.
+- The packaged runtime makes UDZO DMG compression the longest single step. It completed normally
+  without Finder, AppleScript, a release, or notarization.
+
+## Decision Log
 
 - Decision: Use a dedicated artifact workflow instead of `desktop-release.yml`. Rationale: an
   acceptance build must not create/update a release or imply production readiness. Date: 2026-07-12.
@@ -205,3 +221,19 @@ force. Do not publish a release or merge to `main` in this task.
 - GitHub Actions hosted Intel macOS job
 - downloaded artifact SHA-256 comparison
 - final docs validation, diff check, and branch status
+
+## Outcomes & Retrospective
+
+Hosted run [29187106602](https://github.com/jiabai/FrameQ/actions/runs/29187106602) completed on
+`macos-15-intel` with all 18 steps successful. Its complete x86_64 Cargo run passed 103/103 and
+explicitly executed the supported-task deletion, dangling-cache-symlink, linked tasks-root,
+linked playback-root, and Unix parent/child process-group fixtures. The packaged executable was
+reported as `Mach-O 64-bit executable x86_64`; bundled Python/worker imports, Deno, and deep
+ad-hoc code-sign verification passed before DMG creation.
+
+Artifact `frameq-macos-intel-2-eb5ed4122c0c` (ID `8258582095`) contains the DMG and its checksum,
+is retained through 2026-07-19, and has a GitHub artifact-zip size of 500,196,656 bytes. The
+downloaded `FrameQ_0.2.15_x64.dmg` is 509,419,917 bytes and matches SHA-256
+`780ed6e62a52b993b928b243febbac945329497964fca95b0ddc692118b5bc79`. This proves native Intel
+macOS tests and internal packaging for the tested commit; it does not prove Developer ID signing,
+notarization, Gatekeeper first-launch behavior, or production release readiness.

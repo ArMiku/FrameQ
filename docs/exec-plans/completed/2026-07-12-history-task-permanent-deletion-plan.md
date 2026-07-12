@@ -38,6 +38,10 @@ worker or transcript save, or claim rollback that recursive deletion cannot prov
 - [x] 2026-07-12: Local full gates passed: app 35 files / 256 tests, browser 23/23 in three
   consecutive isolated runs, Rust 104/104, worker 231/231, Ruff, server test/build, app build,
   docs 0/0, and diff check. macOS native deletion evidence remains pending.
+- [x] 2026-07-12: GitHub-hosted Intel macOS run `29187106602`, job `86635119860`, passed the
+  complete native Cargo suite 103/103 at commit `eb5ed4122c0c8a8e66cebfddd03110629dce564f`.
+  Real temporary-directory deletion, dangling symlink, linked task/cache roots, and Unix process
+  group fixtures all executed as `ok`.
 
 ## Surprises & Discoveries
 
@@ -92,11 +96,14 @@ success preserves the current workspace, failure retains/reloads disk-derived Hi
 showing raw error material, and current success resets only after confirmation.
 
 Windows native filesystem evidence is provided by temporary-root tests using real
-`remove_dir_all`, a no-delete-sharing locked artifact, and actual junction fixtures. The accepted
-residual risk remains: recursive removal is irreversible and non-transactional, so interruption
-or an OS error may leave only part of the selected task. macOS-specific symlink tests are
-conditionally compiled but have not run on a macOS host in this session; this plan remains active
-and must not be archived until that evidence exists.
+`remove_dir_all`, a no-delete-sharing locked artifact, and actual junction fixtures. Intel macOS
+evidence is provided by hosted run `29187106602`: 103/103 Cargo tests passed, including
+`deletes_only_the_supported_task_and_its_playback_cache`,
+`rejects_dangling_playback_cache_symlink_before_task_removal`,
+`rejects_linked_tasks_root_before_removal`, and
+`rejects_linked_playback_cache_root_before_task_removal`. The accepted residual risk remains:
+recursive removal is irreversible and non-transactional, so interruption or an OS error may leave
+only part of the selected task.
 
 ## Context and Orientation
 
@@ -484,14 +491,14 @@ an externally opened/locked artifact returns the fixed partial-failure message, 
 released before current-task deletion, and no path outside the temporary task/cache roots changes.
 Record exact counts without printing task paths or fixture secrets.
 
-- [ ] **Step 3: Perform native macOS acceptance before release**
+- [x] **Step 3: Perform native macOS acceptance before release**
 
 Run the Rust suite and the same temporary-root deletion smoke on macOS arm64/x64 release hosts.
 Verify symlink rejection and `remove_dir_all` behavior. If macOS evidence is unavailable in the
 implementation session, keep the item open and report it as a release blocker rather than
 claiming cross-platform validation.
 
-- [ ] **Step 4: Close the plan only after evidence exists**
+- [x] **Step 4: Close the plan only after evidence exists**
 
 Record RED/GREEN outputs, full counts, Windows/macOS evidence, partial-failure observations, and
 the accepted non-transactional deletion risk. Mark TASKS complete, archive this plan, and update
