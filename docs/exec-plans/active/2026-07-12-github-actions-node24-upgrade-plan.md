@@ -34,13 +34,18 @@ flows, and it must not create or modify a GitHub Release.
 - Evidence: `desktop-release.yml` contains three copies of each affected action, while
   `macos-intel-acceptance.yml` contains all three and `unix-process-supervisor.yml` contains only
   checkout.
+- Evidence: Intel acceptance run `29197874978` failed during `Set up job` before checkout or secret
+  use with `Unable to resolve action astral-sh/setup-uv@v8`. The official setup-uv README publishes
+  immutable commit `11f9893b081a58869d3b5fccaea48c9e9e46f990` for v8.3.2 instead of a floating
+  `v8` tag.
 
 ## Decision Log
 
-- Decision: Use `actions/checkout@v5`, `actions/setup-node@v5`, and
-  `astral-sh/setup-uv@v8`. Rationale: these are the smallest Node.js 24-capable major upgrades from
-  the current versions; checkout/setup-node v5 avoid unrelated newer-major behavior while setup-uv
-  v8 explicitly declares `using: node24`. Date/Author: 2026-07-12 / User + Codex.
+- Decision: Use `actions/checkout@v5`, `actions/setup-node@v5`, and the immutable
+  `astral-sh/setup-uv@11f9893...` commit for v8.3.2. Rationale: checkout/setup-node v5 are the
+  smallest Node.js 24-capable major upgrades; setup-uv v8.3.2 explicitly declares `using: node24`
+  but does not publish a resolvable floating `v8` tag, so the official README's commit-SHA form is
+  both functional and supply-chain safer. Date/Author: 2026-07-12 / User + Codex.
 - Decision: Do not trigger Desktop Release. Rationale: contract tests can protect its YAML shape,
   and real Node.js 24 execution is safely proven by the non-release ProcessSupervisor and Intel
   acceptance workflows without creating assets or release state. Date/Author: 2026-07-12 / Codex.

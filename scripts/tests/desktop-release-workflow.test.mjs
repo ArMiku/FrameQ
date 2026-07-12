@@ -19,10 +19,16 @@ test("desktop release uses Node.js 24-capable actions in every platform job", as
 
   assert.equal(countMatches(workflow, /uses:\s*actions\/checkout@v5/g), 3);
   assert.equal(countMatches(workflow, /uses:\s*actions\/setup-node@v5/g), 3);
-  assert.equal(countMatches(workflow, /uses:\s*astral-sh\/setup-uv@v8/g), 3);
+  assert.equal(
+    countMatches(
+      workflow,
+      /uses:\s*astral-sh\/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990/g,
+    ),
+    3,
+  );
   assert.doesNotMatch(
     workflow,
-    /actions\/checkout@v4|actions\/setup-node@v4|astral-sh\/setup-uv@v6|node20/i,
+    /actions\/checkout@v4|actions\/setup-node@v4|astral-sh\/setup-uv@(?:v6|v8)|node20/i,
   );
 });
 
