@@ -20,7 +20,8 @@ test("runs the Unix ProcessSupervisor fixture on macOS without unsupported Linux
   assert.match(workflow, /permissions:\s*\r?\n\s+contents: read/);
   assert.match(workflow, /runs-on:\s*macos-latest/);
   assert.match(workflow, /timeout-minutes:\s*30/);
-  assert.match(workflow, /uses:\s*actions\/checkout@v4/);
+  assert.match(workflow, /uses:\s*actions\/checkout@v5/);
+  assert.doesNotMatch(workflow, /actions\/checkout@v4|node20/i);
   assert.match(workflow, /uses:\s*dtolnay\/rust-toolchain@stable/);
   assert.match(
     workflow,

@@ -22,11 +22,15 @@ test("builds one manual internal Intel macOS artifact with native tests and read
   assert.match(workflow, /permissions:\s*\r?\n\s+contents:\s*read/);
   assert.match(workflow, /runs-on:\s*macos-15-intel/);
   assert.match(workflow, /timeout-minutes:\s*90/);
-  assert.match(workflow, /uses:\s*actions\/checkout@v4/);
-  assert.match(workflow, /uses:\s*actions\/setup-node@v4/);
+  assert.match(workflow, /uses:\s*actions\/checkout@v5/);
+  assert.match(workflow, /uses:\s*actions\/setup-node@v5/);
   assert.match(workflow, /uses:\s*dtolnay\/rust-toolchain@stable/);
   assert.match(workflow, /targets:\s*x86_64-apple-darwin/);
-  assert.match(workflow, /uses:\s*astral-sh\/setup-uv@v6/);
+  assert.match(workflow, /uses:\s*astral-sh\/setup-uv@v8/);
+  assert.doesNotMatch(
+    workflow,
+    /actions\/checkout@v4|actions\/setup-node@v4|astral-sh\/setup-uv@v6|node20/i,
+  );
   assert.match(workflow, /run:\s*npm ci --prefix app/);
   assert.match(
     workflow,

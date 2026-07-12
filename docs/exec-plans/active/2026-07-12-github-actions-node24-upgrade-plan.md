@@ -15,10 +15,12 @@ flows, and it must not create or modify a GitHub Release.
 - [x] 2026-07-12: Confirmed the warning sources and reviewed official Node.js 24-capable versions.
   Validation: repository scan found checkout v4, setup-node v4, and setup-uv v6 in three workflows;
   official action metadata confirms checkout v5, setup-node v5, and setup-uv v8 use Node.js 24.
-- [ ] 2026-07-12: Update workflow contract tests first and record RED against the old actions.
-  Validation: focused Node tests fail only on old action versions or missing desktop-release guard.
-- [ ] 2026-07-12: Apply the minimal action upgrades and record GREEN. Validation: focused and full
-  script suites pass and no old action references remain in active workflows.
+- [x] 2026-07-12: Updated workflow contract tests first and recorded RED against the old actions.
+  Validation: focused suite had 3 expected failures for Desktop Release, Intel acceptance, and
+  ProcessSupervisor action versions while the other 3 boundary tests passed.
+- [x] 2026-07-12: Applied the minimal action upgrades and recorded GREEN. Validation: focused suite
+  passed 6/6, full script suite passed 15/15, the old-version scan returned no matches, docs
+  validation returned 0 errors / 0 warnings, and `git diff --check` passed.
 - [ ] 2026-07-12: Push the isolated branch and obtain real hosted macOS ProcessSupervisor and Intel
   acceptance green runs with no Node.js 20 action-runtime annotation. Validation: run/job evidence.
 - [ ] 2026-07-12: Integrate to main, close the technical debt, archive this plan, and run final
@@ -45,8 +47,10 @@ flows, and it must not create or modify a GitHub Release.
 
 ## Outcomes & Retrospective
 
-Implementation has not started. This section will record RED/GREEN evidence, hosted workflow run
-IDs, annotation results, final commit, and remaining risks after they exist.
+TDD and local validation are complete. The implementation changes only 13 `uses:` references and
+three focused workflow test files (including the new Desktop Release contract). Hosted workflow run
+IDs, annotation results, final integration commit, and remaining risks will be recorded after the
+branch is pushed and both non-release workflows finish.
 
 Residual risk: major action tags are mutable upstream references, matching the repository's current
 dependency policy. Commit-SHA pinning remains a separate supply-chain hardening decision.
