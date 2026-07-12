@@ -2,4 +2,4 @@
 
 | File | Focus |
 |------|-------|
-| None | No ExecPlan is currently active. Create and register a new plan here before the next non-trivial change. |
+| `2026-07-12-github-actions-node24-upgrade-plan.md` | Upgrade JavaScript-based GitHub Actions to Node.js 24-capable majors and verify two non-release macOS workflows before closing the warning debt. |
