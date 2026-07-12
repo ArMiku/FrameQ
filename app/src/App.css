@@ -685,6 +685,7 @@ h3 {
 .history-modal,
 .history-sheet {
   max-width: 780px;
+  position: relative;
 }
 
 .model-guide-modal,
@@ -1443,18 +1444,125 @@ h3 {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-panel-quiet);
   color: var(--text);
-  display: flex;
+  display: grid;
   flex: 0 0 auto;
-  flex-direction: column;
-  gap: var(--space-3);
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 32px;
   min-height: 92px;
-  padding: 13px;
-  text-align: left;
+  padding: 0;
   width: 100%;
 }
 
 .history-item:hover {
   border-color: rgba(10, 132, 255, 0.38);
+}
+
+.history-item-select {
+  align-items: stretch;
+  background: transparent;
+  border: 0;
+  border-radius: inherit;
+  box-shadow: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 13px 4px 13px 13px;
+  text-align: left;
+}
+
+.history-item-select:not(:disabled):hover {
+  background: transparent;
+  box-shadow: none;
+}
+
+.history-item-delete {
+  align-items: center;
+  align-self: start;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  color: var(--text-soft);
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  margin: 9px 8px 0 0;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0;
+  width: 32px;
+}
+
+.history-item-delete:not(:disabled):hover,
+.history-item-delete:focus-visible {
+  background: #fff3f1;
+  border-color: rgba(199, 53, 44, 0.24);
+  box-shadow: none;
+  color: #a62820;
+}
+
+.history-delete-confirm-backdrop {
+  align-items: center;
+  background: rgba(30, 32, 36, 0.28);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: absolute;
+  z-index: 3;
+}
+
+.history-delete-confirm {
+  align-items: start;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  max-width: 440px;
+  padding: 20px;
+  width: 100%;
+}
+
+.history-delete-confirm > svg {
+  color: #b42318;
+}
+
+.history-delete-confirm h3,
+.history-delete-confirm p {
+  margin: 0;
+}
+
+.history-delete-confirm p {
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+.history-delete-confirm-actions {
+  display: flex;
+  gap: 10px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.history-delete-confirm .danger-button {
+  background: #c7352c;
+  border: 1px solid #b72f27;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.history-delete-confirm .danger-button:not(:disabled):hover,
+.history-delete-confirm .danger-button:focus-visible {
+  background: #ae2e27;
+  border-color: #9f2a24;
 }
 
 .history-item-main {

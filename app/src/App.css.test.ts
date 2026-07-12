@@ -97,7 +97,7 @@ describe("App result workspace layout styles", () => {
     const domainRule = getRuleBody([".task-domain-workspace"]);
     const transcriptPanelRule = getRuleBody([".transcript-review-panel"]);
     const historyListRule = getRuleBody([".history-list"]);
-    const historyItemRule = getRuleBody([".history-item"]);
+    const historyItemSelectRule = getRuleBody([".history-item-select"]);
     const historyMainRule = getRuleBody([".history-item-main"]);
     const localWorkspaceRule = getRuleBody([".local-transcript-workspace"]);
 
@@ -114,7 +114,7 @@ describe("App result workspace layout styles", () => {
     expect(domainRule).toContain("gap: var(--space-3);");
     expect(transcriptPanelRule).toContain("gap: var(--space-3);");
     expect(historyListRule).toContain("gap: var(--space-3);");
-    expect(historyItemRule).toContain("gap: var(--space-3);");
+    expect(historyItemSelectRule).toContain("gap: var(--space-3);");
     expect(historyMainRule).toContain("gap: 8px;");
     expect(localWorkspaceRule).toContain("height: min(760px, calc(100vh - 188px));");
     expect(localWorkspaceRule).toContain("min-height: 520px;");
@@ -236,12 +236,20 @@ describe("App result workspace layout styles", () => {
     const listRule = getRuleBody([".history-list"]);
     const sheetRule = getRuleBody([".history-modal", ".history-sheet"]);
     const itemRule = getRuleBody([".history-item"]);
+    const selectRule = getRuleBody([".history-item-select"]);
+    const deleteRule = getRuleBody([".history-item-delete"]);
+    const deleteFeedbackRule = getRuleBody([
+      ".history-item-delete:not(:disabled):hover",
+      ".history-item-delete:focus-visible",
+    ]);
     const mainRule = getRuleBody([".history-item-main"]);
     const titleRule = getRuleBody([".history-title"]);
     const metaRule = getRuleBody([".history-meta"]);
     const outputRule = getRuleBody([".history-meta-output"]);
     const outputValueRule = getRuleBody([".history-meta-output .history-meta-value"]);
     const resultRule = getRuleBody([".history-meta-result"]);
+    const confirmRule = getRuleBody([".history-delete-confirm"]);
+    const dangerRule = getRuleBody([".history-delete-confirm .danger-button"]);
 
     expect(listRule).toContain("display: flex;");
     expect(listRule).toContain("flex-direction: column;");
@@ -249,11 +257,23 @@ describe("App result workspace layout styles", () => {
     expect(listRule).toContain("min-height: 0;");
     expect(listRule).toContain("overflow: auto;");
     expect(sheetRule).not.toMatch(/(?:^|\s)(?:height|min-height):/);
+    expect(sheetRule).toContain("position: relative;");
     expect(browserSmokeSource).not.toContain("style.height = '720px'");
     expect(listRule).toContain("align-items: stretch;");
-    expect(itemRule).toContain("display: flex;");
+    expect(itemRule).toContain("display: grid;");
     expect(itemRule).toContain("flex: 0 0 auto;");
-    expect(itemRule).toContain("flex-direction: column;");
+    expect(itemRule).toContain("grid-template-columns: minmax(0, 1fr) 32px;");
+    expect(itemRule).toContain("padding: 0;");
+    expect(selectRule).toContain("display: flex;");
+    expect(selectRule).toContain("flex-direction: column;");
+    expect(selectRule).toContain("min-width: 0;");
+    expect(deleteRule).toContain("height: 32px;");
+    expect(deleteRule).toContain("width: 32px;");
+    expect(deleteRule).toContain("padding: 0;");
+    expect(deleteFeedbackRule).toContain("background: #fff3f1;");
+    expect(confirmRule).toContain("max-width: 440px;");
+    expect(dangerRule).toContain("min-height: 40px;");
+    expect(dangerRule).toContain("padding: 0 14px;");
     expect(mainRule).toContain("display: flex;");
     expect(mainRule).toContain("flex-direction: column;");
     expect(titleRule).toContain("-webkit-line-clamp: 2;");

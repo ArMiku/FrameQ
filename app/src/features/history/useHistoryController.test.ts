@@ -13,8 +13,10 @@ type HookHarness = {
 
 const getHistoryMock = vi.fn<() => Promise<HistoryListItem[]>>();
 const getHistoryDetailMock = vi.fn<(taskId: string) => Promise<HistoryItem>>();
+const deleteHistoryTaskMock = vi.fn<(taskId: string) => Promise<{ taskId: string; deleted: true }>>();
 
 vi.mock("../../historyClient", () => ({
+  deleteHistoryTask: deleteHistoryTaskMock,
   getHistory: getHistoryMock,
   getHistoryDetail: getHistoryDetailMock,
 }));
@@ -93,6 +95,8 @@ async function createController(
 ): Promise<{
   render: () => HistoryController;
   onHistoryItemSelected: typeof onHistoryItemSelected;
+  onHistoryItemDeleted: ReturnType<typeof vi.fn>;
+  onPrepareHistoryItemDeletion: ReturnType<typeof vi.fn>;
 }> {
   const harness = createHookHarness();
   vi.doMock("react", () => ({
@@ -101,13 +105,21 @@ async function createController(
     useState: harness.useState,
   }));
   const { useHistoryController } = await import("./useHistoryController");
+  const onHistoryItemDeleted = vi.fn();
+  const onPrepareHistoryItemDeletion = vi.fn();
 
   return {
     render: () => {
       harness.resetRender();
-      return useHistoryController({ onHistoryItemSelected });
+      return useHistoryController({
+        onHistoryItemSelected,
+        onHistoryItemDeleted,
+        onPrepareHistoryItemDeletion,
+      });
     },
     onHistoryItemSelected,
+    onHistoryItemDeleted,
+    onPrepareHistoryItemDeletion,
   };
 }
 
@@ -116,6 +128,7 @@ describe("useHistoryController", () => {
     vi.resetModules();
     getHistoryMock.mockReset();
     getHistoryDetailMock.mockReset();
+    deleteHistoryTaskMock.mockReset();
   });
 
   test("opens history and loads items", async () => {
@@ -215,5 +228,98 @@ describe("useHistoryController", () => {
 
     expect(onHistoryItemSelected).toHaveBeenCalledTimes(1);
     expect(onHistoryItemSelected).toHaveBeenCalledWith(createHistoryDetail("second"));
+  });
+
+  test("cancels deletion confirmation without invoking Tauri", async () => {
+    const item = createHistoryItem();
+    const { render } = await createController();
+
+    let controller = render();
+    controller.requestHistoryItemDeletion(item);
+    controller = render();
+    expect(controller.historyDeleteCandidate).toEqual(item);
+
+    controller.cancelHistoryItemDeletion();
+    controller = render();
+
+    expect(controller.historyDeleteCandidate).toBeNull();
+    expect(deleteHistoryTaskMock).not.toHaveBeenCalled();
+  });
+
+  test("removes a task only after confirmed deletion succeeds", async () => {
+    const item = createHistoryItem();
+    getHistoryMock.mockResolvedValueOnce([item]);
+    deleteHistoryTaskMock.mockResolvedValueOnce({ taskId: item.taskId, deleted: true });
+    const {
+      render,
+      onHistoryItemDeleted,
+      onPrepareHistoryItemDeletion,
+    } = await createController();
+    let controller = render();
+    await controller.openHistory();
+    controller = render();
+    controller.requestHistoryItemDeletion(item);
+    controller = render();
+
+    await controller.confirmHistoryItemDeletion();
+    controller = render();
+
+    expect(onPrepareHistoryItemDeletion).toHaveBeenCalledWith(item.taskId);
+    expect(deleteHistoryTaskMock).toHaveBeenCalledWith(item.taskId);
+    expect(onHistoryItemDeleted).toHaveBeenCalledWith(item.taskId);
+    expect(controller.historyItems).toEqual([]);
+    expect(controller.historyDeleteCandidate).toBeNull();
+    expect(controller.historyDeleting).toBe(false);
+  });
+
+  test("reloads disk history and preserves the candidate after deletion fails", async () => {
+    const item = createHistoryItem();
+    getHistoryMock.mockResolvedValueOnce([item]).mockResolvedValueOnce([item]);
+    deleteHistoryTaskMock.mockRejectedValueOnce(new Error("D:/private/review-secret"));
+    const { render, onHistoryItemDeleted } = await createController();
+    let controller = render();
+    await controller.openHistory();
+    controller = render();
+    controller.requestHistoryItemDeletion(item);
+    controller = render();
+
+    await controller.confirmHistoryItemDeletion();
+    controller = render();
+
+    expect(getHistoryMock).toHaveBeenCalledTimes(2);
+    expect(onHistoryItemDeleted).not.toHaveBeenCalled();
+    expect(controller.historyItems).toEqual([item]);
+    expect(controller.historyDeleteCandidate).toEqual(item);
+    expect(controller.historyNotice).toContain("部分文件可能");
+    expect(controller.historyNotice).not.toContain("review-secret");
+  });
+
+  test("claims one deletion request and invalidates an older detail response", async () => {
+    const item = createHistoryItem();
+    let resolveDelete!: (value: { taskId: string; deleted: true }) => void;
+    let resolveDetail!: (value: HistoryItem) => void;
+    deleteHistoryTaskMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveDelete = resolve; }),
+    );
+    getHistoryDetailMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveDetail = resolve; }),
+    );
+    const { render, onHistoryItemSelected, onHistoryItemDeleted } = await createController();
+    let controller = render();
+    const detail = controller.openHistoryItem(item);
+    controller.requestHistoryItemDeletion(item);
+    controller = render();
+    const firstDelete = controller.confirmHistoryItemDeletion();
+    controller = render();
+    const secondDelete = controller.confirmHistoryItemDeletion();
+
+    expect(deleteHistoryTaskMock).toHaveBeenCalledTimes(1);
+    resolveDelete({ taskId: item.taskId, deleted: true });
+    await Promise.all([firstDelete, secondDelete]);
+    resolveDetail(createHistoryDetail(item.taskId));
+    await detail;
+
+    expect(onHistoryItemDeleted).toHaveBeenCalledOnce();
+    expect(onHistoryItemSelected).not.toHaveBeenCalled();
   });
 });

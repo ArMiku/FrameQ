@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import {
+  deleteHistoryTask,
   getHistory,
   getHistoryDetail,
   type HistoryItem,
@@ -9,24 +10,35 @@ import {
 
 type UseHistoryControllerOptions = {
   onHistoryItemSelected: (item: HistoryItem) => void;
+  onHistoryItemDeleted: (taskId: string) => void;
+  onPrepareHistoryItemDeletion: (taskId: string) => void;
 };
 
 export function useHistoryController({
   onHistoryItemSelected,
+  onHistoryItemDeleted,
+  onPrepareHistoryItemDeletion,
 }: UseHistoryControllerOptions) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
   const [historyNotice, setHistoryNotice] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyDeleteCandidate, setHistoryDeleteCandidate] = useState<HistoryListItem | null>(null);
+  const [historyDeleting, setHistoryDeleting] = useState(false);
   const detailRequestIdRef = useRef(0);
+  const deleteRequestPendingRef = useRef(false);
 
   const closeHistory = useCallback(() => {
     detailRequestIdRef.current += 1;
     setHistoryOpen(false);
+    if (!deleteRequestPendingRef.current) {
+      setHistoryDeleteCandidate(null);
+    }
   }, []);
 
   const openHistory = useCallback(async () => {
     detailRequestIdRef.current += 1;
+    setHistoryDeleteCandidate(null);
     setHistoryOpen(true);
     setHistoryLoading(true);
     setHistoryItems([]);
@@ -71,14 +83,66 @@ export function useHistoryController({
     [onHistoryItemSelected],
   );
 
+  const requestHistoryItemDeletion = useCallback((item: HistoryListItem) => {
+    detailRequestIdRef.current += 1;
+    setHistoryDeleteCandidate(item);
+    setHistoryNotice("");
+  }, []);
+
+  const cancelHistoryItemDeletion = useCallback(() => {
+    if (!deleteRequestPendingRef.current) {
+      setHistoryDeleteCandidate(null);
+    }
+  }, []);
+
+  const confirmHistoryItemDeletion = useCallback(async () => {
+    if (!historyDeleteCandidate || deleteRequestPendingRef.current) {
+      return;
+    }
+    const taskId = historyDeleteCandidate.taskId;
+    deleteRequestPendingRef.current = true;
+    detailRequestIdRef.current += 1;
+    setHistoryDeleting(true);
+    setHistoryNotice("正在永久删除任务。");
+    onPrepareHistoryItemDeletion(taskId);
+    try {
+      await deleteHistoryTask(taskId);
+      setHistoryItems((current) => current.filter((item) => item.taskId !== taskId));
+      setHistoryDeleteCandidate(null);
+      setHistoryNotice("任务已永久删除。");
+      onHistoryItemDeleted(taskId);
+    } catch {
+      try {
+        setHistoryItems(await getHistory());
+      } catch {
+        // Keep the last safe list when the follow-up manifest projection is unavailable.
+      }
+      setHistoryNotice(
+        "未能完整删除任务。部分文件可能仍被其他程序占用，请关闭相关文件后重试。",
+      );
+    } finally {
+      deleteRequestPendingRef.current = false;
+      setHistoryDeleting(false);
+    }
+  }, [
+    historyDeleteCandidate,
+    onHistoryItemDeleted,
+    onPrepareHistoryItemDeletion,
+  ]);
+
   return {
     historyOpen,
     historyItems,
     historyNotice,
     historyLoading,
+    historyDeleteCandidate,
+    historyDeleting,
     closeHistory,
     openHistory,
     openHistoryItem,
+    requestHistoryItemDeletion,
+    cancelHistoryItemDeletion,
+    confirmHistoryItemDeletion,
   };
 }
 

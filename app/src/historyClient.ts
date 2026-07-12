@@ -56,6 +56,16 @@ export type HistoryListItem = {
   insightsCount: number;
 };
 
+type HistoryDeleteResponse = {
+  task_id: string;
+  deleted: boolean;
+};
+
+export type HistoryDeleteResult = {
+  taskId: string;
+  deleted: true;
+};
+
 export type HistoryItem = {
   taskId: string;
   url: string;
@@ -91,6 +101,19 @@ export async function getHistoryDetail(
     request: { task_id: taskId },
   })) as HistoryDetailResponse;
   return mapHistoryDetailResponse(response);
+}
+
+export async function deleteHistoryTask(
+  taskId: string,
+  runner: HistoryCommandRunner = defaultHistoryRunner,
+): Promise<HistoryDeleteResult> {
+  const response = (await runner("delete_history_task", {
+    request: { task_id: taskId },
+  })) as HistoryDeleteResponse;
+  if (response.task_id !== taskId || response.deleted !== true) {
+    throw new Error("HISTORY_DELETE_FAILED");
+  }
+  return { taskId: response.task_id, deleted: true };
 }
 
 export function historyItemToWorkerResult(item: HistoryItem): WorkerResult {

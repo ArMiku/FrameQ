@@ -194,6 +194,7 @@ function App() {
     resetWorkflow,
     updateUrlDraft,
     applyTranscriptSave,
+    completeHistoryTaskDeletion,
     restoreHistoryItem,
     retryInsightGeneration,
     startNewTaskFromToolbar,
@@ -214,6 +215,8 @@ function App() {
     openDetailTab,
     closeDetail,
     currentTranscriptPath,
+    prepareTranscriptForTaskDeletion,
+    transcriptSaving,
   } = transcriptDetailController;
   closeDetailForTaskRef.current = closeDetail;
   const {
@@ -282,9 +285,21 @@ function App() {
     },
     [restoreHistoryItem],
   );
+  const handleHistoryItemDeleted = useCallback(
+    (taskId: string) => {
+      completeHistoryTaskDeletion(taskId);
+    },
+    [completeHistoryTaskDeletion],
+  );
   const historyController = useHistoryController({
     onHistoryItemSelected: handleHistoryItemSelected,
+    onHistoryItemDeleted: handleHistoryItemDeleted,
+    onPrepareHistoryItemDeletion: prepareTranscriptForTaskDeletion,
   });
+  const canDeleteHistory = canRestoreHistory && !transcriptSaving;
+  const historyDeleteUnavailableMessage = transcriptSaving
+    ? "文字稿正在保存，完成后才能永久删除历史任务。"
+    : historyRestoreUnavailableMessage;
   const { historyOpen, closeHistory, openHistory } = historyController;
   const {
     handleToolbarMouseDown,
@@ -713,6 +728,8 @@ function App() {
         formatHistoryDate={formatHistoryDate}
         selectionDisabled={!canRestoreHistory}
         selectionDisabledReason={historyRestoreUnavailableMessage}
+        deletionDisabled={!canDeleteHistory}
+        deletionDisabledReason={historyDeleteUnavailableMessage}
       />
 
       <SettingsSheet

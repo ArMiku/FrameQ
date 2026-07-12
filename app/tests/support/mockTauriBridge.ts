@@ -190,6 +190,12 @@ export function createUiSmokeBridgeScript(scenario: UiSmokeScenario): string {
             const taskId = args?.request?.task_id;
             return Promise.resolve(scenario.responses.get_history_detail?.[taskId]);
           }
+          if (command === "delete_history_task") {
+            return Promise.resolve({
+              task_id: args?.request?.task_id,
+              deleted: true
+            });
+          }
           if (command === "load_transcript_detail") {
             const taskId = args?.request?.task_id;
             if (scenario.responses.load_transcript_detail) {

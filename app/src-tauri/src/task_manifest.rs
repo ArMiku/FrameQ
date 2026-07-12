@@ -623,7 +623,7 @@ fn validate_storage_entry(path: &Path, expect_directory: bool, label: &str) -> R
     Ok(())
 }
 
-fn is_link_or_reparse_point(metadata: &fs::Metadata) -> bool {
+pub(crate) fn is_link_or_reparse_point(metadata: &fs::Metadata) -> bool {
     metadata.file_type().is_symlink() || is_windows_reparse_point(metadata)
 }
 

@@ -59,31 +59,7 @@ beforeAll(async () => {
   const address = viteServer.httpServer?.address() as AddressInfo;
   appUrl = `http://127.0.0.1:${address.port}/`;
 
-  cdpPort = await findFreePort();
-  chromeProfileDir = mkdtempSync(join(tmpdir(), "frameq-cdp-"));
-  chromeProcess = spawn(
-    findChromeExecutable(),
-    [
-      "--headless=new",
-      `--remote-debugging-port=${cdpPort}`,
-      `--user-data-dir=${chromeProfileDir}`,
-      "--no-sandbox",
-      "--disable-gpu",
-      "--disable-gpu-compositing",
-      "--disable-3d-apis",
-      "--disable-dev-shm-usage",
-      "--no-first-run",
-      "about:blank",
-    ],
-    { stdio: ["ignore", "ignore", "pipe"] },
-  );
-  chromeProcess.stderr?.on("data", (chunk) => {
-    chromeStderr = `${chromeStderr}${String(chunk)}`.slice(-4_000);
-  });
-  chromeProcess.on("exit", (code, signal) => {
-    chromeExit = { code, signal };
-  });
-  await waitForChrome(cdpPort, chromeDiagnostics);
+  await startChromeProcess();
 }, 30_000);
 
 afterAll(async () => {
@@ -100,7 +76,7 @@ describe("App browser input interactions", () => {
   test("renders a macOS-style desktop utility frame around the waiting input state", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -114,9 +90,7 @@ describe("App browser input interactions", () => {
         deviceScaleFactor: 1,
         mobile: false,
       });
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.app-shell')) && getComputedStyle(document.querySelector('.app-shell')).display === 'grid'",
@@ -181,7 +155,7 @@ describe("App browser input interactions", () => {
   test("shows the processing workspace only after the URL is submitted", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -195,9 +169,7 @@ describe("App browser input interactions", () => {
         deviceScaleFactor: 1,
         mobile: false,
       });
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.command-panel')) && !document.querySelector('.task-workspace-layout')",
@@ -252,7 +224,7 @@ describe("App browser input interactions", () => {
   test("keeps the app mounted after a valid Douyin URL is pasted", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -261,9 +233,7 @@ describe("App browser input interactions", () => {
       await page.send("Page.enable");
       await page.send("Runtime.enable");
       await page.send("Log.enable");
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.app-shell')) && getComputedStyle(document.querySelector('.app-shell')).display === 'grid'",
@@ -306,7 +276,7 @@ describe("App browser input interactions", () => {
   test("submits the normalized supported URL extracted from share text", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -388,9 +358,7 @@ describe("App browser input interactions", () => {
           })();
         `,
       });
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.command-panel')) && !document.querySelector('.task-workspace-layout')",
@@ -435,7 +403,7 @@ describe("App browser input interactions", () => {
   test("returns to the paste-link screen after signing out from a completed task", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -535,9 +503,7 @@ describe("App browser input interactions", () => {
         deviceScaleFactor: 1,
         mobile: false,
       });
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.command-panel')) && !document.querySelector('.task-workspace-layout')",
@@ -608,7 +574,7 @@ describe("App desktop sheet structure", () => {
   test("opens settings as a grouped macOS-style sheet", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -616,9 +582,7 @@ describe("App desktop sheet structure", () => {
     try {
       await page.send("Page.enable");
       await page.send("Runtime.enable");
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.app-shell')) && getComputedStyle(document.querySelector('.app-shell')).display === 'grid'",
@@ -715,7 +679,7 @@ describe("App desktop sheet structure", () => {
   test("shows and clears audio playback cache from settings", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -792,9 +756,7 @@ describe("App desktop sheet structure", () => {
           })();
         `,
       });
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.app-shell')) && getComputedStyle(document.querySelector('.app-shell')).display === 'grid'",
@@ -932,7 +894,7 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
       });
       await waitForRuntimeCondition(page, "window.innerWidth === 1366");
       await openSmokeHistory(page);
-      await clickSelector(page, ".history-item");
+      await clickSelector(page, ".history-item-select");
       await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
       await waitForRuntimeCondition(
         page,
@@ -1351,6 +1313,154 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
       await page.close();
     }
   }, 15_000);
+});
+
+describe("App controller-owned lifecycle UI smoke", () => {
+  beforeAll(async () => {
+    await restartChromeProcess();
+  }, 30_000);
+
+  test("owns permanent deletion confirmation, failure, and current-task reset in one history lifecycle", async () => {
+    const page = await openUiSmokePage({ deferredCommands: ["delete_history_task"] });
+
+    try {
+      await restoreSmokeHistoryItem(page, "历史任务甲文字稿");
+      await openSmokeHistory(page);
+      await openHistoryDeleteConfirmation(page, "历史任务乙文字稿");
+      expect(
+        await evaluateValue<string>(
+          page,
+          "document.activeElement?.textContent?.trim() ?? ''",
+        ),
+      ).toBe("取消");
+      await clickButtonContaining(page, ".history-delete-confirm button", "取消");
+      await waitForRuntimeCondition(page, "!document.querySelector('.history-delete-confirm')");
+      expect((await readUiSmokeCommands(page)).some((entry) => entry.command === "delete_history_task"))
+        .toBe(false);
+
+      await page.send("Runtime.evaluate", {
+        expression: `(() => {
+          const card = [...document.querySelectorAll('.history-item')]
+            .find((item) => item.textContent?.includes('历史任务乙文字稿'));
+          card?.querySelector('.history-item-select')?.focus();
+        })()`,
+      });
+      await page.send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "Tab",
+        code: "Tab",
+        windowsVirtualKeyCode: 9,
+      });
+      await page.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Tab",
+        code: "Tab",
+        windowsVirtualKeyCode: 9,
+      });
+      expect(
+        await evaluateValue<string>(
+          page,
+          "document.activeElement?.getAttribute('aria-label') ?? ''",
+        ),
+      ).toBe("永久删除此历史任务");
+      await clickSelector(page, ".history-item-delete:focus");
+      await waitForRuntimeCondition(page, "Boolean(document.querySelector('.history-delete-confirm'))");
+      await page.send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "Escape",
+        code: "Escape",
+        windowsVirtualKeyCode: 27,
+      });
+      await page.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Escape",
+        code: "Escape",
+        windowsVirtualKeyCode: 27,
+      });
+      await waitForRuntimeCondition(page, "!document.querySelector('.history-delete-confirm')");
+
+      await openHistoryDeleteConfirmation(page, "历史任务乙文字稿");
+      await clickButtonContaining(page, ".history-delete-confirm button", "永久删除");
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(window.__FRAMEQ_UI_SMOKE__.pending.delete_history_task?.length) && document.body.innerText.includes('正在永久删除')",
+      );
+      expect(
+        await evaluateValue<string>(
+          page,
+          "document.querySelector('.local-transcript-workspace')?.dataset.taskId ?? ''",
+        ),
+      ).toBe("history-task-a");
+      await resolveUiSmokeCommand(page, "delete_history_task", {
+        task_id: "history-task-b",
+        deleted: true,
+      });
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelectorAll('.history-item').length === 1 && !document.body.innerText.includes('历史任务乙文字稿')",
+      );
+      expect(
+        await evaluateValue<string>(
+          page,
+          "document.querySelector('.local-transcript-workspace')?.dataset.taskId ?? ''",
+        ),
+      ).toBe("history-task-a");
+
+      await openHistoryDeleteConfirmation(page, "历史任务甲文字稿");
+      await clickButtonContaining(page, ".history-delete-confirm button", "永久删除");
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(window.__FRAMEQ_UI_SMOKE__.pending.delete_history_task?.length)",
+      );
+      await rejectUiSmokeCommand(page, "delete_history_task", "C:/private/review-secret");
+      await waitForRuntimeCondition(
+        page,
+        "document.body.innerText.includes('部分文件可能') && document.querySelectorAll('.history-item').length === 2",
+      );
+      const state = await evaluateValue<Record<string, unknown>>(
+        page,
+        `({
+          currentTask: document.querySelector('.local-transcript-workspace')?.dataset.taskId ?? '',
+          body: document.body.innerText,
+          confirmStillOpen: Boolean(document.querySelector('.history-delete-confirm'))
+        })`,
+      );
+      expect(state.currentTask).toBe("history-task-a");
+      expect(state.confirmStillOpen).toBe(true);
+      expect(String(state.body)).not.toContain("review-secret");
+      expect(String(state.body)).not.toContain("C:/private");
+
+      await clickButtonContaining(page, ".history-delete-confirm button", "永久删除");
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(window.__FRAMEQ_UI_SMOKE__.pending.delete_history_task?.length) && document.body.innerText.includes('正在永久删除')",
+      );
+      expect(
+        await evaluateValue<string>(
+          page,
+          "document.querySelector('.local-transcript-workspace')?.dataset.taskId ?? ''",
+        ),
+      ).toBe("history-task-a");
+      await resolveUiSmokeCommand(page, "delete_history_task", {
+        task_id: "history-task-a",
+        deleted: true,
+      });
+      await waitForRuntimeCondition(
+        page,
+        "Boolean(document.querySelector('.command-panel')) && document.querySelectorAll('.history-item').length === 1",
+      );
+
+      const deletionCommands = (await readUiSmokeCommands(page)).filter(
+        (entry) => entry.command === "delete_history_task",
+      );
+      expect(deletionCommands).toHaveLength(3);
+      expect(deletionCommands[0].args).toEqual({ request: { task_id: "history-task-b" } });
+      expect(deletionCommands[1].args).toEqual({ request: { task_id: "history-task-a" } });
+      expect(deletionCommands[2].args).toEqual({ request: { task_id: "history-task-a" } });
+    } finally {
+      await page.close();
+    }
+  }, 15_000);
 
   test("keeps history read-only during processing and restores one stable completed task", async () => {
     const page = await openUiSmokePage({ deferredCommands: ["process_video"] });
@@ -1360,15 +1470,15 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
       await openSmokeHistory(page);
       await waitForRuntimeCondition(
         page,
-        "document.querySelectorAll('.history-item[disabled]').length === 2 && document.body.innerText.includes('当前任务仍在处理中')",
+        "document.querySelectorAll('.history-item-select:disabled').length === 2 && document.querySelectorAll('.history-item-delete:disabled').length === 2 && document.body.innerText.includes('当前任务仍在处理中')",
       );
 
       await resolveUiSmokeCommand(page, "process_video");
       await waitForRuntimeCondition(
         page,
-        "document.querySelectorAll('.history-item:not([disabled])').length === 2 && document.body.innerText.includes('视频、音频和文字稿已保存在本机')",
+        "document.querySelectorAll('.history-item-select:not(:disabled)').length === 2 && document.querySelectorAll('.history-item-delete:not(:disabled)').length === 2 && document.body.innerText.includes('视频、音频和文字稿已保存在本机')",
       );
-      await clickButtonContaining(page, ".history-item", "历史任务甲文字稿");
+      await clickButtonContaining(page, ".history-item-select", "历史任务甲文字稿");
       await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
       await waitForRuntimeCondition(
         page,
@@ -1502,13 +1612,13 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
       await openSmokeHistory(page);
       await waitForRuntimeCondition(
         page,
-        "document.querySelectorAll('.history-item[disabled]').length === 2 && document.body.innerText.includes('当前任务仍在处理中')",
+        "document.querySelectorAll('.history-item-select:disabled').length === 2 && document.querySelectorAll('.history-item-delete:disabled').length === 2 && document.body.innerText.includes('当前任务仍在处理中')",
       );
 
       await resolveUiSmokeCommand(page, "process_video", cancelledWorkerResult());
       await waitForRuntimeCondition(
         page,
-        "Boolean(document.querySelector('.command-panel')) && document.querySelectorAll('.history-item:not([disabled])').length === 2",
+        "Boolean(document.querySelector('.command-panel')) && document.querySelectorAll('.history-item-select:not(:disabled)').length === 2 && document.querySelectorAll('.history-item-delete:not(:disabled)').length === 2",
       );
       await clickSelector(page, 'button[aria-label="关闭历史"]');
       await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
@@ -1542,6 +1652,14 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
         page,
         "Boolean(window.__FRAMEQ_UI_SMOKE__.pending.save_transcript_edit?.length)",
       );
+
+      await openSmokeHistory(page);
+      await waitForRuntimeCondition(
+        page,
+        "document.querySelectorAll('.history-item-delete:disabled').length === 2 && document.body.innerText.includes('文字稿正在保存')",
+      );
+      await clickSelector(page, 'button[aria-label="关闭历史"]');
+      await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
 
       await restoreSmokeHistoryItem(page, "历史任务乙文字稿");
       await resolveUiSmokeCommand(page, "save_transcript_edit", {
@@ -1683,12 +1801,12 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
       await openSmokeHistory(page);
       await waitForRuntimeCondition(
         page,
-        "document.querySelectorAll('.history-item[disabled]').length === 2",
+        "document.querySelectorAll('.history-item-select:disabled').length === 2 && document.querySelectorAll('.history-item-delete:disabled').length === 2",
       );
       await resolveUiSmokeCommand(page, "retry_insights");
       await waitForRuntimeCondition(
         page,
-        "document.querySelectorAll('.history-item:not([disabled])').length === 2",
+        "document.querySelectorAll('.history-item-select:not(:disabled)').length === 2 && document.querySelectorAll('.history-item-delete:not(:disabled)').length === 2",
       );
       await clickSelector(page, 'button[aria-label="关闭历史"]');
 
@@ -1726,10 +1844,14 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
 });
 
 describe("App result detail modal layout", () => {
+  beforeAll(async () => {
+    await restartChromeProcess();
+  }, 30_000);
+
   test("keeps long detail text scrollable inside the modal content area", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -1737,9 +1859,7 @@ describe("App result detail modal layout", () => {
     try {
       await page.send("Page.enable");
       await page.send("Runtime.enable");
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.app-shell')) && getComputedStyle(document.querySelector('.app-shell')).display === 'grid'",
@@ -1796,7 +1916,7 @@ describe("App result detail modal layout", () => {
   test("keeps long settings forms scrollable inside the settings modal", async () => {
     const target = await requestJson<CdpTarget>(
       cdpPort,
-      `/json/new?${encodeURIComponent(appUrl)}`,
+      `/json/new?${encodeURIComponent("about:blank")}`,
       "PUT",
     );
     const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -1804,9 +1924,7 @@ describe("App result detail modal layout", () => {
     try {
       await page.send("Page.enable");
       await page.send("Runtime.enable");
-      const loaded = page.waitForEvent("Page.loadEventFired");
       await page.send("Page.navigate", { url: appUrl });
-      await loaded;
       await waitForRuntimeCondition(
         page,
         "Boolean(document.querySelector('.app-shell')) && getComputedStyle(document.querySelector('.app-shell')).display === 'grid'",
@@ -2026,6 +2144,45 @@ async function waitForChrome(port: number, diagnostics = () => "") {
   throw new Error(`Chrome DevTools endpoint did not become ready.${diagnostics()}`);
 }
 
+async function startChromeProcess() {
+  cdpPort = await findFreePort();
+  chromeProfileDir = mkdtempSync(join(tmpdir(), "frameq-cdp-"));
+  chromeStderr = "";
+  chromeExit = null;
+  chromeProcess = spawn(
+    findChromeExecutable(),
+    [
+      "--headless=new",
+      `--remote-debugging-port=${cdpPort}`,
+      `--user-data-dir=${chromeProfileDir}`,
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-gpu-compositing",
+      "--disable-3d-apis",
+      "--disable-dev-shm-usage",
+      "--no-first-run",
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  chromeProcess.stderr?.on("data", (chunk) => {
+    chromeStderr = `${chromeStderr}${String(chunk)}`.slice(-4_000);
+  });
+  chromeProcess.on("exit", (code, signal) => {
+    chromeExit = { code, signal };
+  });
+  await waitForChrome(cdpPort, chromeDiagnostics);
+}
+
+async function restartChromeProcess() {
+  await stopChromeProcess();
+  if (chromeProfileDir) {
+    rmSync(chromeProfileDir, { recursive: true, force: true });
+    chromeProfileDir = "";
+  }
+  await startChromeProcess();
+}
+
 async function stopChromeProcess() {
   const process = chromeProcess;
   if (!process) {
@@ -2080,7 +2237,7 @@ type UiSmokeCommand = {
 async function openUiSmokePage(scenario: UiSmokeScenario): Promise<CdpPage> {
   const target = await requestJson<CdpTarget>(
     cdpPort,
-    `/json/new?${encodeURIComponent(appUrl)}`,
+    `/json/new?${encodeURIComponent("about:blank")}`,
     "PUT",
   );
   const page = await connectToCdp(target.webSocketDebuggerUrl);
@@ -2090,9 +2247,7 @@ async function openUiSmokePage(scenario: UiSmokeScenario): Promise<CdpPage> {
     await page.send("Page.addScriptToEvaluateOnNewDocument", {
       source: createUiSmokeBridgeScript(scenario),
     });
-    const loaded = page.waitForEvent("Page.loadEventFired");
     await page.send("Page.navigate", { url: appUrl });
-    await loaded;
     await waitForRuntimeCondition(
       page,
       "window.__FRAMEQ_UI_SMOKE__?.ready === true && Boolean(document.querySelector('.app-shell'))",
@@ -2100,7 +2255,7 @@ async function openUiSmokePage(scenario: UiSmokeScenario): Promise<CdpPage> {
     );
     return page;
   } catch (error) {
-      await page.close();
+    await page.close();
     throw error;
   }
 }
@@ -2214,6 +2369,16 @@ async function resolveUiSmokeCommand(
   });
 }
 
+async function rejectUiSmokeCommand(
+  page: CdpPage,
+  command: string,
+  message: string,
+): Promise<void> {
+  await page.send("Runtime.evaluate", {
+    expression: `window.__FRAMEQ_UI_SMOKE__.reject(${JSON.stringify(command)}, ${JSON.stringify(message)})`,
+  });
+}
+
 async function submitSmokeVideo(page: CdpPage): Promise<void> {
   await page.send("Runtime.evaluate", {
     expression: "document.querySelector('#video-url').focus()",
@@ -2237,8 +2402,22 @@ async function openSmokeHistory(page: CdpPage, expectedItems = 2): Promise<void>
 
 async function restoreSmokeHistoryItem(page: CdpPage, preview: string): Promise<void> {
   await openSmokeHistory(page);
-  await clickButtonContaining(page, ".history-item", preview);
+  await clickButtonContaining(page, ".history-item-select", preview);
   await waitForRuntimeCondition(page, "!document.querySelector('.history-sheet')");
+}
+
+async function openHistoryDeleteConfirmation(page: CdpPage, preview: string): Promise<void> {
+  await page.send("Runtime.evaluate", {
+    expression: `(() => {
+      const card = [...document.querySelectorAll('.history-item')]
+        .find((item) => item.textContent?.includes(${JSON.stringify(preview)}));
+      card?.querySelector('.history-item-delete')?.click();
+    })()`,
+  });
+  await waitForRuntimeCondition(
+    page,
+    "Boolean(document.querySelector('.history-delete-confirm'))",
+  );
 }
 
 async function replaceTextAreaValue(

@@ -123,6 +123,14 @@ struct ProcessSupervisorState {
 }
 
 impl ProcessSupervisor {
+    pub(crate) fn is_active(&self) -> bool {
+        self.state
+            .lock()
+            .expect("process supervisor lock poisoned")
+            .current
+            .is_some()
+    }
+
     pub(crate) fn start(&self, pid: u32) -> Option<ProcessInstance> {
         let mut state = self.state.lock().expect("process supervisor lock poisoned");
         if state.current.is_some() {
@@ -715,7 +723,9 @@ mod tests {
     #[test]
     fn process_supervisor_claims_cancellation_once_and_rolls_back_only_matching_instance() {
         let supervisor = ProcessSupervisor::default();
+        assert!(!supervisor.is_active());
         let first = supervisor.start(101).expect("first worker starts");
+        assert!(supervisor.is_active());
 
         assert_eq!(first.instance_id, 1);
         assert_eq!(first.pid, 101);
@@ -737,6 +747,7 @@ mod tests {
             supervisor.finish(first.instance_id),
             Some(ProcessPhase::Running)
         );
+        assert!(!supervisor.is_active());
         let second = supervisor.start(202).expect("second worker starts");
         assert_eq!(second.instance_id, 2);
         assert_eq!(supervisor.phase(), Some(ProcessPhase::Running));

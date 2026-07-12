@@ -48,6 +48,14 @@
   sizes; the temporary update action remains separate.
 - Short transcript content does not change the local workspace height strategy and must not be
   padded with decorative or equal-height filler.
+- A History row with deletion support is a neutral card container containing sibling restore and
+  delete buttons; interactive controls must never be nested. The 32px delete icon remains visually
+  quiet until hover/focus and uses a native disabled state with readable reason copy during active
+  processing, AI generation, cancellation, transcript save, or deletion.
+- Permanent deletion always opens a focused confirmation dialog. Cancel receives initial focus;
+  the red destructive action states `永久删除`, and the copy names video, audio, transcript, AI
+  results, playback cache, immediate disk release, and irreversibility. Escape closes only the
+  confirmation dialog.
 
 ## 2026-07-10 History Restore While Processing
 

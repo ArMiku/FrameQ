@@ -22,15 +22,24 @@ function createHistoryItem(overrides: Partial<HistoryListItem> = {}): HistoryLis
   };
 }
 
-function createHistoryController(historyItems = [createHistoryItem()]): HistoryController {
+function createHistoryController(
+  historyItems = [createHistoryItem()],
+  overrides: Partial<HistoryController> = {},
+): HistoryController {
   return {
     historyOpen: true,
     historyItems,
     historyNotice: "",
     historyLoading: false,
+    historyDeleteCandidate: null,
+    historyDeleting: false,
     closeHistory: vi.fn(),
     openHistory: vi.fn(),
     openHistoryItem: vi.fn(),
+    requestHistoryItemDeletion: vi.fn(),
+    cancelHistoryItemDeletion: vi.fn(),
+    confirmHistoryItemDeletion: vi.fn(),
+    ...overrides,
   };
 }
 
@@ -42,6 +51,8 @@ describe("HistorySheet selection accessibility", () => {
         formatHistoryDate={() => "2026-07-10"}
         selectionDisabled
         selectionDisabledReason="当前任务仍在处理中，完成或取消确认后才能恢复历史任务。"
+        deletionDisabled
+        deletionDisabledReason="当前任务仍在处理中，完成或取消确认后才能永久删除历史任务。"
       />,
     );
 
@@ -79,6 +90,8 @@ describe("HistorySheet selection accessibility", () => {
         formatHistoryDate={() => "2026-07-10"}
         selectionDisabled={false}
         selectionDisabledReason=""
+        deletionDisabled={false}
+        deletionDisabledReason=""
       />,
     );
 
@@ -91,5 +104,50 @@ describe("HistorySheet selection accessibility", () => {
     expect(markup).toContain('class="history-meta-time"');
     expect(markup).toContain('class="history-meta-output"');
     expect(markup).toContain('class="history-meta-result"');
+  });
+
+  test("renders sibling restore and permanent-delete controls without nesting buttons", () => {
+    const markup = renderToStaticMarkup(
+      <HistorySheet
+        controller={createHistoryController()}
+        formatHistoryDate={() => "2026-07-10"}
+        selectionDisabled={false}
+        selectionDisabledReason=""
+        deletionDisabled={false}
+        deletionDisabledReason=""
+      />,
+    );
+
+    expect(markup).toContain('class="history-item completed"');
+    expect(markup).toContain('class="history-item-select"');
+    expect(markup).toContain('class="history-item-delete"');
+    expect(markup).toContain('aria-label="永久删除此历史任务"');
+    expect(markup).toContain('title="永久删除"');
+    const selectMarkup = markup.match(
+      /<button class="history-item-select"[\s\S]*?<\/button>/,
+    )?.[0];
+    expect(selectMarkup?.match(/<button/g)).toHaveLength(1);
+    expect(markup).toMatch(/<\/button><button class="history-item-delete"/);
+  });
+
+  test("renders an irreversible confirmation with cancel as the safe first action", () => {
+    const item = createHistoryItem();
+    const markup = renderToStaticMarkup(
+      <HistorySheet
+        controller={createHistoryController([item], {
+          historyDeleteCandidate: item,
+        })}
+        formatHistoryDate={() => "2026-07-10"}
+        selectionDisabled={false}
+        selectionDisabledReason=""
+        deletionDisabled={false}
+        deletionDisabledReason=""
+      />,
+    );
+
+    expect(markup).toContain('aria-label="确认永久删除历史任务"');
+    expect(markup).toContain("视频、音频、文字稿、AI 结果和播放缓存");
+    expect(markup).toContain("无法恢复");
+    expect(markup.indexOf(">取消<")).toBeLessThan(markup.indexOf(">永久删除<"));
   });
 });

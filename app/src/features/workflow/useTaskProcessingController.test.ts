@@ -516,6 +516,55 @@ describe("useTaskProcessingController history restore", () => {
     expect("setWorkflow" in controller).toBe(false);
   });
 
+  test("resets only when the successfully deleted history task is current", async () => {
+    const history = createHistoryItem();
+    const { render, onResetTaskUi } = await createController();
+    let controller = render();
+    expect(controller.restoreHistoryItem(history)).toBe(true);
+    controller = render();
+    onResetTaskUi.mockClear();
+
+    expect(controller.completeHistoryTaskDeletion("another-task")).toBe(false);
+    controller = render();
+    expect(controller.workflow.taskId).toBe(history.taskId);
+    expect(onResetTaskUi).not.toHaveBeenCalled();
+
+    expect(controller.completeHistoryTaskDeletion(history.taskId)).toBe(true);
+    controller = render();
+    expect(controller.workflow.stage).toBe("waiting_input");
+    expect(controller.workflow.taskId).toBeNull();
+    expect(onResetTaskUi).toHaveBeenCalledTimes(1);
+
+    controller.applyTranscriptSave(history.taskId, {
+      task_id: history.taskId,
+      text: "late deleted transcript",
+      artifacts: { transcript_txt: "transcript/transcript.txt" },
+      has_original_backup: true,
+    });
+    controller = render();
+    expect(controller.workflow.taskId).toBeNull();
+    expect(controller.workflow.text).toBe("");
+  });
+
+  test("refuses deletion completion while the workflow is active", async () => {
+    processVideoMock.mockImplementation(() => new Promise<WorkerResult>(() => undefined));
+    const { render, onResetTaskUi } = await createController();
+    let controller = render();
+    controller.updateUrlDraft("https://www.douyin.com/video/7524373044106677544");
+    controller = render();
+    void controller.submitUrl(
+      { preventDefault: vi.fn() } as never,
+      createBrowserPreviewAccountStatus(),
+      vi.fn(),
+    );
+    controller = render();
+
+    expect(controller.completeHistoryTaskDeletion("active-task")).toBe(false);
+    controller = render();
+    expect(controller.workflow.stage).toBe("video_extracting");
+    expect(onResetTaskUi).not.toHaveBeenCalled();
+  });
+
   test("ignores late progress and a terminal result from an invalidated operation after restoring history", async () => {
     let progress: ((event: WorkerProgressEvent) => void) | null = null;
     let resolveWorker: ((value: WorkerResult) => void) | null = null;

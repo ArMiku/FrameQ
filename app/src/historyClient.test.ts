@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  deleteHistoryTask,
   getHistory,
   getHistoryDetail,
   historyItemToWorkerResult,
@@ -25,6 +26,24 @@ const SECOND_INSIGHT: WorkerResult["insights"][number] = {
 };
 
 describe("history client", () => {
+  test("deletes a history task through a task-id-only request", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: HistoryCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return { task_id: "task-safe-1", deleted: true };
+    };
+
+    const result = await deleteHistoryTask("task-safe-1", runner);
+
+    expect(calls).toEqual([
+      {
+        command: "delete_history_task",
+        args: { request: { task_id: "task-safe-1" } },
+      },
+    ]);
+    expect(result).toEqual({ taskId: "task-safe-1", deleted: true });
+  });
+
   test("loads task history from Tauri and maps result fields", async () => {
     const calls: Array<{ command: string; args: unknown }> = [];
     const runner: HistoryCommandRunner = async (command, args) => {

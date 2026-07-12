@@ -439,6 +439,23 @@ export function useTranscriptDetailController({
     setTranscriptAudioPlaying(false);
   }, []);
 
+  const prepareTranscriptForTaskDeletion = useCallback(
+    (expectedTaskId: string) => {
+      if (!workflow.taskId || workflow.taskId !== expectedTaskId) {
+        return;
+      }
+      resumeTranscriptAfterSaveRef.current = false;
+      const audio = transcriptAudioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      }
+      setTranscriptAudioPlaying(false);
+    },
+    [workflow.taskId],
+  );
+
   return {
     detailTab,
     openDetailTab,
@@ -480,6 +497,7 @@ export function useTranscriptDetailController({
     scrubTranscriptAudio,
     beginTranscriptSegmentEdit,
     endTranscriptSegmentEdit,
+    prepareTranscriptForTaskDeletion,
     updateTranscriptSegmentDraft,
     updateFullTranscriptDraft,
   };

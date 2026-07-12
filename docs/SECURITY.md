@@ -27,6 +27,26 @@
   artifacts, or consume quota. A direct worker invocation cannot recover the retired automatic-AI
   branch through a compatibility parser or environment setting.
 
+## 2026-07-12 Permanent History Deletion Boundary
+
+- Product deletion accepts only a strict task ID for a currently supported History vNext task.
+  IPC must reject frontend-supplied task/output/cache paths, URLs, manifests, commands, or unknown
+  fields.
+- Rust must derive and canonicalize the configured roots, prove the target is exactly
+  `<output>/tasks/<task-id>`, and reject root or descendant symlink, junction, and reparse-point
+  storage before mutation. It must never delete the output root, tasks root, another task, models,
+  settings, auth state, diagnostics, update state, or global cache.
+- Unsupported legacy, malformed, quarantined, missing-marker, or invalid-identity directories
+  remain physically untouched and unavailable to the delete UI.
+- Playback cache deletion is limited to `.frameq-audio-review/<task-id>` and precedes authoritative
+  task deletion. Cache failure aborts before task mutation; primary recursive deletion failure may
+  partially complete and cannot be rolled back.
+- Deletion diagnostics expose only fixed outcome/error codes and elapsed time. They must not
+  include task IDs, discovered filenames, local paths, canonical/source URLs, manifest content, or
+  raw operating-system errors.
+- The frontend disables deletion during local processing, AI generation, cancellation, transcript
+  save, or another deletion; Rust independently rejects an active video/AI supervisor lane.
+
 ## 2026-07-11 Unsupported Legacy Task Isolation Boundary
 
 - Only a schema v3 manifest with the current source-privacy marker, a present and

@@ -1,0 +1,105 @@
+name: macOS Intel Acceptance Artifact
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-intel-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-and-package:
+    name: Test and package Intel DMG
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    env:
+      FRAMEQ_PYTHON_STANDALONE_URL: ${{ secrets.FRAMEQ_PYTHON_STANDALONE_URL_MACOS_X64 }}
+      FRAMEQ_FFMPEG_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFMPEG_ARCHIVE_URL_MACOS_X64 }}
+      FRAMEQ_FFPROBE_ARCHIVE_URL: ${{ secrets.FRAMEQ_FFPROBE_ARCHIVE_URL_MACOS_X64 }}
+    steps:
+      - name: Checkout exact acceptance commit
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust x86_64 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix app
+
+      - name: Run native Intel macOS Rust acceptance
+        env:
+          RUST_BACKTRACE: "1"
+        run: cargo test --manifest-path app/src-tauri/Cargo.toml --target x86_64-apple-darwin
+
+      - name: Confirm required runtime archives are configured
+        run: |
+          for variable in \
+            FRAMEQ_PYTHON_STANDALONE_URL \
+            FRAMEQ_FFMPEG_ARCHIVE_URL \
+            FRAMEQ_FFPROBE_ARCHIVE_URL
+          do
+            if [ -z "${!variable}" ]; then
+              echo "A required macOS x64 runtime archive is unavailable." >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare bundled runtime resources
+        run: node scripts/build-installer.mjs --target macos-x64 --skip-tauri-build
+
+      - name: Build internal macOS Intel app bundle
+        run: >-
+          npm --prefix app run tauri -- build --bundles app
+          --target x86_64-apple-darwin
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Verify Intel architecture and packaged runtime
+        run: |
+          APP="app/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/FrameQ.app"
+          RES="$APP/Contents/Resources/resources"
+          BIN="$APP/Contents/MacOS/FrameQ"
+          file "$APP/Contents/MacOS/FrameQ"
+          test "$(lipo -archs "$APP/Contents/MacOS/FrameQ")" = "x86_64"
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$RES/worker" "$RES/python/bin/python3" -c "import funasr, modelscope, yt_dlp; import frameq_worker; print('bundled runtime import OK')"
+          DENO_NO_UPDATE_CHECK=1 DENO_DIR="$RUNNER_TEMP/frameq-deno-cache" "$RES/bin/deno" eval "console.log('bundled deno OK')"
+          if find "$RES" \( -name __pycache__ -o -name '*.pyc' \) | grep -q .; then
+            echo "Packaged runtime smoke test mutated the app bundle." >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=4 "$APP"
+
+      - name: Package internal macOS Intel DMG
+        run: bash scripts/make-macos-dmg.sh x86_64-apple-darwin FrameQ
+
+      - name: Generate artifact identity and SHA-256
+        id: artifact
+        run: |
+          DMG="$(find app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          test -n "$DMG"
+          shasum -a 256 "$DMG" > "$DMG.sha256"
+          echo "name=frameq-macos-intel-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload internal Intel DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: |
+            app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            app/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg.sha256
+          if-no-files-found: error
+          retention-days: 7

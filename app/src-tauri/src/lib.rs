@@ -7,6 +7,7 @@ mod asr_model;
 mod deep_link;
 mod diagnostics;
 mod history;
+mod history_deletion;
 mod insight_preferences;
 mod runtime;
 mod settings;
@@ -41,6 +42,7 @@ pub(crate) use worker_command::{
 };
 
 pub(crate) use video_processing::ProcessVideoResult;
+pub(crate) use history_deletion::HistoryDeletionState;
 
 #[cfg(test)]
 pub(crate) use video_processing::WorkerError;
@@ -57,6 +59,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(ProcessSupervisors::default()))
+        .manage(Arc::new(HistoryDeletionState::default()))
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 deep_link::activate_main_window_for_deep_link(&window, argv);
@@ -89,6 +92,7 @@ pub fn run() {
             insight_preferences::save_default_generation_preferences,
             history::get_history,
             history::get_history_detail,
+            history_deletion::delete_history_task,
             transcript_detail::load_transcript_detail,
             transcript_detail::save_transcript_edit,
             updates::get_update_preferences,

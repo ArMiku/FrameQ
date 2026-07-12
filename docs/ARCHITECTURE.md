@@ -1,5 +1,24 @@
 # FrameQ Architecture
 
+## 2026-07-12 History Task Permanent Deletion Boundary
+
+- `delete_history_task(taskId)` is the only product deletion command. The frontend sends no path;
+  Rust derives the configured task and per-task playback-cache paths from runtime configuration
+  plus a strictly validated task ID.
+- Deletion accepts only a task that passes the same exact schema-v3, current privacy-marker,
+  canonical SourceIdentity, no-quarantine, no-link History vNext predicate. Unsupported legacy
+  directories remain outside product mutation.
+- A focused Rust history-deletion domain validates that the target is exactly one child of the
+  configured tasks root, rejects symlink/junction/reparse storage, removes only the rebuildable
+  task cache first, and then permanently removes the task root with standard filesystem APIs. It
+  never invokes shell, Python, server, LLM, billing, or payment paths.
+- `useHistoryController` owns confirmation, pending state, detail-request invalidation, and list
+  refresh/removal. `useTaskProcessingController` remains the sole task-identity owner and resets
+  the workspace only when the successfully deleted task is current. App remains composition-only.
+- Local processing, AI generation, cancellation, transcript save, and overlapping deletion block
+  the operation. Recursive permanent deletion is explicitly non-transactional; failure keeps a
+  truthful current workflow and reloads disk-derived History without promising rollback.
+
 ## 2026-07-11 Local Transcript and AI Workspace Boundary
 
 - One workflow task remains the only identity and artifact aggregate, but the desktop UI

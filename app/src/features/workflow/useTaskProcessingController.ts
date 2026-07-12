@@ -118,6 +118,21 @@ export function useTaskProcessingController({
     [onResetTaskUi, workflow.stage],
   );
 
+  const completeHistoryTaskDeletion = useCallback(
+    (deletedTaskId: string): boolean => {
+      if (
+        isProcessingStage(workflow.stage) ||
+        !workflow.taskId ||
+        workflow.taskId !== deletedTaskId
+      ) {
+        return false;
+      }
+      resetWorkflow();
+      return true;
+    },
+    [resetWorkflow, workflow.stage, workflow.taskId],
+  );
+
   const submitUrl = useCallback(
     async (
       event: FormEvent<HTMLFormElement>,
@@ -265,6 +280,7 @@ export function useTaskProcessingController({
     resetWorkflow,
     updateUrlDraft,
     applyTranscriptSave,
+    completeHistoryTaskDeletion,
     restoreHistoryItem,
     retryInsightGeneration,
     startNewTaskFromToolbar,

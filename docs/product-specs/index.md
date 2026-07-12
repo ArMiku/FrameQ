@@ -10,6 +10,7 @@
 
 ## Desktop Runtime Spec
 
+- `2026-07-12-history-task-permanent-deletion.md` - Explicit irreversible deletion of one supported History vNext task and its playback cache, with strict task-ID/path validation and truthful partial-failure semantics.
 - `2026-07-12-desktop-density-history-toolbar-polish.md` - Intrinsic History height, clearer secondary typography, consistent active-workspace rhythm, and a quieter grouped desktop toolbar without lifecycle or data changes.
 - `2026-07-12-task-workspace-visual-hierarchy.md` - Restrained hierarchy cleanup for local transcript and AI workspaces without changing their product, privacy, or workflow boundaries.
 - `2026-07-11-local-transcript-ai-workspaces.md` - One task with separate inline local transcript review and independently confirmed AI summary/inspiration workspaces.

@@ -184,4 +184,25 @@ describe("useTranscriptDetailController segment editing", () => {
     expect(audio.pause).toHaveBeenCalledOnce();
     expect(audio.play).not.toHaveBeenCalled();
   });
+
+  test("releases only the current task audio before permanent deletion", async () => {
+    const { render } = await createController();
+    const controller = render();
+    const audio = {
+      paused: false,
+      pause: vi.fn(),
+      removeAttribute: vi.fn(),
+      load: vi.fn(),
+    };
+    controller.transcriptAudioRef.current = audio as unknown as HTMLAudioElement;
+
+    controller.prepareTranscriptForTaskDeletion("another-task");
+    expect(audio.pause).not.toHaveBeenCalled();
+
+    controller.prepareTranscriptForTaskDeletion("task-escape");
+
+    expect(audio.pause).toHaveBeenCalledOnce();
+    expect(audio.removeAttribute).toHaveBeenCalledWith("src");
+    expect(audio.load).toHaveBeenCalledOnce();
+  });
 });
