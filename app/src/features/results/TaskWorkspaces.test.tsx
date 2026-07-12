@@ -142,10 +142,10 @@ describe("task domain workspaces", () => {
     expect(markup).toContain("视频、音频和文字稿已保存在本机");
     expect(markup).toContain('aria-label="本地文字稿工作区"');
     expect(markup).toContain('data-task-id="same-task"');
-    expect(markup).toContain('aria-label="AI 整理工作区"');
+    expect(markup).toContain('aria-label="智能提炼工作区"');
     expect(markup.match(/data-task-id="same-task"/g)).toHaveLength(2);
     expect(markup).toContain("文字稿校对");
-    expect(markup).toContain("AI 整理");
+    expect(markup).toContain("智能提炼");
     expect(markup).not.toContain("Local transcript");
     expect(markup).not.toContain("Cloud AI");
     expect(markup).not.toContain(">本地完成</span>");
@@ -260,7 +260,7 @@ describe("task domain workspaces", () => {
       />,
     );
 
-    expect(markup).toContain("AI 整理");
+    expect(markup).toContain("智能提炼");
     expect(markup).toContain("确认后仅发送文字稿片段，视频和音频不会上传");
     expect(markup).toContain('data-ai-target="summary"');
     expect(markup).toContain("要点总结");

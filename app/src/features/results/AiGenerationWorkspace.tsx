@@ -35,12 +35,12 @@ export function AiGenerationWorkspace({
   return (
     <section
       className="task-domain-workspace ai-generation-workspace"
-      aria-label="AI 整理工作区"
+      aria-label="智能提炼工作区"
       data-task-id={model.taskId ?? undefined}
     >
       <header className="domain-workspace-header">
         <div>
-          <h2>AI 整理</h2>
+          <h2>智能提炼</h2>
         </div>
         {model.activeTarget ? (
           <span className="workspace-status-badge active">生成中</span>

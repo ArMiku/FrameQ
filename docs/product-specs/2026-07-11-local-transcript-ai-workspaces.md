@@ -67,7 +67,7 @@ or ProcessSupervisor internals.
 
 ## AI Generation Workspace
 
-- The title is `AI 整理`, with the persistent explanation `确认后仅发送文字稿片段，视频和音频不会上传`.
+- The title is `智能提炼`, with the persistent explanation `确认后仅发送文字稿片段，视频和音频不会上传`.
 - Before a usable saved transcript exists, the workspace is quiet and says it is waiting
   for the transcript. Local processing controls remain in the local workspace.
 - Summary and inspirations are two compact, independent target cards. Each shows target
