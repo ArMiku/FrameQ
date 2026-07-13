@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from frameq_worker.models import PreferenceSnapshot
+from frameq_worker.models import Insight, PreferenceSnapshot
 
 
 def build_topic_plan_prompt(
@@ -266,4 +266,103 @@ def build_summary_prompt(
 - 使用分层 Markdown：先写 `## 总览`，再写 2 到 6 个主题小节，每个主题小节下用短要点概括。
 - 总结必须忠实于文字稿原文；Mermaid 只用于帮助组织逻辑，不得引入新事实。
 - 要点要适合 UI 直接展示和复制，避免空泛套话。
+"""
+
+
+# suitableUse 形态/平台名映射（design D4：v1 viral-writer 覆盖 抖音/小红书/公众号）。
+# 公众号 ↔ 微信公众号 名称对齐（Task 1.3）：在成稿 prompt 里以对外规范名呈现。
+_SUITABLE_USE_PLATFORM_LABELS: dict[str, str] = {
+    "公众号": "微信公众号",
+    "抖音": "抖音",
+    "小红书": "小红书",
+    "视频号": "视频号",
+}
+
+
+def _platform_label_for_suitable_use(suitable_use: str) -> str:
+    """Map ``Insight.suitable_use`` to a canonical platform label for the draft
+    prompt. Unknown values fall back to the raw ``suitable_use`` string (design
+    D4: non-v1 platforms fall back to LLM general capability — no fabrication)."""
+    return _SUITABLE_USE_PLATFORM_LABELS.get(suitable_use, suitable_use)
+
+
+def build_draft_from_inspiration_prompt(
+    seed: Insight,
+    preference_snapshot: PreferenceSnapshot | None,
+    summary: str | None = None,
+) -> str:
+    """构造「生成文字稿」种子 prompt（design D2 Prompt Strategy）。
+
+    字段映射：
+    - ``seed.topic`` → 中央议题 / 标题方向。
+    - ``seed.follow_up_questions`` → 章节骨架 / 子论点。
+    - ``seed.suitable_use`` → 体裁与目标平台（公众号 ↔ 微信公众号 对齐；驱动 skill）。
+    - ``seed.match_reason`` → 目标感锚点，防跑题。
+    - ``preference_snapshot`` → 偏好（语气/受众/角度/回避）。缺失 → 不进行个性化，
+      绝不臆造角色 / 领域 / 风格（design D2）。
+    - ``seed.source_chunk_id`` → 仅作溯源标注；其文字稿片段正文一律不进入 prompt。
+    - ``summary`` → 可选的原视频要点总结 grounding；为 None 时整体省略。
+    """
+    platform_label = _platform_label_for_suitable_use(seed.suitable_use)
+
+    skeleton_lines = "\n".join(
+        f"- {q}" for q in seed.follow_up_questions
+    ) if seed.follow_up_questions else "- （灵感未提供章节骨架，请按目标平台文体自行规划）"
+
+    source_annotation = (
+        f"## 溯源标注\n灵感来源于原视频第 {seed.source_chunk_id} 段；"
+        "本段文字稿原文不进入本 prompt，请基于检索与上述灵感字段成稿。\n"
+        if seed.source_chunk_id is not None
+        else ""
+    )
+
+    if preference_snapshot is not None:
+        preference_section = (
+            "## 偏好快照（个性化：语气 / 受众 / 角度 / 回避）\n"
+            "以下 JSON 仅用于调整成稿的语气、受众、角度与回避项，不得用来补充灵感之外的"
+            "事实或观点；与灵感事实冲突时以灵感为准。\n"
+            "```json\n"
+            f"{format_preference_snapshot_for_prompt(preference_snapshot)}\n"
+            "```\n"
+        )
+    else:
+        preference_section = (
+            "## 偏好快照（个性化：语气 / 受众 / 角度 / 回避）\n"
+            "本次未提供偏好快照——不进行个性化，也不要臆造任何角色、领域、受众或风格；"
+            "按目标平台通用文体成稿即可。\n"
+        )
+
+    summary_section = ""
+    # 「在场」语义与 draft_agent._summary_is_present 保持一致（I-2）：非 None 且 strip 后
+    # 非空。纯空白 summary 按缺失处理，避免与系统侧 prompt 矛盾。
+    if summary is not None and summary.strip():
+        summary_section = (
+            "## 原视频要点总结（可选 grounding）\n"
+            "以下要点总结来自原视频，可作为观点来源与事实 grounding；"
+            "引用其观点时按原创性规则标注来源，不要原样复制整段。\n"
+            f"{summary}\n"
+        )
+
+    return f"""
+# 角色使命
+你是一位内容成稿编辑。你的任务是把一条「灵感」扩展成一篇完整、可直接发布的稿子。
+
+## 灵感（中央议题 / 标题方向）
+{seed.topic}
+
+## 目标感锚点（防跑题）
+{seed.match_reason}
+
+## 章节骨架 / 子论点（来自灵感的追问方向）
+{skeleton_lines}
+
+## 目标平台与体裁
+目标平台：{platform_label}。请按该平台文体的常规结构与表达密度成稿。
+{source_annotation}
+{preference_section}
+{summary_section}
+## 成稿要求
+- 忠于灵感字段给出的方向与子论点；可基于检索补充论据，但不得替换灵感的核心立场。
+- 不得引入灵感之外的虚构人物、公司、数据或事件。
+- 输出一份完整、可直接发布的稿子正文（Markdown）。
 """

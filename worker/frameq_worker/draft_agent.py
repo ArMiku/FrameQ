@@ -19,11 +19,16 @@ from agent_runtime.provider.entities import ProviderRequest
 from agent_runtime.provider.sources.openai_source import ProviderOpenAIOfficial
 from agent_runtime.tools.func_tool_manager import FunctionToolManager
 
+from frameq_worker.insightflow.prompt import (
+    _platform_label_for_suitable_use,
+    build_draft_from_inspiration_prompt,
+)
 from frameq_worker.llm import (
     Transport,
     checkout_anysearch_config_once,
     checkout_llm_config_once,
 )
+from frameq_worker.models import Insight, PreferenceSnapshot
 
 # FRAMEQ_DRAFT_MAX_TURNS 缺省值；核心层不读 env，只收 max_turns 形参（design.md D10）。
 _DEFAULT_MAX_TURNS = 40
@@ -106,33 +111,71 @@ class DraftSink:
 
 
 _SYSTEM_PROMPT_HEAD = (
-    "你是一名内容成稿助手。任务：根据给定的话题点与要点总结，先做必要的资料检索，"
+    "你是一名内容成稿助手。任务：根据给定的一条灵感，先做必要的资料检索，"
     "再按目标平台文体写出一份完整、可直接发布的稿子。\n"
 )
 
-_PLANNING_GUIDANCE = (
-    "\n交付方式（硬性契约，优先于任何 skill 指令）：\n"
-    "- 稿子的完整正文必须且只能经一次 `submit_draft` 工具提交：把整篇可直接发布的 "
-    "Markdown 正文作为 `markdown` 参数传入。\n"
-    "- 禁止把稿子正文写在普通回复里。调用 `submit_draft` 后任务即结束，无需任何 "
-    "recap / 总结 / 收尾。\n"
-    "- 调用 `submit_draft` 前先勾完所有 todo（若提供了 `write_todos`）。\n"
-    "- 本任务为一次性成稿：话题点、要点总结、目标平台均已给出——不要向用户确认需求，"
-    "也不要自行把稿子保存为文件（系统会落盘）。\n"
-    "\n工作方式：\n"
-    "- 若提供了 `write_todos` 工具，先用它建立成稿计划（建议覆盖：结构构思 / 资料检索 / "
-    "按平台文体写作），再逐条执行，并在推进时更新各条状态（保持恰好一条 in_progress）。\n"
-    "- 检索时自主决定搜索 query 和搜索的问题数量；若某次搜索失败或无结果，不要无限重试同一条 query，"
-    "直接基于已有的要点总结继续成稿。\n"
-)
+# 1.2b: spec-mandated fixed fallback phrase — appears verbatim in the system prompt
+# and is asserted in tests. Treat as a single source of truth.
+_RETRIEVAL_FALLBACK_PHRASE = "直接基于灵感 + 要点总结（若有）继续成稿"
 
 
-def _build_system_prompt(platform: str) -> str:
-    return _SYSTEM_PROMPT_HEAD + f"目标平台：{platform}。\n" + _PLANNING_GUIDANCE
+def _summary_is_present(summary: str | None) -> bool:
+    """1.2b: summary「在场」判定——非 None 且 strip 后非空。
+
+    系统侧与用户侧 prompt 必须共用同一语义，避免 ``"   "`` 这类纯空白被一侧判为在场、
+    另一侧判为缺失而给出互相矛盾的信号（I-2）。"""
+    return summary is not None and summary.strip() > ""
 
 
-def _build_user_prompt(topic: str, summary: str) -> str:
-    return f"【话题点】\n{topic}\n\n【要点总结】\n{summary}"
+def _summary_grounding_clause(summary: str | None) -> str:
+    """1.2b: 要点总结 仅作为可选 grounding 提及；summary 不在场（None / 纯空白）时整体省略。"""
+    if not _summary_is_present(summary):
+        return ""
+    return "（必要时可参考附带的要点总结作为原视频观点 grounding）"
+
+
+def _build_planning_guidance(summary: str | None) -> str:
+    """1.2b: 文案以「灵感」为成稿依据；要点总结作为可选 grounding 出现或省略；
+    检索失败回退措辞统一为「基于灵感 + 要点总结（若有）继续成稿」（「若有」在两种
+    情况下都成立：在场则使用，不在场则略过）。"""
+    grounding_clause = _summary_grounding_clause(summary)
+    summary_clause_in_oneshot = " + 要点总结（若有）" if _summary_is_present(summary) else ""
+    return (
+        "\n交付方式（硬性契约，优先于任何 skill 指令）：\n"
+        "- 稿子的完整正文必须且只能经一次 `submit_draft` 工具提交：把整篇可直接发布的 "
+        "Markdown 正文作为 `markdown` 参数传入。\n"
+        "- 禁止把稿子正文写在普通回复里。调用 `submit_draft` 后任务即结束，无需任何 "
+        "recap / 总结 / 收尾。\n"
+        "- 调用 `submit_draft` 前先勾完所有 todo（若提供了 `write_todos`）。\n"
+        f"- 本任务为一次性成稿：灵感{summary_clause_in_oneshot}"
+        "、目标平台均已给出——不向用户确认需求，"
+        f"也不要自行把稿子保存为文件（系统会落盘）。{grounding_clause}\n"
+        "\n工作方式：\n"
+        "- 若提供了 `write_todos` 工具，先用它建立成稿计划（建议覆盖：结构构思 / 资料检索 / "
+        "按平台文体写作），再逐条执行，并在推进时更新各条状态（保持恰好一条 in_progress）。\n"
+        "- 检索时自主决定搜索 query 和搜索的问题数量；若某次搜索失败或无结果，"
+        f"不要无限重试同一条 query，{_RETRIEVAL_FALLBACK_PHRASE}。\n"
+    )
+
+
+def _build_system_prompt(insight: Insight, summary: str | None = None) -> str:
+    """1.2 / 1.3: 目标平台来自 ``Insight.suitable_use``；公众号 ↔ 微信公众号 对齐。"""
+    platform_label = _platform_label_for_suitable_use(insight.suitable_use)
+    return (
+        _SYSTEM_PROMPT_HEAD
+        + f"目标平台：{platform_label}。\n"
+        + _build_planning_guidance(summary)
+    )
+
+
+def _build_user_prompt(
+    insight: Insight,
+    preference_snapshot: PreferenceSnapshot | None,
+    summary: str | None = None,
+) -> str:
+    """1.2: 种子 prompt 委托 ``build_draft_from_inspiration_prompt`` 构造。"""
+    return build_draft_from_inspiration_prompt(insight, preference_snapshot, summary)
 
 
 def _build_submit_draft_tool(sink: DraftSink) -> FunctionTool:
@@ -211,9 +254,9 @@ async def generate_draft(
     manager: FunctionToolManager,
     agent_hooks: BaseAgentRunHooks,
     max_turns: int,
-    topic: str,
-    summary: str,
-    platform: str,
+    insight: Insight,
+    preference_snapshot: PreferenceSnapshot | None,
+    summary: str | None,
     draft_sink: DraftSink,
     session_id: str | None = None,
 ) -> str:
@@ -227,8 +270,8 @@ async def generate_draft(
     )
 
     request_obj = ProviderRequest(
-        prompt=_build_user_prompt(topic, summary),
-        system_prompt=_build_system_prompt(platform),
+        prompt=_build_user_prompt(insight, preference_snapshot, summary),
+        system_prompt=_build_system_prompt(insight, summary),
         func_tool=tools,
         session_id=session_id,
         contexts=[],
@@ -249,9 +292,7 @@ async def generate_draft(
         streaming=False,
     )
 
-    # 一次性闭环：消费每步事件打印 spike 可观测性轨迹。交付物经 submit_draft 落入
-    # draft_sink（design D1），与循环终止回合彻底解耦——核心层不再追踪最长 answer、
-    # 不取终止回合文本、不施加任何长度阈值。
+    # 一次性闭环：消费每步事件打印 spike 可观测性轨迹。
     async for resp in runner.step_until_done(max_step=max_turns):
         _trace_step(resp)
 
@@ -331,7 +372,10 @@ class _CompositeHooks(BaseAgentRunHooks):
             try:
                 await getattr(layer, method)(run_context, *args)
             except Exception as exc:  # noqa: BLE001 - 单层失败不得中断主循环
-                print(f"[draft] composite hook {method} ({label}) error: {type(exc).__name__}: {exc}")
+                print(
+                    f"[draft] composite hook {method} ({label}) error: "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
     async def on_agent_begin(self, run_context) -> None:
         await self._dispatch_void("on_agent_begin", run_context)
@@ -364,7 +408,12 @@ class _CompositeHooks(BaseAgentRunHooks):
         return skills_allow and inner_allow
 
 
-async def _run_async(topic: str, summary: str, platform: str, env: Mapping[str, str]) -> str:
+async def _run_async(
+    insight: Insight,
+    preference_snapshot: PreferenceSnapshot | None,
+    summary: str | None,
+    env: Mapping[str, str],
+) -> str:
     planning_on = _planning_enabled(env)
     max_turns = _resolve_max_turns(env)
     print(f"[draft] planning={planning_on} max_turns={max_turns}")
@@ -376,15 +425,9 @@ async def _run_async(topic: str, summary: str, platform: str, env: Mapping[str, 
         await manager.enable_mcp_server("anysearch", build_anysearch_mcp_config(merged_env))
         tools = manager.get_full_tool_set()
 
-        # skills 始终开启（design D4），与 FRAMEQ_DRAFT_PLANNING 正交：skills_root 显式指向
-        # 包内 ``skills/`` 目录（design D2，与 cwd / AGENT_RUNTIME_DATA_DIR 无关），平台文体
-        # 经渐进式披露交付（design D1）。后端不做 ``target_platform → skill`` 匹配（design D5）。
         skill_manager = SkillManager(skills_root=str(Path(__file__).parent / "skills"))
         tools.add_tool(build_skill_tool(skill_manager))
 
-        # 交付信道（design D1/D2）：submit_draft 始终注册，与 FRAMEQ_DRAFT_PLANNING 正交
-        # （planning 关闭也注册，因交付信道独立于规划）。sink 同时作为必填依赖注入核心层，
-        # 使交付物单一真值源（design D3）。
         draft_sink = DraftSink()
         tools.add_tool(_build_submit_draft_tool(draft_sink))
 
@@ -395,7 +438,7 @@ async def _run_async(topic: str, summary: str, platform: str, env: Mapping[str, 
         else:
             inner_hook = BaseAgentRunHooks()
 
-        # 复合 hook：skills 层始终在场，与 inner（planning 或 no-op）经复合层串联（design D3）。
+        # 复合 hook：skills 层始终在场，与 inner（planning 或 no-op）经复合层串联。
         hooks: BaseAgentRunHooks = _CompositeHooks(SkillsPromptHook(skill_manager), inner_hook)
 
         return await generate_draft(
@@ -404,9 +447,9 @@ async def _run_async(topic: str, summary: str, platform: str, env: Mapping[str, 
             manager=manager,
             agent_hooks=hooks,
             max_turns=max_turns,
-            topic=topic,
+            insight=insight,
+            preference_snapshot=preference_snapshot,
             summary=summary,
-            platform=platform,
             draft_sink=draft_sink,
         )
     finally:
@@ -416,6 +459,11 @@ async def _run_async(topic: str, summary: str, platform: str, env: Mapping[str, 
             print(f"[draft] MCP cleanup warning (non-fatal): {type(exc).__name__}: {exc}")
 
 
-def run_draft(topic: str, summary: str, platform: str, env: Mapping[str, str] | None = None) -> str:
+def run_draft(
+    insight: Insight,
+    preference_snapshot: PreferenceSnapshot | None,
+    summary: str | None,
+    env: Mapping[str, str] | None = None,
+) -> str:
     resolved_env: Mapping[str, str] = os.environ if env is None else env
-    return asyncio.run(_run_async(topic, summary, platform, resolved_env))
+    return asyncio.run(_run_async(insight, preference_snapshot, summary, resolved_env))

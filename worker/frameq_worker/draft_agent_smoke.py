@@ -9,8 +9,9 @@ from collections.abc import Mapping
 from agent_runtime.tools.func_tool_manager import FunctionToolManager
 
 from frameq_worker.draft_agent import build_anysearch_mcp_config, run_draft
+from frameq_worker.models import Insight
 
-# 硬编码样本（闭环步骤用）。
+# 硬编码样本（闭环步骤用）。新种子以 Insight 形态喂入 run_draft（Task 1.2）。
 _TOPIC = "远程办公如何重塑团队协作"
 _SUMMARY = (
     "1. 远程办公提升了员工的自主性与时间弹性，通勤成本下降；\n"
@@ -18,6 +19,17 @@ _SUMMARY = (
     "3. 关键在于建立异步沟通规范、以成果而非工时衡量、以及定期的线上团建。"
 )
 _PLATFORM = "xiaohongshu"
+_SEED_INSIGHT = Insight(
+    id=1,
+    topic=_TOPIC,
+    match_reason="远程办公协作模式变迁，与原视频主线一致",
+    follow_up_questions=(
+        "异步沟通规范如何建立？",
+        "如何以成果而非工时衡量远程团队？",
+    ),
+    suitable_use=_PLATFORM,
+    source_chunk_id=None,
+)
 
 
 async def recon(env: Mapping[str, str]) -> None:
@@ -51,14 +63,14 @@ async def recon(env: Mapping[str, str]) -> None:
 
 
 def run_closed_loop(env: Mapping[str, str]) -> None:
-    """硬编码 topic/summary/platform，跑 :func:`run_draft` 并打印稿子文本。"""
+    """硬编码 Insight（+ 可选 summary grounding），跑 :func:`run_draft` 并打印稿子文本。"""
     planning_flag = env.get("FRAMEQ_DRAFT_PLANNING", "1")
     max_turns = env.get("FRAMEQ_DRAFT_MAX_TURNS", "<缺省 40>")
     print(
-        f"[run] topic={_TOPIC!r}\n[run] platform={_PLATFORM!r} "
+        f"[run] insight.topic={_TOPIC!r}\n[run] suitable_use={_PLATFORM!r} "
         f"planning={planning_flag!r} max_turns={max_turns!r}",
     )
-    draft = run_draft(_TOPIC, _SUMMARY, _PLATFORM, env)
+    draft = run_draft(_SEED_INSIGHT, None, _SUMMARY, env)
     print("\n[run] ===== 成稿结果 =====")
     print(draft)
 
