@@ -966,7 +966,7 @@ describe.sequential("App controller-owned lifecycle UI smoke", () => {
             targetRowsBorderless: targetRows.every((item) => parseFloat(getComputedStyle(item).borderLeftWidth) === 0),
             noEnglishEyebrows: !document.body.innerText.includes('LOCAL TRANSCRIPT') && !document.body.innerText.includes('CLOUD AI'),
             noRedundantWorkspaceStatus: !document.querySelector('.local-transcript-workspace .workspace-status-badge') && !document.querySelector('.ai-generation-workspace .workspace-status-badge'),
-            quietTargetActions: document.querySelectorAll('.ai-target-action').length === 2
+            quietTargetActions: document.querySelectorAll('.ai-target-action').length === 3
           };
         })()`,
       );
@@ -1543,7 +1543,7 @@ describe("App controller-owned lifecycle UI smoke", () => {
             localEditorDisabled: document.querySelector('.transcript-full-editor')?.disabled ?? null
           })`,
         );
-        expect(state.disabledTargets).toBe(2);
+        expect(state.disabledTargets).toBe(3);
         expect(state.localTask).toBe("history-task-a");
         expect(state.localEditorDisabled).toBe(false);
         expect(String(state.blocker)).toMatch(/AI Credits 已用完|暂不可用/);

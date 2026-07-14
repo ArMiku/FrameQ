@@ -201,6 +201,7 @@ function App() {
     completeHistoryTaskDeletion,
     restoreHistoryItem,
     retryInsightGeneration,
+    setDraftSeedInsightId,
     startNewTaskFromToolbar,
     submitUrl,
   } = useTaskProcessingController({
@@ -588,9 +589,14 @@ function App() {
                   notice={aiActionNotice}
                   onSummaryAction={openSummaryConfirmation}
                   onInsightsAction={() => void openInsightPreferenceFlow()}
+                  onDraftAction={() => {
+                    // Task 6B wires this to the draft confirmation sheet.
+                    // Until then the draft card's generate action is gated by
+                    // seed selection; this handler is a no-op placeholder.
+                  }}
                   onViewTarget={(target) => {
                     setActionNotice("");
-                    // Draft has its own viewer (Task 6); only summary/insights
+                    // Draft has its own viewer (Task 6B); only summary/insights
                     // route through the shared AI detail tab today.
                     if (target === "summary" || target === "insights") {
                       openDetailTab(target);
@@ -729,6 +735,8 @@ function App() {
         controller={transcriptDetailController}
         workflow={workflow}
         onOpenDirectionEditor={openDirectionEditorFromDetail}
+        onSelectDraftSeed={(insightId) => setDraftSeedInsightId(insightId)}
+        onClearDraftSeed={() => setDraftSeedInsightId(null)}
       />
 
       <HistorySheet

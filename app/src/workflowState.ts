@@ -116,6 +116,13 @@ export type WorkflowState = {
   artifacts: TaskArtifacts;
   transcript: TranscriptMetadata | null;
   draft: string;
+  // 6.2: the id of the Insight the user picked as the single draft seed.
+  // In-session selection state; cleared on 启发灵感 regen (the insight ids
+  // change) and on workflow reset. The on-disk manifest mirror
+  // (draft_seed_insight_id) is written by the worker on draft generation
+  // (Task 3); cross-session restore into this field is a Task 7 follow-up
+  // (the history detail payload does not yet carry it).
+  draftSeedInsightId: number | null;
   error: WorkerErrorResult | null;
 };
 export function createInitialWorkflow(): WorkflowState {
@@ -138,6 +145,7 @@ export function createInitialWorkflow(): WorkflowState {
     artifacts: {},
     transcript: null,
     draft: "",
+    draftSeedInsightId: null,
     error: null,
   };
 }
@@ -161,6 +169,7 @@ export function startProcessing(state: WorkflowState, url: string): WorkflowStat
     taskDir: null,
     artifacts: {},
     draft: "",
+    draftSeedInsightId: null,
     error: null,
   };
 }
@@ -301,10 +310,16 @@ export function finishInsightRetry(
   } else {
     delete aiTargetErrors[target];
   }
+  // 6.5: regenerating 启发灵感 replaces the insight list, so the previously
+  // selected seed id is no longer valid — clear it. Summary and draft regen do
+  // not change the insight ids, so their seed selection is preserved.
+  const draftSeedInsightId =
+    target === "insights" ? null : state.draftSeedInsightId;
   return {
     ...next,
     aiErrorTarget: isAiTargetFailure(result.error) ? target : null,
     aiTargetErrors,
+    draftSeedInsightId,
   };
 }
 

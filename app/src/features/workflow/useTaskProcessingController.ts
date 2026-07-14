@@ -208,6 +208,7 @@ export function useTaskProcessingController({
       account: AccountStatus,
       openAccountPanel: OpenAccountPanel,
       onRetryCompleted?: () => void,
+      insightId?: number,
     ) => {
       if (!workflow.taskId || !workflow.artifacts.transcript_txt) {
         return;
@@ -216,7 +217,11 @@ export function useTaskProcessingController({
         openAccountPanel(
           aiBlockerMessage(
             account,
-            target === "summary" ? "生成要点总结" : "生成启发灵感",
+            target === "summary"
+              ? "生成要点总结"
+              : target === "draft"
+                ? "生成文字稿"
+                : "生成启发灵感",
           ),
         );
         return;
@@ -228,7 +233,7 @@ export function useTaskProcessingController({
       onRetryStarted();
       setWorkflow((current) => startInsightRetry(current, target));
 
-      const result = await retryInsights(taskId, target, preferenceSnapshot);
+      const result = await retryInsights(taskId, target, preferenceSnapshot, undefined, insightId);
       if (operationIdRef.current !== operationId) {
         return;
       }
@@ -270,6 +275,11 @@ export function useTaskProcessingController({
     ],
   );
 
+  // 6.2: select/clear the single draft seed insight. Pass null to clear.
+  const setDraftSeedInsightId = useCallback((insightId: number | null) => {
+    setWorkflow((current) => ({ ...current, draftSeedInsightId: insightId }));
+  }, []);
+
   return {
     workflow,
     canSubmit,
@@ -283,6 +293,7 @@ export function useTaskProcessingController({
     completeHistoryTaskDeletion,
     restoreHistoryItem,
     retryInsightGeneration,
+    setDraftSeedInsightId,
     startNewTaskFromToolbar,
     submitUrl,
   };

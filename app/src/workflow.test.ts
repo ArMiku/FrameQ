@@ -727,6 +727,21 @@ describe("workflow state model", () => {
     expect(state.aiTargetErrors.draft?.code).toBe("DRAFT_GENERATION_FAILED");
   });
 
+  test("exposes a nullable draftSeedInsightId starting at null", () => {
+    const initial = createInitialWorkflow();
+    expect(initial.draftSeedInsightId).toBeNull();
+  });
+
+  test("starts processing with draftSeedInsightId cleared", () => {
+    const state = startProcessing(createInitialWorkflow(), "https://www.douyin.com/video/7524373044106677544");
+    expect(state.draftSeedInsightId).toBeNull();
+  });
+
+  test("summarizeWorkerResult resets draftSeedInsightId to null on restore", () => {
+    const state = summarizeWorkerResult(workerResult());
+    expect(state.draftSeedInsightId).toBeNull();
+  });
+
   test("keeps the draft target independent when an insights error is reported", () => {
     // A non-draft failure (insights_generating stage) must not leak into the
     // draft target's error slot — draft stays clean and vice versa.
@@ -750,5 +765,50 @@ describe("workflow state model", () => {
     expect(state.aiErrorTarget).toBe("insights");
     expect(state.aiTargetErrors.insights?.code).toBe("INSIGHTFLOW_EMPTY_RESULT");
     expect(state.aiTargetErrors.draft).toBeUndefined();
+  });
+
+  test("clears draftSeedInsightId on insights regen success", () => {
+    // 6.5 (local-state half): when 启发灵感 is regenerated successfully, the
+    // previously-selected seed is invalidated because the insight ids change.
+    const seeded = summarizeWorkerResult(workerResult({ insights: [DEFAULT_INSIGHT] }));
+    seeded.draftSeedInsightId = DEFAULT_INSIGHT.id;
+
+    const next = finishInsightRetry(
+      startInsightRetry(seeded, "insights"),
+      workerResult({ insights: [SECOND_INSIGHT] }),
+      "insights",
+    );
+
+    expect(next.draftSeedInsightId).toBeNull();
+    expect(next.insights).toEqual([SECOND_INSIGHT]);
+  });
+
+  test("preserves draftSeedInsightId on summary regen success", () => {
+    // Summary regeneration does not touch the insights list, so the seed is valid.
+    const seeded = summarizeWorkerResult(workerResult({ insights: [DEFAULT_INSIGHT] }));
+    seeded.draftSeedInsightId = DEFAULT_INSIGHT.id;
+
+    const next = finishInsightRetry(
+      startInsightRetry(seeded, "summary"),
+      workerResult({ summary: "# 新总结", insights: [DEFAULT_INSIGHT] }),
+      "summary",
+    );
+
+    expect(next.draftSeedInsightId).toBe(DEFAULT_INSIGHT.id);
+  });
+
+  test("preserves draftSeedInsightId on draft regen result", () => {
+    // Draft generation consumes the seed but should not clear it on success or
+    // failure (the user may want to regenerate). Clearing is the UI's job.
+    const seeded = summarizeWorkerResult(workerResult({ insights: [DEFAULT_INSIGHT] }));
+    seeded.draftSeedInsightId = DEFAULT_INSIGHT.id;
+
+    const next = finishInsightRetry(
+      startInsightRetry(seeded, "draft"),
+      workerResult({ draft: "# 草稿正文" }),
+      "draft",
+    );
+
+    expect(next.draftSeedInsightId).toBe(DEFAULT_INSIGHT.id);
   });
 });

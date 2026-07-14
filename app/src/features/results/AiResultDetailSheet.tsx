@@ -1,4 +1,4 @@
-import { Copy, Download, RotateCcw, X } from "lucide-react";
+import { Copy, Download, RotateCcw, Sprout, X } from "lucide-react";
 
 import type { WorkflowState } from "../../workflow";
 import type { TranscriptDetailController } from "../transcript/useTranscriptDetailController";
@@ -9,6 +9,10 @@ type AiResultDetailSheetProps = {
   controller: TranscriptDetailController;
   workflow: WorkflowState;
   onOpenDirectionEditor: () => void | Promise<void>;
+  // 6.2: select/clear the single draft seed insight. The selected id lives on
+  // workflow.draftSeedInsightId; these callbacks mutate it via the controller.
+  onSelectDraftSeed?: (insightId: number) => void;
+  onClearDraftSeed?: () => void;
 };
 
 export function AiResultDetailSheet({
@@ -16,6 +20,8 @@ export function AiResultDetailSheet({
   controller,
   workflow,
   onOpenDirectionEditor,
+  onSelectDraftSeed,
+  onClearDraftSeed,
 }: AiResultDetailSheetProps) {
   const { detailTab, closeDetail, copyDetail, exportDetail, exportPath } = controller;
   if (detailTab !== "summary" && detailTab !== "insights") {
@@ -23,6 +29,7 @@ export function AiResultDetailSheet({
   }
 
   const title = detailTab === "summary" ? "要点总结" : "启发灵感";
+  const seedId = workflow.draftSeedInsightId;
   return (
     <div className="modal-backdrop sheet-backdrop" role="presentation" onClick={closeDetail}>
       <section
@@ -66,16 +73,51 @@ export function AiResultDetailSheet({
             <MarkdownContent markdown={workflow.summary} emptyText="要点总结尚未生成。" />
           ) : workflow.insights.length > 0 ? (
             <ol className="insight-detail-list">
-              {workflow.insights.map((insight) => (
-                <li className="insight-detail-item" key={insight.id}>
-                  <h3>{insight.topic}</h3>
-                  <dl>
-                    <div><dt>匹配理由</dt><dd>{insight.matchReason}</dd></div>
-                    <div><dt>启发问题</dt><dd>{insight.followUpQuestions.join("；")}</dd></div>
-                    <div><dt>适合用途</dt><dd>{insight.suitableUse}</dd></div>
-                  </dl>
-                </li>
-              ))}
+              {workflow.insights.map((insight) => {
+                const selected = seedId === insight.id;
+                return (
+                  <li
+                    className={`insight-detail-item${selected ? " draft-seed-selected" : ""}`}
+                    key={insight.id}
+                    aria-current={selected ? "true" : undefined}
+                  >
+                    <h3>{insight.topic}</h3>
+                    <dl>
+                      <div><dt>匹配理由</dt><dd>{insight.matchReason}</dd></div>
+                      <div><dt>启发问题</dt><dd>{insight.followUpQuestions.join("；")}</dd></div>
+                      <div><dt>适合用途</dt><dd>{insight.suitableUse}</dd></div>
+                    </dl>
+                    {onSelectDraftSeed && onClearDraftSeed ? (
+                      <div className="insight-detail-seed-action">
+                        {selected ? (
+                          <>
+                            <p className="draft-seed-summary">
+                              <Sprout size={15} aria-hidden="true" />
+                              <span>已选为文字稿种子。</span>
+                            </p>
+                            <button
+                              type="button"
+                              className="secondary-button compact-button"
+                              onClick={() => onClearDraftSeed()}
+                            >
+                              取消种子
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="secondary-button compact-button"
+                            onClick={() => onSelectDraftSeed(insight.id)}
+                          >
+                            <Sprout size={15} aria-hidden="true" />
+                            <span>选为文字稿种子</span>
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ol>
           ) : (
             <p>启发灵感尚未生成。</p>

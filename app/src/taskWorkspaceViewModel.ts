@@ -104,16 +104,22 @@ function aiTargetStatus(
         : Boolean(workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md);
 
   if (target === "draft") {
-    // Draft needs a selectable seed insight. Seed-selection UI is Task 6, so we
-    // treat "insights exist" as the proxy for the draft card being available
-    // before any draft has been generated. This does NOT infer the draft target
-    // from status copy — it is an availability projection from artifact state.
+    // 6.1: the draft card needs a selectable seed insight. It is quietly locked
+    // until (a) insights are ready AND (b) the user has selected exactly one
+    // seed (workflow.draftSeedInsightId). When locked it must NOT expose an LLM
+    // entry or consume quota. This does NOT infer the draft target from status
+    // copy — it is an availability projection from artifact + selection state.
     const insightsReady = Boolean(
       workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md,
     );
+    const seedSelected = workflow.draftSeedInsightId !== null;
     return {
       target,
-      status: ready ? "ready" : insightsReady ? "available" : "locked",
+      status: ready
+        ? "ready"
+        : insightsReady && seedSelected
+          ? "available"
+          : "locked",
       errorCode: null,
     };
   }
