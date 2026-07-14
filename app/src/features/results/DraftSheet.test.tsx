@@ -1,0 +1,172 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, test, vi } from "vitest";
+
+import {
+  summarizeWorkerResult,
+  type WorkflowState,
+} from "../../workflow";
+import type { Insight } from "../../insightPreferences";
+import { DraftConfirmationSheet } from "./DraftConfirmationSheet";
+import { DraftResultSheet } from "./DraftResultSheet";
+
+const SEED_INSIGHT: Insight = {
+  id: 7,
+  topic: "短视频开头三秒决定完播率",
+  matchReason: "匹配理由正文",
+  followUpQuestions: ["问题一", "问题二"],
+  suitableUse: "适合用途正文",
+  sourceChunkId: 2,
+};
+
+function workflowWithSeed(): WorkflowState {
+  const state = summarizeWorkerResult({
+    status: "completed",
+    task_id: "task-draft",
+    task_dir: "D:/FrameQ/outputs/tasks/task-draft",
+    artifacts: {
+      transcript_txt: "transcript/transcript.txt",
+      insights_md: "ai/insights.md",
+    },
+    text: "文字稿正文。",
+    summary: "",
+    insights: [SEED_INSIGHT],
+    transcript: { source: "asr", language: "zh", engine: "SenseVoice" },
+    draft: "",
+    error: null,
+  });
+  state.draftSeedInsightId = SEED_INSIGHT.id;
+  return state;
+}
+
+describe("DraftConfirmationSheet", () => {
+  test("renders the seed summary (#id + topic), fixed-1 quota notice, data notice, and confirm/cancel", () => {
+    const workflow = workflowWithSeed();
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    const markup = renderToStaticMarkup(
+      <DraftConfirmationSheet
+        open
+        workflow={workflow}
+        busy={false}
+        quotaRemaining={5}
+        transcriptPath="D:/FrameQ/outputs/tasks/task-draft/transcript/transcript.txt"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />,
+    );
+
+    // Seed summary: #<id> + full topic text.
+    expect(markup).toContain("#7");
+    expect(markup).toContain("短视频开头三秒决定完播率");
+
+    // Quota notice shows a FIXED 1 and the exact meaning copy.
+    expect(markup).toContain("1 次额度");
+    expect(markup).toContain("1 次额度 = 1 次生成尝试，不论成败，重试另计");
+
+    // Data notice reuses the existing privacy copy (video/audio not uploaded),
+    // and MUST NOT disclose web search / anysearch.
+    expect(markup).toContain("视频和音频不会上传");
+    expect(markup).not.toContain("检索");
+    expect(markup).not.toContain("联网");
+    expect(markup).not.toContain("anysearch");
+    expect(markup).not.toContain("搜索");
+
+    // Confirm + cancel affordances.
+    expect(markup).toContain("确认");
+    expect(markup).toContain("取消");
+  });
+
+  test("renders nothing when open is false", () => {
+    const markup = renderToStaticMarkup(
+      <DraftConfirmationSheet
+        open={false}
+        workflow={workflowWithSeed()}
+        busy={false}
+        quotaRemaining={5}
+        transcriptPath={null}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(markup).toBe("");
+  });
+});
+
+describe("DraftResultSheet", () => {
+  test("renders draft markdown via sanitized GFM (strips raw HTML, renders mermaid as code)", () => {
+    const workflow = workflowWithSeed();
+    workflow.draft = `# 文字稿标题
+
+正文段落。
+
+\`\`\`mermaid
+graph TD; A-->B
+\`\`\`
+
+<script>alert("xss")</script>
+<img src=x onerror="alert(1)">`;
+    workflow.artifacts.draft = "ai/draft.md";
+
+    const markup = renderToStaticMarkup(
+      <DraftResultSheet
+        open
+        workflow={workflow}
+        actionNotice=""
+        onCopy={vi.fn()}
+        onExport={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // GFM heading renders.
+    expect(markup).toContain("<h1>文字稿标题</h1>");
+    // Mermaid source renders as a fenced code block (plain text, language
+    // tagged), NOT a rendered diagram — the `graph TD; A-->B` text appears
+    // inside <code>, HTML-escaped to `--&gt;`.
+    expect(markup).toContain('class="language-mermaid"');
+    expect(markup).toContain("graph TD; A--&gt;B");
+    expect(markup).not.toContain("class=\"mermaid\"");
+    // Raw HTML payload is stripped: no <script> element, no onerror attribute,
+    // and the alert() payload is gone entirely.
+    expect(markup).not.toContain("<script>");
+    expect(markup).not.toContain("alert");
+    expect(markup).not.toContain("onerror");
+  });
+
+  test("exposes copy + export actions and is a separate container from the transcript", () => {
+    const workflow = workflowWithSeed();
+    workflow.draft = "文字稿正文。";
+    workflow.artifacts.draft = "ai/draft.md";
+
+    const markup = renderToStaticMarkup(
+      <DraftResultSheet
+        open
+        workflow={workflow}
+        actionNotice=""
+        onCopy={vi.fn()}
+        onExport={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("复制");
+    expect(markup).toContain("导出");
+    // The draft viewer is its own dialog (separate container from transcript).
+    expect(markup).toContain('role="dialog"');
+    expect(markup).toContain('aria-label="文字稿详情"');
+  });
+
+  test("renders nothing when open is false", () => {
+    const markup = renderToStaticMarkup(
+      <DraftResultSheet
+        open={false}
+        workflow={workflowWithSeed()}
+        actionNotice=""
+        onCopy={vi.fn()}
+        onExport={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(markup).toBe("");
+  });
+});

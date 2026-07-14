@@ -414,6 +414,37 @@ describe("task workspace view model", () => {
     expect(model.ai.draft.status).toBe("available");
   });
 
+  test("re-locks the draft card after 启发灵感 regen clears the seed (6.5)", () => {
+    // 6.5 visual half: finishInsightRetry("insights") clears draftSeedInsightId
+    // (the insight ids change). The viewModel must re-project the draft card
+    // back to "locked" so the generate action quietly re-disables.
+    const workflow = summarizeWorkerResult(
+      transcriptResult({
+        insights: [
+          {
+            id: 1,
+            topic: "灵感",
+            matchReason: "理由",
+            followUpQuestions: ["问题"],
+            suitableUse: "复盘",
+            sourceChunkId: null,
+          },
+        ],
+      }),
+    );
+    workflow.draftSeedInsightId = 1;
+    expect(createTaskWorkspaceViewModel(workflow, entitledAccount()).ai.draft.status).toBe(
+      "available",
+    );
+
+    // Simulate the post-regen state: insights refreshed, seed cleared.
+    workflow.draftSeedInsightId = null;
+
+    expect(createTaskWorkspaceViewModel(workflow, entitledAccount()).ai.draft.status).toBe(
+      "locked",
+    );
+  });
+
   test("keeps the draft card locked when insights are not ready even with a stale seed", () => {
     // If insights were never generated, the draft card stays locked regardless
     // of any seed value (defensive: the seed could not be valid without insights).
