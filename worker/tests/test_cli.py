@@ -537,3 +537,39 @@ def test_run_worker_once_uses_configured_asr_model_from_user_data_env(
         "cache_dir": tmp_path / "models",
     }
     assert "- Model: iic/SenseVoiceSmall" in transcript_md.read_text(encoding="utf-8")
+
+
+def test_main_reads_retry_draft_request_from_stdin(monkeypatch, capsys) -> None:
+    """draft is the third target of retry_insights, dispatched
+    via ``--retry-insights-stdin`` with target=draft. The retired
+    ``--generate-draft-json`` flag is gone."""
+    payload = json.dumps({"task_id": "safe-task", "target": "draft", "insight_id": 5})
+    captured: dict[str, str] = {}
+
+    def fake_retry_insights_once(
+        request_json: str,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        captured["request_json"] = request_json
+        return {"status": "completed", "draft": "# 稿子"}
+
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO(payload))
+    monkeypatch.setattr(cli, "retry_insights_once", fake_retry_insights_once)
+
+    exit_code = cli.main(["--retry-insights-stdin"])
+
+    assert exit_code == 0
+    assert json.loads(captured["request_json"]) == {
+        "task_id": "safe-task",
+        "target": "draft",
+        "insight_id": 5,
+    }
+    output = json.loads(capsys.readouterr().out)
+    assert output["draft"] == "# 稿子"
+
+
+def test_main_rejects_retired_generate_draft_json_flag() -> None:
+    """Task 2.5: ``--generate-draft-json`` was retired (draft now flows via
+    ``--retry-insights-stdin`` target=draft). argparse must reject the old flag."""
+    with pytest.raises(SystemExit):
+        cli.main(["--generate-draft-json", "{}"])

@@ -174,6 +174,7 @@ describe("history client", () => {
         engine: "iic/SenseVoiceSmall",
       },
       insights: [],
+      draft: "",
       error: {
         code: "INSIGHTFLOW_CONFIG_MISSING",
         message: "LLM configuration is missing.",

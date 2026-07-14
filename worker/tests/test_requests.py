@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import pytest
-from frameq_worker.requests import parse_process_request, parse_retry_insights_request
+from frameq_worker.requests import (
+    parse_process_request,
+    parse_retry_insights_request,
+)
 
 
 def valid_preference_snapshot() -> dict[str, object]:
@@ -136,6 +139,68 @@ def test_retry_summary_request_rejects_preference_snapshot() -> None:
                 "task_id": "20260705-153012-douyin-demo",
                 "target": "summary",
                 "preference_snapshot": valid_preference_snapshot(),
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 2.2: target="draft"
+# ---------------------------------------------------------------------------
+
+
+def test_retry_request_accepts_draft_target_with_insight_id() -> None:
+    request = parse_retry_insights_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "target": "draft",
+            "insight_id": 7,
+        }
+    )
+
+    assert request.target == "draft"
+    assert request.insight_id == 7
+    # preference_snapshot is rejected on draft — and absent here.
+    assert request.preference_snapshot is None
+
+
+def test_retry_draft_target_requires_insight_id() -> None:
+    with pytest.raises(ValueError, match="insight_id"):
+        parse_retry_insights_request(
+            {"task_id": "20260705-153012-douyin-demo", "target": "draft"}
+        )
+
+
+def test_retry_draft_target_rejects_null_insight_id() -> None:
+    with pytest.raises(ValueError, match="insight_id"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": None,
+            }
+        )
+
+
+def test_retry_draft_target_rejects_preference_snapshot() -> None:
+    # preference_snapshot MUST NOT be sent for draft (read from disk instead).
+    with pytest.raises(ValueError, match="preference_snapshot"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": 7,
+                "preference_snapshot": valid_preference_snapshot(),
+            }
+        )
+
+
+def test_retry_draft_target_rejects_non_int_insight_id() -> None:
+    with pytest.raises(ValueError, match="insight_id"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": "not-an-int",
             }
         )
 

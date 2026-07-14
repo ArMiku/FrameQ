@@ -193,15 +193,31 @@ def parse_retry_insights_request(payload: object) -> RetryInsightsRequest:
     if not isinstance(target, str) or not target.strip():
         raise ValueError("Retry payload must include target.")
     target = target.strip()
-    if target not in {"summary", "insights"}:
-        raise ValueError("Retry payload target must be summary or insights.")
+    if target not in {"summary", "insights", "draft"}:
+        raise ValueError("Retry payload target must be summary, insights, or draft.")
     if target == "summary" and payload.get("preference_snapshot") is not None:
         raise ValueError("preference_snapshot is only allowed for insights target.")
+    if target == "draft" and payload.get("preference_snapshot") is not None:
+        # preference_snapshot for draft is read from disk by the worker;
+        # the frontend MUST NOT send it.
+        raise ValueError("preference_snapshot is not allowed for draft target.")
+
+    insight_id: int | None = None
+    if target == "draft":
+        # seed is a single Insight id, validated against insights.json in the worker.
+        if "insight_id" not in payload or payload.get("insight_id") is None:
+            raise ValueError("Retry payload insight_id is required for draft target.")
+        raw_insight_id = payload.get("insight_id")
+        # bool is a subclass of int — reject True/False explicitly.
+        if isinstance(raw_insight_id, bool) or not isinstance(raw_insight_id, int):
+            raise ValueError("Retry payload insight_id must be an integer.")
+        insight_id = raw_insight_id
 
     return RetryInsightsRequest(
         task_id=task_id,
         target=target,
         preference_snapshot=parse_preference_snapshot(payload.get("preference_snapshot")),
+        insight_id=insight_id,
     )
 
 

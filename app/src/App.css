@@ -1183,6 +1183,26 @@ h3 {
   margin: 0;
 }
 
+.insight-detail-item.draft-seed-selected {
+  background: #eef6ff;
+  box-shadow: inset 2px 0 0 var(--primary), var(--shadow-panel-quiet);
+}
+
+.insight-detail-seed-action {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.draft-seed-summary {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+
 .transcript-review {
   display: grid;
   gap: 14px;

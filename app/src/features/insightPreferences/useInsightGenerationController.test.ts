@@ -127,6 +127,8 @@ function createWorkflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
       transcript_txt: "transcript/transcript.txt",
     },
     transcript: null,
+    draft: "",
+    draftSeedInsightId: null,
     error: null,
     ...overrides,
   };

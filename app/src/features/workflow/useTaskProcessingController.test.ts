@@ -108,6 +108,7 @@ function createWorkerResult(overrides: Partial<WorkerResult> = {}): WorkerResult
     summary: "active summary",
     insights: [],
     transcript: { source: "asr", language: "Chinese", engine: "SenseVoice" },
+    draft: "",
     error: null,
     ...overrides,
   };
@@ -641,5 +642,164 @@ describe("useTaskProcessingController history restore", () => {
     controller = render();
     expect(controller.workflow.text).toBe("second edited transcript");
     expect(controller.workflow.artifacts.transcript_txt).toBe("second/edited.txt");
+  });
+});
+
+describe("useTaskProcessingController draft target wiring", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    cancelProcessMock.mockReset();
+    processVideoMock.mockReset();
+    retryInsightsMock.mockReset();
+  });
+
+  test("passes insight_id and no preference snapshot to retryInsights for the draft target", async () => {
+    retryInsightsMock.mockResolvedValue(
+      createWorkerResult({ draft: "# 草稿正文" }),
+    );
+    const source = createHistoryItem({
+      taskId: "source-task",
+      insights: [
+        {
+          id: 7,
+          topic: "seed insight",
+          matchReason: "reason",
+          followUpQuestions: ["q"],
+          suitableUse: "use",
+          sourceChunkId: null,
+        },
+      ],
+    });
+    const { render } = await createController();
+    let controller = render();
+    expect(controller.restoreHistoryItem(source)).toBe(true);
+    controller = render();
+
+    await controller.retryInsightGeneration(
+      "draft",
+      null,
+      createBrowserPreviewAccountStatus(),
+      vi.fn(),
+      undefined,
+      7,
+    );
+
+    expect(retryInsightsMock).toHaveBeenCalledTimes(1);
+    expect(retryInsightsMock).toHaveBeenCalledWith(
+      "source-task",
+      "draft",
+      null,
+      undefined,
+      7,
+    );
+  });
+
+  test("uses a draft-specific blocker label instead of the insights copy", async () => {
+    // When the account cannot generate AI, the blocker message for draft must
+    // use a draft label, not fall back to "生成启发灵感".
+    let capturedLabel = "";
+    const harness = createHookHarness();
+    const onResetTaskUi = vi.fn();
+    vi.doMock("react", () => ({
+      useCallback: harness.useCallback,
+      useMemo: harness.useMemo,
+      useRef: harness.useRef,
+      useState: harness.useState,
+    }));
+    const { useTaskProcessingController } = await import("./useTaskProcessingController");
+    const render = () => {
+      harness.resetRender();
+      return useTaskProcessingController({
+        onResetTaskUi,
+        onRetryStarted: vi.fn(),
+        processBlockerMessage: () => "blocked",
+        aiBlockerMessage: (_account, label) => {
+          capturedLabel = label;
+          return "blocked";
+        },
+      });
+    };
+
+    const source = createHistoryItem({ taskId: "source-task" });
+    let controller = render();
+    expect(controller.restoreHistoryItem(source)).toBe(true);
+    controller = render();
+
+    const openAccountPanel = vi.fn();
+    // Quota-exhausted account: cannot generate AI.
+    const blockedAccount = {
+      ...createBrowserPreviewAccountStatus(),
+      authenticated: true,
+      entitlementStatus: "active",
+      llmConfigured: true,
+      llmQuotaRemaining: 0,
+      canGenerateAi: false,
+    };
+
+    await controller.retryInsightGeneration(
+      "draft",
+      null,
+      blockedAccount,
+      openAccountPanel,
+      undefined,
+      7,
+    );
+
+    expect(capturedLabel).toBe("生成文字稿");
+    expect(retryInsightsMock).not.toHaveBeenCalled();
+  });
+
+  test("clears draftSeedInsightId when insights regeneration succeeds", async () => {
+    // 6.5 (local-state half): regenerating 启发灵感 replaces the insight list,
+    // invalidating the previously selected seed. The controller must clear the
+    // local draftSeedInsightId on insights-regen success.
+    retryInsightsMock.mockResolvedValue(
+      createWorkerResult({
+        task_id: "source-task",
+        artifacts: { insights: "ai/fresh-insights.json" },
+        insights: [
+          {
+            id: 99,
+            topic: "fresh insight",
+            matchReason: "fresh",
+            followUpQuestions: ["q"],
+            suitableUse: "use",
+            sourceChunkId: null,
+          },
+        ],
+      }),
+    );
+    const source = createHistoryItem({
+      taskId: "source-task",
+      insights: [
+        {
+          id: 7,
+          topic: "old seed",
+          matchReason: "reason",
+          followUpQuestions: ["q"],
+          suitableUse: "use",
+          sourceChunkId: null,
+        },
+      ],
+    });
+    const { render } = await createController();
+    let controller = render();
+    expect(controller.restoreHistoryItem(source)).toBe(true);
+    controller = render();
+    // Simulate the user selecting insight 7 as the draft seed.
+    controller.setDraftSeedInsightId(7);
+    controller = render();
+    expect(controller.workflow.draftSeedInsightId).toBe(7);
+
+    await controller.retryInsightGeneration(
+      "insights",
+      null,
+      createBrowserPreviewAccountStatus(),
+      vi.fn(),
+    );
+    controller = render();
+
+    expect(controller.workflow.insights[0]?.id).toBe(99);
+    expect(controller.workflow.draftSeedInsightId).toBeNull();
   });
 });

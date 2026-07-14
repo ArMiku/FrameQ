@@ -86,6 +86,7 @@ def test_process_result_serializes_task_artifacts_text_and_insights() -> None:
             "engine": None,
         },
         "error": None,
+        "draft": "",
     }
 
 
@@ -114,3 +115,7 @@ def test_partial_result_keeps_task_artifacts_and_structured_error() -> None:
         "message": "InsightFlow LLM configuration is missing.",
         "stage": "insights_generating",
     }
+
+
+def test_job_stage_has_draft_generating_member() -> None:
+    assert JobStage.DRAFT_GENERATING.value == "draft_generating"

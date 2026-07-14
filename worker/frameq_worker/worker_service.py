@@ -16,11 +16,20 @@ from frameq_worker.desktop_contract import (
     SENSEVOICE_REVISION_ENV,
     ProgressCallback,
 )
+from frameq_worker.draft_agent import run_draft
 from frameq_worker.insightflow import InsightClient
 from frameq_worker.llm import build_insight_client_from_env
 from frameq_worker.media import CommandRunner, run_command
 from frameq_worker.model_download import ModelDownloadError, download_asr_model_cache
-from frameq_worker.models import Insight, JobStage, ProcessResult, TranscriptMetadata, WorkerError
+from frameq_worker.models import (
+    Insight,
+    JobStage,
+    PreferenceSnapshot,
+    ProcessResult,
+    RetryInsightsRequest,
+    TranscriptMetadata,
+    WorkerError,
+)
 from frameq_worker.pipeline import (
     TranscriberFactory,
     failed_result,
@@ -32,6 +41,7 @@ from frameq_worker.pipeline import (
 )
 from frameq_worker.requests import (
     optional_env,
+    parse_preference_snapshot,
     parse_process_request,
     parse_retry_insights_request,
     resolve_configured_asr_model,
@@ -41,6 +51,8 @@ from frameq_worker.source_identity import (
     resolve_source_request,
 )
 from frameq_worker.task_store import (
+    DRAFT_SEED_UNSET,
+    TaskContext,
     ensure_task_dirs,
     load_task_manifest,
     task_context_from_manifest,
@@ -195,6 +207,20 @@ def retry_insights_once(
             request.preference_snapshot,
         )
 
+    if request.target == "draft":
+        # seed validation happens BEFORE any checkout / run_draft call
+        # (invalid seed consumes no quota).
+        draft_result = run_draft_generation_step(
+            task_context=task_context,
+            request=request,
+            runtime_env=runtime_env,
+        )
+        return finalize_task_result(
+            task_context,
+            merge_existing_ai_artifacts(task_context.paths, draft_result),
+            draft_seed_insight_id=request.insight_id,
+        ).to_dict()
+
     insight_result = run_insight_generation_step(
         transcript_txt_path=task_context.paths.transcript_txt_path,
         output_dir=task_context.paths.ai_dir,
@@ -205,9 +231,15 @@ def retry_insights_once(
         target=request.target,
     )
 
+    # target=insights regen changes the insight ids, so the old draft seed id
+    # is now invalid — clear it. target=summary leaves insights untouched, so the
+    # seed is preserved (finalize_task_result defaults to DRAFT_SEED_UNSET which
+    # write_task_manifest carries forward from the prior manifest).
+    draft_seed = None if request.target == "insights" else DRAFT_SEED_UNSET
     return finalize_task_result(
         task_context,
         merge_existing_ai_artifacts(task_context.paths, insight_result),
+        draft_seed_insight_id=draft_seed,
     ).to_dict()
 
 
@@ -222,6 +254,7 @@ def merge_existing_ai_artifacts(paths: object, result: ProcessResult) -> Process
         insights=insights,
         transcript=result.transcript,
         error=result.error,
+        draft=result.draft,
     )
 
 
@@ -285,6 +318,106 @@ def read_existing_insights(paths: object) -> list[Insight]:
         )
     return insights
 
+
+def run_draft_generation_step(
+    *,
+    task_context: TaskContext,
+    request: RetryInsightsRequest,
+    runtime_env: dict[str, str],
+    draft_runner: Callable[..., str] | None = None,
+) -> ProcessResult:
+    """draft branch: seed from a single Insight + task-local snapshot + summary.
+
+    Validates the seed against ``ai/insights.json`` BEFORE any checkout / run_draft
+    call (invalid seed consumes no LLM quota). Reads ``ai/preference-snapshot.json``
+    and ``ai/summary.md`` from disk (optional grounding). On success writes
+    ``ai/draft.md`` and returns a ``ProcessResult`` carrying ``draft`` text.
+    """
+    paths = task_context.paths
+
+    # seed invalidation — resolve the Insight by insight_id BEFORE checkout.
+    seed = _find_insight_by_id(read_existing_insights(paths), request.insight_id)
+    if seed is None:
+        return _draft_step_failed(
+            code="DRAFT_SEED_INVALID",
+            message=(
+                f"insight_id {request.insight_id} is not present in ai/insights.json; "
+                "re-select an insight and retry."
+            ),
+        )
+
+    # preference snapshot comes from disk (written when target=insights ran).
+    # Missing → None (no-personalization degrade, do not block).
+    preference_snapshot = read_existing_preference_snapshot(paths)
+    # summary is optional grounding; missing → None.
+    existing_summary = read_existing_summary(paths)
+    summary: str | None = existing_summary or None
+
+    # Resolve at call time so tests can patch frameq_worker.worker_service.run_draft.
+    runner = draft_runner if draft_runner is not None else run_draft
+    try:
+        draft_text = runner(seed, preference_snapshot, summary, runtime_env)
+    except Exception as exc:  # noqa: BLE001 - wraps LLM / MCP / agent-loop failures.
+        return _draft_step_failed(
+            code="DRAFT_GENERATION_FAILED",
+            message=str(exc),
+        )
+
+    if not draft_text or not draft_text.strip():
+        # 空串 / 纯空白判失败且不落盘：写空文件 + 报成功是静默失败。
+        return _draft_step_failed(
+            code="DRAFT_EMPTY_RESULT",
+            message="Draft generation returned an empty result.",
+        )
+
+    paths.draft_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.draft_path.write_text(draft_text, encoding="utf-8")
+
+    return ProcessResult(
+        status=JobStage.COMPLETED,
+        artifacts={"draft": "ai/draft.md"},
+        draft=draft_text,
+    )
+
+
+def _draft_step_failed(*, code: str, message: str) -> ProcessResult:
+    """Draft-branch failure wrapper — stage is always DRAFT_GENERATING."""
+    return ProcessResult(
+        status=JobStage.PARTIAL_COMPLETED,
+        error=WorkerError(
+            code=code,
+            message=message,
+            stage=JobStage.DRAFT_GENERATING,
+        ),
+    )
+
+
+def _find_insight_by_id(insights: list[Insight], insight_id: int | None) -> Insight | None:
+    if insight_id is None:
+        return None
+    for insight in insights:
+        if insight.id == insight_id:
+            return insight
+    return None
+
+
+def read_existing_preference_snapshot(paths: object) -> PreferenceSnapshot | None:
+    """Round-trip ``ai/preference-snapshot.json`` back to a PreferenceSnapshot.
+
+    Missing or malformed → None (no-personalization degrade). Reuses
+    ``parse_preference_snapshot`` so the on-disk schema is validated identically.
+    """
+    snapshot_path = getattr(paths, "preference_snapshot_path", None)
+    if not isinstance(snapshot_path, Path) or not snapshot_path.is_file():
+        return None
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    try:
+        return parse_preference_snapshot(payload)
+    except ValueError:
+        return None
 
 
 def failed_insight_retry_result(

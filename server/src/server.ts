@@ -31,6 +31,8 @@ export type ServerDependencies = {
   llmConfigEncryptionKey?: string;
   releaseManifest?: DesktopReleaseManifest | null;
   releaseManifestPath?: string;
+  anysearchMcpUrl?: string;
+  anysearchApiKey?: string | null;
   now?: () => Date;
 };
 
@@ -131,6 +133,8 @@ export function buildServer(dependencies: ServerDependencies) {
     loadDesktopReleaseManifest(
       dependencies.releaseManifestPath ?? process.env.FRAMEQ_RELEASE_MANIFEST_PATH,
     );
+  const anysearchMcpUrl = (dependencies.anysearchMcpUrl ?? process.env.FRAMEQ_ANYSEARCH_MCP_URL ?? "").trim();
+  const anysearchApiKey = (dependencies.anysearchApiKey ?? process.env.FRAMEQ_ANYSEARCH_API_KEY ?? "").trim();
 
   app.removeContentTypeParser("application/json");
   app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
@@ -457,6 +461,20 @@ export function buildServer(dependencies: ServerDependencies) {
       api_key: config.apiKey,
       timeout_seconds: config.timeoutSeconds,
       quota_remaining: remaining,
+    };
+  });
+
+  app.post("/api/desktop/anysearch/checkout", async (request, reply) => {
+    const session = await authenticateDesktop(dependencies.store, request.headers.authorization, now());
+    if (!session) {
+      return reply.code(401).send({ error: "AUTH_REQUIRED" });
+    }
+    if (!anysearchMcpUrl) {
+      return reply.code(400).send({ error: "ANYSEARCH_CONFIG_MISSING" });
+    }
+    return {
+      mcp_url: anysearchMcpUrl,
+      api_key: anysearchApiKey || null,
     };
   });
 

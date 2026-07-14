@@ -43,6 +43,11 @@ pub(crate) struct RetryInsightsRequest {
     target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     preference_snapshot: Option<serde_json::Value>,
+    // Present only for target="draft" (identifies which insight to expand into a
+    // draft). Omitted on the wire for summary/insights so those requests stay
+    // byte-identical to the pre-draft worker contract.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    insight_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -63,6 +68,9 @@ pub(crate) struct ProcessVideoResult {
     pub(crate) insights: Vec<task_manifest::InsightView>,
     pub(crate) transcript: Option<task_manifest::TranscriptMetadata>,
     pub(crate) error: Option<WorkerError>,
+    // Generated draft markdown (empty string until the draft stage runs).
+    // Defaults to empty so fallback objects and older worker output never panic.
+    pub(crate) draft: String,
 }
 
 #[tauri::command]
@@ -101,6 +109,7 @@ fn process_video_blocking(
                 message: error,
                 stage: "video_transcribing".to_string(),
             }),
+            draft: String::new(),
         }));
     };
     if let Some(cached) = cached_process_result_for_request(&output_root, &request)? {
@@ -236,6 +245,7 @@ fn process_video_blocking(
                 message: "Worker process was cancelled.".to_string(),
                 stage: "video_extracting".to_string(),
             }),
+            draft: String::new(),
         }));
     };
 
@@ -255,6 +265,7 @@ fn process_video_blocking(
                 message: "Worker process failed before returning a structured result.".to_string(),
                 stage: "video_extracting".to_string(),
             }),
+            draft: String::new(),
         },
     )?;
     let _ = append_desktop_log(
@@ -397,6 +408,9 @@ fn cached_process_result_from_manifest(
         insights,
         transcript,
         error,
+        // Draft is generated on demand via retry_insights(target="draft"); the
+        // cached process result never carries a draft body, so default to empty.
+        draft: String::new(),
     });
     Ok(Some((created_at, value)))
 }
@@ -594,6 +608,7 @@ fn retry_insights_blocking(
                 message: "Worker process was cancelled.".to_string(),
                 stage: "insights_generating".to_string(),
             }),
+            draft: String::new(),
         }));
     }
 
@@ -614,6 +629,7 @@ fn retry_insights_blocking(
                     .to_string(),
                 stage: "insights_generating".to_string(),
             }),
+            draft: String::new(),
         },
     )?;
     let _ = append_desktop_log(
@@ -644,6 +660,7 @@ fn worker_failure_result(
             message: message.to_string(),
             stage: stage.to_string(),
         }),
+        draft: String::new(),
     })
 }
 
@@ -700,12 +717,89 @@ mod tests {
     use super::{
         apply_configured_asr_model_to_request, cached_process_result_for_identity,
         cached_process_result_for_request, serialize_process_video_request, ProcessVideoRequest,
-        RetryInsightsRequest,
+        ProcessVideoResult, RetryInsightsRequest, WorkerError,
     };
     use crate::{path_to_env_string, task_manifest::SourceIdentity};
+    use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn retry_insights_request_serializes_insight_id_for_draft_target() {
+        let request = RetryInsightsRequest {
+            task_id: "20260714-100000-douyin-demo".to_string(),
+            target: "draft".to_string(),
+            preference_snapshot: None,
+            insight_id: Some(7),
+        };
+        let serialized = serde_json::to_value(&request).expect("serialize retry request");
+
+        assert_eq!(serialized["target"], "draft");
+        assert_eq!(serialized["insight_id"], 7);
+        assert!(
+            serialized.get("preference_snapshot").is_none(),
+            "preference_snapshot must be absent when None so summary/insights requests stay unchanged on the wire"
+        );
+    }
+
+    #[test]
+    fn retry_insights_request_omits_insight_id_when_none() {
+        let request = RetryInsightsRequest {
+            task_id: "20260714-100000-douyin-demo".to_string(),
+            target: "insights".to_string(),
+            preference_snapshot: None,
+            insight_id: None,
+        };
+        let serialized = serde_json::to_value(&request).expect("serialize retry request");
+
+        assert!(
+            serialized.get("insight_id").is_none(),
+            "insight_id key must be absent for non-draft targets"
+        );
+    }
+
+    #[test]
+    fn retry_insights_request_round_trips_insight_id_for_draft() {
+        let payload = serde_json::json!({
+            "task_id": "20260714-100000-douyin-demo",
+            "target": "draft",
+            "insight_id": 42
+        });
+
+        let request: RetryInsightsRequest =
+            serde_json::from_value(payload).expect("deserialize draft retry request");
+        let serialized = serde_json::to_value(&request).expect("serialize draft retry request");
+
+        assert_eq!(serialized["target"], "draft");
+        assert_eq!(serialized["insight_id"], 42);
+        assert!(serialized.get("preference_snapshot").is_none());
+    }
+
+    #[test]
+    fn process_video_result_fallback_carries_empty_draft() {
+        let fallback = ProcessVideoResult {
+            status: "failed".to_string(),
+            task_id: None,
+            task_dir: None,
+            artifacts: HashMap::new(),
+            text: String::new(),
+            summary: String::new(),
+            insights: vec![],
+            transcript: None,
+            error: Some(WorkerError {
+                code: "WORKER_PROCESS_FAILED".to_string(),
+                message: "transport failure".to_string(),
+                stage: "insights_generating".to_string(),
+            }),
+            draft: String::new(),
+        };
+        let serialized = serde_json::to_value(&fallback).expect("serialize fallback result");
+
+        assert_eq!(serialized["draft"], "");
+        // A fallback must never pretend to carry a real draft body.
+        assert_ne!(serialized["draft"], "# some markdown");
+    }
 
     #[test]
     fn cached_process_result_reuses_completed_task_for_same_source_url() {

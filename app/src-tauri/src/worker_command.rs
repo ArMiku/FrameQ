@@ -1,6 +1,7 @@
 use crate::account;
 use crate::settings::{
-    legacy_local_llm_env_removals, LLM_CHECKOUT_REQUEST_ID_ENV, LLM_CHECKOUT_URL_ENV,
+    legacy_local_llm_env_removals, ANYSEARCH_CHECKOUT_URL_ENV, ANYSEARCH_SESSION_TOKEN_ENV,
+    ANYSEARCH_SOURCE_ENV, LLM_CHECKOUT_REQUEST_ID_ENV, LLM_CHECKOUT_URL_ENV,
     LLM_SESSION_TOKEN_ENV, LLM_SOURCE_ENV,
 };
 use crate::task_manifest;
@@ -419,8 +420,17 @@ pub(crate) fn build_worker_command_spec(
                     llm.server_base_url.trim_end_matches('/')
                 ),
             ));
-            env.push((LLM_SESSION_TOKEN_ENV.to_string(), llm.session_token));
+            env.push((LLM_SESSION_TOKEN_ENV.to_string(), llm.session_token.clone()));
             env.push((LLM_CHECKOUT_REQUEST_ID_ENV.to_string(), llm.request_id));
+            env.push((ANYSEARCH_SOURCE_ENV.to_string(), "server".to_string()));
+            env.push((
+                ANYSEARCH_CHECKOUT_URL_ENV.to_string(),
+                format!(
+                    "{}/api/desktop/anysearch/checkout",
+                    llm.server_base_url.trim_end_matches('/')
+                ),
+            ));
+            env.push((ANYSEARCH_SESSION_TOKEN_ENV.to_string(), llm.session_token));
         }
     }
 
@@ -916,6 +926,7 @@ Some dependency logged to stdout
                 message: "third-party stderr".to_string(),
                 stage: "video_extracting".to_string(),
             }),
+            draft: String::new(),
         };
 
         let parsed = parse_worker_output_or_fallback(&output, fallback)
@@ -947,6 +958,7 @@ Some dependency logged to stdout
                 message: "worker failed before returning json".to_string(),
                 stage: "video_extracting".to_string(),
             }),
+            draft: String::new(),
         };
 
         let parsed =
@@ -958,6 +970,9 @@ Some dependency logged to stdout
         assert_eq!(parsed["task_id"], serde_json::Value::Null);
         assert_eq!(parsed["task_dir"], serde_json::Value::Null);
         assert_eq!(parsed["artifacts"], serde_json::json!({}));
+        // Fallback must surface an empty draft so downstream consumers never see
+        // a missing key (backward-compat with the new draft contract).
+        assert_eq!(parsed["draft"], "");
     }
 
     #[test]
@@ -1301,6 +1316,9 @@ Some dependency logged to stdout
         assert_eq!(env.get("FRAMEQ_LLM_CHECKOUT_URL"), None);
         assert_eq!(env.get("FRAMEQ_LLM_SESSION_TOKEN"), None);
         assert_eq!(env.get("FRAMEQ_LLM_CHECKOUT_REQUEST_ID"), None);
+        assert_eq!(env.get("FRAMEQ_ANYSEARCH_SOURCE"), None);
+        assert_eq!(env.get("FRAMEQ_ANYSEARCH_CHECKOUT_URL"), None);
+        assert_eq!(env.get("FRAMEQ_ANYSEARCH_SESSION_TOKEN"), None);
     }
 
     #[test]
@@ -1334,6 +1352,15 @@ Some dependency logged to stdout
         assert_eq!(
             env.get("FRAMEQ_LLM_CHECKOUT_REQUEST_ID"),
             Some(&"llm-run-12345678".to_string())
+        );
+        assert_eq!(env.get("FRAMEQ_ANYSEARCH_SOURCE"), Some(&"server".to_string()));
+        assert_eq!(
+            env.get("FRAMEQ_ANYSEARCH_CHECKOUT_URL"),
+            Some(&"http://127.0.0.1:8787/api/desktop/anysearch/checkout".to_string())
+        );
+        assert_eq!(
+            env.get("FRAMEQ_ANYSEARCH_SESSION_TOKEN"),
+            Some(&"desktop-token".to_string())
         );
     }
 

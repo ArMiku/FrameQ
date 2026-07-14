@@ -17,6 +17,13 @@ from frameq_worker.source_identity import (
 TASK_MANIFEST_FILE_NAME = "frameq-task.json"
 TASK_SCHEMA_VERSION = 3
 
+# Sentinel for ``write_task_manifest(draft_seed_insight_id=...)``: when the caller
+# does not pass an explicit value, the seed id is carried forward from the prior
+# manifest on disk (preserve-by-default). Pass ``None`` to clear it (insights
+# regen) or an ``int`` to set it (draft generation). Keeping this distinct from
+# ``None`` lets the caller signal "I don't care, keep what's there" vs "clear it".
+DRAFT_SEED_UNSET: object = object()
+
 
 @dataclass(frozen=True)
 class TaskPaths:
@@ -79,6 +86,10 @@ class TaskPaths:
     @property
     def summary_path(self) -> Path:
         return self.ai_dir / "summary.md"
+
+    @property
+    def draft_path(self) -> Path:
+        return self.ai_dir / "draft.md"
 
     @property
     def mindmap_path(self) -> Path:
@@ -160,6 +171,7 @@ def task_artifacts_for_existing_files(paths: TaskPaths) -> dict[str, str]:
         "insights": paths.insights_json_path,
         "insights_md": paths.insights_md_path,
         "preference_snapshot": paths.preference_snapshot_path,
+        "draft": paths.draft_path,
     }
     return {
         key: path.relative_to(paths.task_dir).as_posix()
@@ -185,13 +197,53 @@ def result_with_task(
         insights=result.insights,
         transcript=result.transcript,
         error=result.error,
+        draft=result.draft,
     )
 
 
-def write_task_manifest(context: TaskContext, result: ProcessResult) -> None:
+def write_task_manifest(
+    context: TaskContext,
+    result: ProcessResult,
+    *,
+    draft_seed_insight_id: int | None | object = DRAFT_SEED_UNSET,
+) -> None:
+    """Rebuild and persist the task manifest (``frameq-task.json``).
+
+    The manifest payload is rebuilt from scratch on every retry, so any field the
+    frontend owns (notably ``draft_seed_insight_id`` — the Insight the user picked
+    as the draft seed) would be CLOBBERED unless we explicitly preserve it.
+
+    ``draft_seed_insight_id`` preserve/clear rule:
+
+    - ``DRAFT_SEED_UNSET`` (default): carry the value forward from the prior
+      manifest on disk. Used by ``target="summary"`` regen (summary doesn't
+      change insights → the seed stays valid) and by any caller that doesn't
+      know about drafts.
+    - ``None``: write ``null`` (clear the seed). Used by ``target="insights"``
+      regen — insights changed, the old seed id is now invalid.
+    - ``int``: write that id. Used by ``target="draft"`` generation
+      (``request.insight_id``).
+
+    ``draft_path`` / ``has_draft`` always reflect the current state of
+    ``ai/draft.md`` on disk (artifacts are independent — insights regen does
+    NOT delete the draft file, only clears the seed link).
+    """
     source_identity = context.source_identity
     canonical_url = canonical_url_for_persistence(source_identity)
     context.paths.task_dir.mkdir(parents=True, exist_ok=True)
+
+    if draft_seed_insight_id is DRAFT_SEED_UNSET:
+        prior_seed = _read_prior_draft_seed_insight_id(context.paths.manifest_path)
+    else:
+        prior_seed = draft_seed_insight_id  # explicit None (clear) or int (set)
+
+    draft_exists = context.paths.draft_path.exists()
+    draft_path = (
+        context.paths.draft_path.relative_to(context.paths.task_dir).as_posix()
+        if draft_exists
+        else None
+    )
+
     payload = {
         "schema_version": TASK_SCHEMA_VERSION,
         "source_privacy_migration_version": SOURCE_PRIVACY_MIGRATION_VERSION,
@@ -211,11 +263,37 @@ def write_task_manifest(context: TaskContext, result: ProcessResult) -> None:
         "error": result.error.to_dict() if result.error else None,
         "text_preview": result.text.strip()[:180],
         "insights_count": len(result.insights),
+        "draft_path": draft_path,
+        "has_draft": draft_exists,
+        "draft_seed_insight_id": prior_seed,
     }
     context.paths.manifest_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _read_prior_draft_seed_insight_id(manifest_path: Path) -> int | None:
+    """Best-effort read of ``draft_seed_insight_id`` from the existing manifest.
+
+    Returns ``None`` when the manifest is missing, unreadable, or the field is
+    absent (backward-compat with old manifests). Never raises — manifest rewrite
+    must not fail because of a stale prior manifest.
+    """
+    if not manifest_path.is_file():
+        return None
+    try:
+        prior = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(prior, dict):
+        return None
+    value = prior.get("draft_seed_insight_id")
+    if isinstance(value, bool) or not isinstance(value, int):
+        # ``bool`` is an ``int`` subclass — exclude it explicitly so True/False
+        # on disk (from a buggy prior write) doesn't masquerade as 1/0.
+        return None
+    return value
 
 
 def write_preference_snapshot_artifact(

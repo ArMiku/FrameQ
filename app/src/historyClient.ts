@@ -126,6 +126,10 @@ export function historyItemToWorkerResult(item: HistoryItem): WorkerResult {
     summary: item.summary,
     insights: item.insights,
     transcript: item.transcript,
+    // History restoration does not currently surface the draft text body; the
+    // on-disk ai/draft.md artifact is reflected via item.artifacts.draft. Full
+    // draft-body restoration from history is a follow-up (Task 6/7).
+    draft: "",
     error: item.error,
   };
 }

@@ -99,7 +99,30 @@ function aiTargetStatus(
   const ready =
     target === "summary"
       ? Boolean(workflow.summary || workflow.artifacts.summary)
-      : Boolean(workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md);
+      : target === "draft"
+        ? Boolean(workflow.draft || workflow.artifacts.draft)
+        : Boolean(workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md);
+
+  if (target === "draft") {
+    // 6.1: the draft card needs a selectable seed insight. It is quietly locked
+    // until (a) insights are ready AND (b) the user has selected exactly one
+    // seed (workflow.draftSeedInsightId). When locked it must NOT expose an LLM
+    // entry or consume quota. This does NOT infer the draft target from status
+    // copy — it is an availability projection from artifact + selection state.
+    const insightsReady = Boolean(
+      workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md,
+    );
+    const seedSelected = workflow.draftSeedInsightId !== null;
+    return {
+      target,
+      status: ready
+        ? "ready"
+        : insightsReady && seedSelected
+          ? "available"
+          : "locked",
+      errorCode: null,
+    };
+  }
 
   return { target, status: ready ? "ready" : "available", errorCode: null };
 }
@@ -136,6 +159,7 @@ export function createTaskWorkspaceViewModel(
   const readOnly = transcriptReady && (aiActive || isAiCancellation(workflow));
   const summary = aiTargetStatus(workflow, "summary", transcriptReady);
   const insights = aiTargetStatus(workflow, "insights", transcriptReady);
+  const draft = aiTargetStatus(workflow, "draft", transcriptReady);
   const aiPhase: AiWorkspacePhase = !transcriptReady
     ? "waiting_transcript"
     : aiActive || isAiCancellation(workflow)
@@ -178,6 +202,7 @@ export function createTaskWorkspaceViewModel(
       activeTarget: workflow.activeAiTarget,
       summary,
       insights,
+      draft,
     },
   };
 }

@@ -57,6 +57,7 @@ describe("desktop/worker contract", () => {
         summary: "",
         insights: [],
         transcript: null,
+        draft: "",
         error: null,
       };
     });
@@ -83,6 +84,7 @@ describe("desktop/worker contract", () => {
         summary: "",
         insights: [],
         transcript: null,
+        draft: "",
         error: null,
       };
     });

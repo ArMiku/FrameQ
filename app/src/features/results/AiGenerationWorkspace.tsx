@@ -1,4 +1,4 @@
-import { AlertTriangle, Lightbulb, ListChecks, LoaderCircle, X } from "lucide-react";
+import { AlertTriangle, FileText, Lightbulb, ListChecks, LoaderCircle, X } from "lucide-react";
 
 import { formatAiCreditsBalance, getAiCreditsCostHint } from "../../aiCreditsCopy";
 import type { TaskWorkspaceViewModel, AiTargetViewModel } from "../../taskWorkspaceViewModel";
@@ -11,6 +11,7 @@ type AiGenerationWorkspaceProps = {
   notice?: string;
   onSummaryAction: () => void;
   onInsightsAction: () => void;
+  onDraftAction: () => void;
   onViewTarget: (target: InsightRetryTarget) => void;
   onCancel: () => void;
 };
@@ -22,6 +23,7 @@ export function AiGenerationWorkspace({
   notice = "",
   onSummaryAction,
   onInsightsAction,
+  onDraftAction,
   onViewTarget,
   onCancel,
 }: AiGenerationWorkspaceProps) {
@@ -79,6 +81,18 @@ export function AiGenerationWorkspace({
           onAction={onInsightsAction}
           onView={() => onViewTarget("insights")}
         />
+        <AiTargetCard
+          target={model.draft}
+          title="生成文字稿"
+          description="基于一条启发灵感生成完整文字稿"
+          quotaRemaining={quotaRemaining}
+          blocked={Boolean(blocker)}
+          icon={<FileText size={18} aria-hidden="true" />}
+          actionLabel="选择种子并生成"
+          lockedHint={draftLockedHint(workflow)}
+          onAction={onDraftAction}
+          onView={() => onViewTarget("draft")}
+        />
       </div>
 
       {model.activeTarget ? (
@@ -103,6 +117,8 @@ type AiTargetCardProps = {
   quotaRemaining: number;
   blocked: boolean;
   icon: React.ReactNode;
+  actionLabel?: string;
+  lockedHint?: string;
   onAction: () => void;
   onView: () => void;
 };
@@ -114,14 +130,22 @@ function AiTargetCard({
   quotaRemaining,
   blocked,
   icon,
+  actionLabel,
+  lockedHint,
   onAction,
   onView,
 }: AiTargetCardProps) {
   const active = target.status === "generating" || target.status === "cancelling";
   const ready = target.status === "ready";
   const failed = target.status === "failed";
-  const disabled = target.status === "locked" || active || blocked;
-  const actionLabel = failed ? "重新生成" : target.target === "insights" ? "选择并确认" : "确认生成";
+  const locked = target.status === "locked";
+  const disabled = locked || active || blocked;
+  const defaultActionLabel = failed
+    ? "重新生成"
+    : target.target === "insights"
+      ? "选择并确认"
+      : "确认生成";
+  const label = actionLabel ?? defaultActionLabel;
 
   return (
     <article className={`ai-target-card ${target.status}`} data-ai-target={target.target}>
@@ -134,6 +158,7 @@ function AiTargetCard({
         <span className="ai-target-status">{targetStatusLabel(target.status)}</span>
       </div>
       {target.errorCode ? <p className="ai-target-error">{target.errorCode}</p> : null}
+      {locked && lockedHint ? <p className="ai-target-locked-hint">{lockedHint}</p> : null}
       <small>{formatAiCreditsBalance(quotaRemaining)}。{getAiCreditsCostHint()}</small>
       <div className="ai-target-actions">
         {active ? <LoaderCircle size={17} className="spin" aria-label="生成中" /> : null}
@@ -143,12 +168,26 @@ function AiTargetCard({
           </button>
         ) : (
           <button type="button" className="secondary-button ai-target-action" onClick={onAction} disabled={disabled}>
-            {actionLabel}
+            {label}
           </button>
         )}
       </div>
     </article>
   );
+}
+
+/**
+ * 6.1: the copy shown when the draft target card is quietly locked. Draft needs
+ * a seed insight: if no inspiration has been generated yet, prompt for that;
+ * otherwise prompt to select one as the seed.
+ */
+function draftLockedHint(workflow: WorkflowState): string {
+  const insightsReady = Boolean(
+    workflow.insights.length ||
+      workflow.artifacts.insights ||
+      workflow.artifacts.insights_md,
+  );
+  return insightsReady ? "请选择一条启发灵感作为种子" : "请先生成启发灵感";
 }
 
 function targetStatusLabel(status: AiTargetViewModel["status"]): string {

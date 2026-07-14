@@ -1,5 +1,15 @@
 # FrameQ Architecture
 
+## 2026-07-13 Draft Generation from Inspiration Boundary
+
+- `生成文字稿` is the third peer `AI整理` target card alongside `要点总结` and `启发灵感`, triggered by extending `retry_insights` with `target="draft"` (`RetryInsightsRequest{ task_id, target="draft", insight_id, preference_snapshot? }`). No new Tauri command or FrameQ server interface is added for drafts; the standalone CLI `--generate-draft-json` / `generate_draft_once` / `GenerateDraftRequest` path is retired and its persistence logic is absorbed into the `retry_insights_once` draft branch.
+- The seed is exactly one user-selected `Insight` from `启发灵感` plus the task-local `PreferenceSnapshot`. The worker reads the snapshot from `ai/preference-snapshot.json` and the optional summary grounding from `ai/summary.md` itself; the frontend SHALL NOT send `preference_snapshot` in a `target="draft"` request, so the snapshot always matches the one used when the selected insight was generated. A missing snapshot degrades to non-personalized generation without fabricating a persona; a missing summary degrades to pure web retrieval.
+- Draft generation runs an agent (anysearch web retrieval + skills + planning + `submit_draft` delivery contract), not a single LLM call. `anysearch` retrieval is the factual grounding path; original transcript fragments, video, audio, and source URL SHALL NOT enter the draft prompt. `suitableUse` drives form/platform direction in the prompt; platform-style skills (v1 `viral-writer` covers Douyin / Xiaohongshu / WeChat Official Account, with the `公众号` ↔ `微信公众号` name mapping) are self-loaded by the LLM and never hard-matched in the backend. Adding a platform means dropping a `SKILL.md` under `skills/`, with no code change.
+- Quota is flat and checkout-time-charged, diverging from the per-call model of `summary`/`insights`: one draft attempt = one credit, charged at server checkout (`consumeLlmQuota`, `prismaStore.ts:260` / `server.ts:439`) regardless of success or failure, with no refund and no success-gating. Each confirmation including retries charges one, because tauri mints a new `request_id` per `retry_insights_blocking` (`account.rs:314`) that misses server `(userId, requestId)` idempotency. Entering the confirmation page or cancelling charges nothing. `anysearch` retrieval calls do not consume user quota. The flat unit comes from draft's one-checkout structure; server/LLM supplier cost scales with agent turns (`max_turns`, capped via `FRAMEQ_DRAFT_MAX_TURNS`).
+- The draft is an independent artifact at `{task_dir}/ai/draft.md`, parallel to transcript/summary/insights/mindmap, never written back to `transcript.txt`. `ProcessResult` and Rust `ProcessVideoResult` carry `draft`; the manifest carries `draft_path` / `has_draft` / `draft_seed_insight_id` with no full draft text. Draft viewing renders sanitized GitHub Flavored Markdown and shares no container with the official transcript.
+- Seed validity: `insight_id` must exist in the current `insights.json`; otherwise the worker returns `DRAFT_SEED_INVALID` and consumes no draft LLM call. Regenerating `启发灵感` clears `draft_seed_insight_id` and returns `生成文字稿` to a quiet disabled state. A failed draft attributes only to the draft target via `WorkerError.stage = JobStage.DRAFT_GENERATING`; the overall task is `partial_completed` and other targets' artifacts are unaffected. The UI reuses the `insights_generating` phase with `activeAiTarget="draft"` / `aiErrorTarget="draft"` and SHALL NOT infer the target from status text.
+- The confirmation panel's user-visible data prompt stays "send the selected insight fields + preference snapshot to the cloud LLM; do not upload video/audio/full transcript" and SHALL NOT add an anysearch disclosure row in v1. The internal privacy boundary is relaxed to allow anysearch-retrieved context to re-enter the LLM, while the "no full transcript upload" boundary is preserved. FrameQ server still owns only account, entitlement, quota, and LLM+anysearch checkout; it never receives or stores insights, preferences, or drafts.
+
 ## 2026-07-12 History Task Permanent Deletion Boundary
 
 - `delete_history_task(taskId)` is the only product deletion command. The frontend sends no path;
@@ -24,7 +34,7 @@
 - One workflow task remains the only identity and artifact aggregate, but the desktop UI
   projects it into `LocalTranscriptWorkspace` and `AiGenerationWorkspace`. App composes the
   workspaces; `useTaskProcessingController` remains the sole task-identity owner.
-- A typed `activeAiTarget` identifies `summary`, `insights`, or no active AI request. Local
+- A typed `activeAiTarget` identifies `summary`, `insights`, `draft`, or no active AI request. Local
   progress is projected only from download/media/transcription stages. AI progress, errors,
   availability, quota, and cancellation placement are projected into the target-specific AI
   workspace, so an AI run never hides a usable local transcript.
@@ -378,7 +388,7 @@ graph LR
 - UI 只编排任务和展示状态，不直接调用 `yt-dlp`、`ffmpeg`、ASR 或 LLM。
 - UI 可以通过 Tauri command 读取/保存 ASR 与输出目录配置；LLM 配置由 server Admin Web 管理，桌面 UI 不回显也不输入 API Key。
 - worker 通过结构化 JSON 返回状态、路径、文本、灵感和错误码。
-- `process_video` 主流程只负责视频下载、音频提取和 ASR 文字稿，其请求模型和 pipeline 中不存在 AI 开关或自动 AI 分支；`retry_insights` 在用户二次确认后按 `summary` 或 `insights` 目标单独运行，并且是唯一可以构造 AI client、进入 AI generation、需要 server-managed LLM checkout 和消耗额度的本地 worker 调用。
+- `process_video` 主流程只负责视频下载、音频提取和 ASR 文字稿，其请求模型和 pipeline 中不存在 AI 开关或自动 AI 分支；`retry_insights` 在用户二次确认后按 `summary`、`insights` 或 `draft` 目标单独运行，并且是唯一可以构造 AI client、进入 AI generation、需要 server-managed LLM checkout 和消耗额度的本地 worker 调用；`draft` 目标以单条 Insight + 任务局部偏好快照为种子，经 agent（anysearch 联网检索 + skills + planning + submit_draft）生成草稿，写入 `ai/draft.md`，不送 transcript 片段。
 - `D:\Github\InsightFlow\src\server` 只允许作为开发参考，禁止成为运行期依赖。
 - 对外分发态的用户可见输出默认写入 app-local data `outputs/tasks/<task_id>/`，也可通过 `FRAMEQ_OUTPUT_DIR` 写入自定义任务目录根；中间文件写入 app-local data `cache/tasks/<task_id>/`；模型缓存写入 app-local data `models/`。
 - 历史记录只索引本地结果和状态，不参与 worker 核心处理决策；旧历史路径不随输出目录配置变化而迁移。

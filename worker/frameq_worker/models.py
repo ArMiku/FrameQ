@@ -6,7 +6,7 @@ from typing import Literal
 
 from frameq_worker.source_identity import SourceIdentity
 
-RetryInsightTarget = Literal["summary", "insights"]
+RetryInsightTarget = Literal["summary", "insights", "draft"]
 InsightGenerationTarget = Literal["all", "summary", "insights"]
 
 
@@ -15,6 +15,7 @@ class JobStage(StrEnum):
     VIDEO_EXTRACTING = "video_extracting"
     VIDEO_TRANSCRIBING = "video_transcribing"
     INSIGHTS_GENERATING = "insights_generating"
+    DRAFT_GENERATING = "draft_generating"
     COMPLETED = "completed"
     PARTIAL_COMPLETED = "partial_completed"
     FAILED = "failed"
@@ -134,6 +135,9 @@ class RetryInsightsRequest:
     task_id: str
     target: RetryInsightTarget
     preference_snapshot: PreferenceSnapshot | None = None
+    # preference_snapshot for draft is read from disk, not sent over the wire.
+    # insight_id is the seed Insight id; required (non-null) when target == "draft".
+    insight_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -200,6 +204,7 @@ class ProcessResult:
     insights: list[Insight] = field(default_factory=list)
     transcript: TranscriptMetadata | None = None
     error: WorkerError | None = None
+    draft: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -212,4 +217,6 @@ class ProcessResult:
             "insights": [insight.to_dict() for insight in self.insights],
             "transcript": self.transcript.to_dict() if self.transcript else None,
             "error": self.error.to_dict() if self.error else None,
+            "draft": self.draft,
         }
+

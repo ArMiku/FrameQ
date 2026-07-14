@@ -17,6 +17,7 @@ import "./App.css";
 import { getAiCreditsCostHint } from "./aiCreditsCopy";
 import {
   getExportPath,
+  getTaskArtifactPath,
   isProcessingStage,
   type TaskArtifactKey,
   type WorkflowState,
@@ -38,6 +39,8 @@ import { InsightPreferenceFlow } from "./features/insightPreferences/InsightPref
 import { useInsightGenerationController } from "./features/insightPreferences/useInsightGenerationController";
 import { AiGenerationWorkspace } from "./features/results/AiGenerationWorkspace";
 import { AiResultDetailSheet } from "./features/results/AiResultDetailSheet";
+import { DraftConfirmationSheet } from "./features/results/DraftConfirmationSheet";
+import { DraftResultSheet } from "./features/results/DraftResultSheet";
 import { TaskStatusBanner } from "./features/results/TaskStatusBanner";
 import { SettingsSheet } from "./features/settings/SettingsSheet";
 import { useSettingsController } from "./features/settings/useSettingsController";
@@ -65,6 +68,10 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
     body: "正在使用本地 ASR 模型缓存识别语音内容。",
   },
   insights_generating: {
+    title: "AI 整理中",
+    body: "正在使用云端 LLM 生成所选 AI 结果。",
+  },
+  draft_generating: {
     title: "AI 整理中",
     body: "正在使用云端 LLM 生成所选 AI 结果。",
   },
@@ -158,6 +165,11 @@ function updateToolbarLabel(state: UpdateState): string {
 
 function App() {
   const [actionNotice, setActionNotice] = useState("");
+  // 6.3 / 6.4: draft confirmation + draft viewer sheet state. The
+  // confirmation sheet is opened by the draft card's generate action; the
+  // viewer is opened by the draft card's view action (`onViewTarget("draft")`).
+  const [draftConfirmOpen, setDraftConfirmOpen] = useState(false);
+  const [draftResultOpen, setDraftResultOpen] = useState(false);
   const settingsController = useSettingsController();
   const { settingsOpen, closeSettings, openSettings } = settingsController;
   const closeDetailForTaskRef = useRef<() => void>(() => {});
@@ -197,6 +209,7 @@ function App() {
     completeHistoryTaskDeletion,
     restoreHistoryItem,
     retryInsightGeneration,
+    setDraftSeedInsightId,
     startNewTaskFromToolbar,
     submitUrl,
   } = useTaskProcessingController({
@@ -279,6 +292,55 @@ function App() {
     aiBlockerMessage: accountAiBlockerMessage,
   });
   resetInsightGenerationUiRef.current = resetInsightGenerationUi;
+
+  // 6.3: confirm draft generation — calls the draft retry path with the
+  // selected seed insight id. Cancel (closeSheet) does NOT call the worker,
+  // so it costs no quota. retryInsightGeneration handles the account/quota
+  // gate (opens the account panel if blocked) and the insights_generating
+  // progress phase. The draft viewer opens once the result arrives.
+  const confirmDraftGeneration = useCallback(() => {
+    setDraftConfirmOpen(false);
+    void retryInsightGeneration(
+      "draft",
+      null,
+      account,
+      openAccountPanel,
+      undefined,
+      workflow.draftSeedInsightId ?? undefined,
+    );
+  }, [account, openAccountPanel, retryInsightGeneration, workflow.draftSeedInsightId]);
+
+  // 6.4: copy the draft markdown to the clipboard (mirrors the shared
+  // AiResultDetailSheet copyDetail path).
+  const copyDraft = useCallback(async () => {
+    const text = workflow.draft.trim();
+    if (!text) {
+      setActionNotice("暂无可复制内容。");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setActionNotice("已复制到剪贴板。");
+    } catch {
+      setActionNotice("复制失败，请手动选择内容复制。");
+    }
+  }, [setActionNotice, workflow.draft]);
+
+  // 6.4: locate `ai/draft.md` in the file manager (mirrors the shared sheet's
+  // exportDetail, which calls revealItemInDir on the artifact path).
+  const exportDraft = useCallback(async () => {
+    const draftPath = getTaskArtifactPath(workflow, "draft");
+    if (!draftPath) {
+      setActionNotice("暂无可导出的文件。");
+      return;
+    }
+    try {
+      await revealItemInDir(draftPath);
+      setActionNotice("已在文件管理器中定位导出文件。");
+    } catch {
+      setActionNotice(`无法定位文件：${draftPath}`);
+    }
+  }, [setActionNotice, workflow]);
   const handleHistoryItemSelected = useCallback(
     (item: HistoryItem) => {
       restoreHistoryItem(item);
@@ -345,6 +407,16 @@ function App() {
         return;
       }
 
+      if (draftConfirmOpen) {
+        setDraftConfirmOpen(false);
+        return;
+      }
+
+      if (draftResultOpen) {
+        setDraftResultOpen(false);
+        return;
+      }
+
       if (insightPreferenceFlow) {
         closeInsightPreferenceFlow();
         return;
@@ -369,6 +441,8 @@ function App() {
     closeHistory,
     summaryConfirmOpen,
     closeSummaryConfirmation,
+    draftConfirmOpen,
+    draftResultOpen,
     insightPreferenceFlow,
     closeInsightPreferenceFlow,
     settingsOpen,
@@ -584,9 +658,23 @@ function App() {
                   notice={aiActionNotice}
                   onSummaryAction={openSummaryConfirmation}
                   onInsightsAction={() => void openInsightPreferenceFlow()}
+                  onDraftAction={() => {
+                    // 6.3: open the draft confirmation sheet (does NOT start
+                    // generation — that only happens on confirm, so cancel
+                    // costs no quota).
+                    setActionNotice("");
+                    setDraftConfirmOpen(true);
+                  }}
                   onViewTarget={(target) => {
                     setActionNotice("");
-                    openDetailTab(target);
+                    // 6.4: draft has its own viewer (separate from the shared
+                    // summary/insights detail tab). Summary and insights still
+                    // route through the shared AI detail sheet.
+                    if (target === "summary" || target === "insights") {
+                      openDetailTab(target);
+                    } else if (target === "draft") {
+                      setDraftResultOpen(true);
+                    }
                   }}
                   onCancel={() => void cancelCurrentProcessing()}
                 />
@@ -721,6 +809,27 @@ function App() {
         controller={transcriptDetailController}
         workflow={workflow}
         onOpenDirectionEditor={openDirectionEditorFromDetail}
+        onSelectDraftSeed={(insightId) => setDraftSeedInsightId(insightId)}
+        onClearDraftSeed={() => setDraftSeedInsightId(null)}
+      />
+
+      <DraftConfirmationSheet
+        open={draftConfirmOpen}
+        workflow={workflow}
+        busy={isProcessingStage(workflow.stage)}
+        quotaRemaining={account.llmQuotaRemaining}
+        transcriptPath={currentTranscriptPath}
+        onConfirm={confirmDraftGeneration}
+        onCancel={() => setDraftConfirmOpen(false)}
+      />
+
+      <DraftResultSheet
+        open={draftResultOpen}
+        workflow={workflow}
+        actionNotice={actionNotice}
+        onCopy={() => void copyDraft()}
+        onExport={() => void exportDraft()}
+        onClose={() => setDraftResultOpen(false)}
       />
 
       <HistorySheet

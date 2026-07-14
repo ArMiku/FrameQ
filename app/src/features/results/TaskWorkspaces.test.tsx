@@ -14,6 +14,7 @@ import { createTaskWorkspaceViewModel } from "../../taskWorkspaceViewModel";
 import type { TranscriptDetailController } from "../transcript/useTranscriptDetailController";
 import { LocalTranscriptWorkspace } from "../transcript/LocalTranscriptWorkspace";
 import { AiGenerationWorkspace } from "./AiGenerationWorkspace";
+import { AiResultDetailSheet } from "./AiResultDetailSheet";
 import { TaskStatusBanner } from "./TaskStatusBanner";
 
 function readyWorkflow(): WorkflowState {
@@ -31,6 +32,7 @@ function readyWorkflow(): WorkflowState {
     summary: "",
     insights: [],
     transcript: { source: "asr", language: "zh", engine: "SenseVoice" },
+    draft: "",
     error: null,
   });
 }
@@ -132,6 +134,7 @@ describe("task domain workspaces", () => {
           quotaRemaining={8}
           onSummaryAction={vi.fn()}
           onInsightsAction={vi.fn()}
+          onDraftAction={vi.fn()}
           onViewTarget={vi.fn()}
           onCancel={vi.fn()}
         />
@@ -150,7 +153,7 @@ describe("task domain workspaces", () => {
     expect(markup).not.toContain("Cloud AI");
     expect(markup).not.toContain(">本地完成</span>");
     expect(markup).not.toContain(">可选</span>");
-    expect(markup.match(/class="ai-target-status"/g)).toHaveLength(2);
+    expect(markup.match(/class="ai-target-status"/g)).toHaveLength(3);
   });
 
   test("keeps meaningful workspace statuses for active and constrained states", () => {
@@ -172,6 +175,7 @@ describe("task domain workspaces", () => {
           quotaRemaining={8}
           onSummaryAction={vi.fn()}
           onInsightsAction={vi.fn()}
+          onDraftAction={vi.fn()}
           onViewTarget={vi.fn()}
           onCancel={vi.fn()}
         />
@@ -189,6 +193,7 @@ describe("task domain workspaces", () => {
       summary: "",
       insights: [],
       transcript: null,
+      draft: "",
       error: { code: "MEDIA_DOWNLOAD_FAILED", message: "failed", stage: "video_extracting" },
     });
     const failedModel = createTaskWorkspaceViewModel(failedWorkflow, aiAccount());
@@ -213,6 +218,7 @@ describe("task domain workspaces", () => {
         quotaRemaining={8}
         onSummaryAction={vi.fn()}
         onInsightsAction={vi.fn()}
+        onDraftAction={vi.fn()}
         onViewTarget={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -255,6 +261,7 @@ describe("task domain workspaces", () => {
         quotaRemaining={8}
         onSummaryAction={vi.fn()}
         onInsightsAction={vi.fn()}
+        onDraftAction={vi.fn()}
         onViewTarget={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -266,14 +273,42 @@ describe("task domain workspaces", () => {
     expect(markup).toContain("要点总结");
     expect(markup).toContain("同时生成思维导图文件");
     expect(markup).toContain('data-ai-target="insights"');
-    expect(markup.match(/<article class="ai-target-card/g)).toHaveLength(2);
+    // Three cards: summary, insights, and the draft target card (6.1).
+    expect(markup.match(/<article class="ai-target-card/g)).toHaveLength(3);
     expect(markup).toContain("启发灵感");
     expect(markup).toContain("AI Credits 余额：8");
     expect(markup).toContain("一次 AI 整理可能消耗多个 Credits。");
     expect(markup).not.toContain("当前可用 8 次");
     expect(markup).not.toContain('data-ai-target="mindmap"');
-    expect(markup.match(/class="secondary-button ai-target-action"/g)).toHaveLength(2);
+    expect(markup).toContain('data-ai-target="draft"');
+    expect(markup).toContain("生成文字稿");
     expect(markup).not.toContain('class="primary-button"');
+  });
+
+  test("draft target card is quietly disabled until an inspiration seed is selected", () => {
+    // 6.1: with no insights generated, the draft card must not expose an LLM
+    // entry or consume quota. The generate action is disabled.
+    const workflow = readyWorkflow();
+    const model = createTaskWorkspaceViewModel(workflow, aiAccount());
+    const markup = renderToStaticMarkup(
+      <AiGenerationWorkspace
+        workflow={workflow}
+        model={model.ai}
+        quotaRemaining={8}
+        onSummaryAction={vi.fn()}
+        onInsightsAction={vi.fn()}
+        onDraftAction={vi.fn()}
+        onViewTarget={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('data-ai-target="draft"');
+    // The draft action button is disabled (locked status -> disabled="").
+    expect(markup).toContain(
+      'class="secondary-button ai-target-action" disabled=""',
+    );
+    expect(markup).toContain("请先生成启发灵感");
   });
 
   test("AI generation keeps transcript review visible but disables editing and saving", () => {
@@ -318,6 +353,7 @@ describe("task domain workspaces", () => {
         notice="无法读取本次 AI 偏好"
         onSummaryAction={vi.fn()}
         onInsightsAction={vi.fn()}
+        onDraftAction={vi.fn()}
         onViewTarget={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -327,5 +363,101 @@ describe("task domain workspaces", () => {
     expect(markup).toContain('class="ai-workspace-notice"');
     expect(markup).toContain("无法读取本次 AI 偏好");
     expect(markup).toContain('disabled=""');
+  });
+
+  test("inspiration detail sheet exposes a replace-on-select seed affordance for each insight", () => {
+    // 6.2: the seed selection is single-select but selecting another insight
+    // replaces the current seed (radio behaviour) rather than blocking it.
+    const workflow: WorkflowState = {
+      ...readyWorkflow(),
+      insights: [
+        {
+          id: 11,
+          topic: "种子话题 A",
+          matchReason: "匹配",
+          followUpQuestions: ["问题 A"],
+          suitableUse: "适合",
+          sourceChunkId: null,
+        },
+        {
+          id: 12,
+          topic: "种子话题 B",
+          matchReason: "匹配",
+          followUpQuestions: ["问题 B"],
+          suitableUse: "适合",
+          sourceChunkId: null,
+        },
+      ],
+      draftSeedInsightId: 11,
+    };
+    const controller = {
+      ...transcriptController(),
+      detailTab: "insights" as const,
+    };
+    const markup = renderToStaticMarkup(
+      <AiResultDetailSheet
+        actionNotice=""
+        controller={controller}
+        workflow={workflow}
+        onOpenDirectionEditor={vi.fn()}
+        onSelectDraftSeed={vi.fn()}
+        onClearDraftSeed={vi.fn()}
+      />,
+    );
+
+    // Each insight exposes the seed affordance: the selected one shows the
+    // summary + clear action, the others show the "选为文字稿种子" button.
+    expect(markup).toContain("已选为文字稿种子。");
+    expect(markup).toContain("取消种子");
+    // Exactly one non-selected insight renders the select button (the
+    // "已选为文字稿种子。" summary also contains this substring, so scope the
+    // match to the button's span).
+    expect(markup.match(/<span>选为文字稿种子<\/span>/g)).toHaveLength(1);
+
+    // Replace-on-select: the non-selected insight's seed button is NOT
+    // disabled (clicking it replaces the current seed).
+    expect(markup).not.toMatch(
+      /选为文字稿种子[\s\S]*?disabled=""/,
+    );
+    // The selected insight is highlighted and aria-current.
+    expect(markup).toContain("draft-seed-selected");
+    expect(markup).toContain('aria-current="true"');
+  });
+
+  test("inspiration detail sheet has no seed selected until the user picks one", () => {
+    const workflow: WorkflowState = {
+      ...readyWorkflow(),
+      insights: [
+        {
+          id: 21,
+          topic: "种子话题",
+          matchReason: "匹配",
+          followUpQuestions: ["问题"],
+          suitableUse: "适合",
+          sourceChunkId: null,
+        },
+      ],
+      draftSeedInsightId: null,
+    };
+    const controller = {
+      ...transcriptController(),
+      detailTab: "insights" as const,
+    };
+    const markup = renderToStaticMarkup(
+      <AiResultDetailSheet
+        actionNotice=""
+        controller={controller}
+        workflow={workflow}
+        onOpenDirectionEditor={vi.fn()}
+        onSelectDraftSeed={vi.fn()}
+        onClearDraftSeed={vi.fn()}
+      />,
+    );
+
+    // No highlight, no clear action, just the select affordance (enabled).
+    expect(markup).not.toContain("draft-seed-selected");
+    expect(markup).not.toContain("取消种子");
+    expect(markup).toContain("选为文字稿种子");
+    expect(markup).not.toContain('disabled=""');
   });
 });
