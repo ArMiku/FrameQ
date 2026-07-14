@@ -64,6 +64,7 @@ function completedResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
     summary: "# 要点总结",
     insights: [DEFAULT_INSIGHT],
     transcript: transcript ?? null,
+    draft: "",
     error: null,
     ...rest,
   };
@@ -120,6 +121,7 @@ describe("worker client", () => {
       summary: "",
       insights: [],
       transcript: null,
+      draft: "",
       error: {
         code: "TAURI_COMMAND_FAILED",
         message: "worker process could not start",
@@ -246,12 +248,73 @@ describe("worker client", () => {
       summary: "",
       insights: [],
       transcript: null,
+      draft: "",
       error: {
         code: "TAURI_COMMAND_FAILED",
         message: "retry worker process could not start",
         stage: "insights_generating",
       },
     });
+  });
+
+  test("sends insight_id without preference_snapshot for the draft target", async () => {
+    // A1: the worker reads the preference snapshot from disk for draft generation,
+    // so the wire request MUST NOT carry preference_snapshot. insight_id selects
+    // the seed insight.
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: WorkerCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return completedResult({
+        draft: "# 草稿正文",
+      });
+    };
+
+    const result = await retryInsights(TASK_ID, "draft", null, runner, 7);
+
+    expect(calls).toEqual([
+      {
+        command: "retry_insights",
+        args: {
+          request: {
+            task_id: TASK_ID,
+            target: "draft",
+            insight_id: 7,
+          },
+        },
+      },
+    ]);
+    // Even if a snapshot is passed for draft, it must not be serialized.
+    const request = (calls[0]?.args as { request: Record<string, unknown> }).request;
+    expect(request).not.toHaveProperty("preference_snapshot");
+    expect(result.draft).toBe("# 草稿正文");
+  });
+
+  test("never serializes preference_snapshot for draft even when one is supplied", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: WorkerCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return completedResult({ draft: "# 草稿" });
+    };
+
+    await retryInsights(TASK_ID, "draft", PREFERENCE_SNAPSHOT, runner, 3);
+
+    const request = (calls[0]?.args as { request: Record<string, unknown> }).request;
+    expect(request.insight_id).toBe(3);
+    expect(request).not.toHaveProperty("preference_snapshot");
+  });
+
+  test("keeps sending preference_snapshot and no insight_id for the insights target", async () => {
+    const calls: Array<{ command: string; args: unknown }> = [];
+    const runner: WorkerCommandRunner = async (command, args) => {
+      calls.push({ command, args });
+      return completedResult();
+    };
+
+    await retryInsights(TASK_ID, "insights", PREFERENCE_SNAPSHOT, runner);
+
+    const request = (calls[0]?.args as { request: Record<string, unknown> }).request;
+    expect(request.preference_snapshot).toEqual(PREFERENCE_SNAPSHOT);
+    expect(request).not.toHaveProperty("insight_id");
   });
 
   test("invokes the Tauri cancel_process command", async () => {

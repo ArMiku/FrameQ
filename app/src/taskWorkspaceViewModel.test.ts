@@ -44,6 +44,7 @@ function transcriptResult(overrides: Partial<WorkerResult> = {}): WorkerResult {
     summary: "",
     insights: [],
     transcript: { source: "asr", language: "zh", engine: "SenseVoice" },
+    draft: "",
     error: null,
     ...overrides,
   };
@@ -272,5 +273,98 @@ describe("task workspace view model", () => {
     expect(model.banner.kind).toBe("local_failed");
     expect(model.banner.message).toContain("VIDEO_DOWNLOAD_FAILED");
     expect(model.local.phase).toBe("failed");
+  });
+
+  test("projects the draft target independently from summary and insights", () => {
+    // With a saved transcript and generated insights but no draft, the draft
+    // card is available (seed can be selected) and independent of the other
+    // two targets.
+    const workflow = summarizeWorkerResult(
+      transcriptResult({
+        insights: [
+          {
+            id: 1,
+            topic: "独立灵感",
+            matchReason: "匹配当前任务",
+            followUpQuestions: ["下一步是什么？"],
+            suitableUse: "复盘",
+            sourceChunkId: null,
+          },
+        ],
+        artifacts: {
+          ...transcriptResult().artifacts,
+          insights: "ai/insights.json",
+          insights_md: "ai/insights.md",
+        },
+      }),
+    );
+
+    const model = createTaskWorkspaceViewModel(workflow, entitledAccount());
+
+    expect(model.ai.draft.target).toBe("draft");
+    expect(model.ai.draft.status).toBe("available");
+    expect(model.ai.summary.status).toBe("available");
+    expect(model.ai.insights.status).toBe("ready");
+  });
+
+  test("marks the draft target ready when draft content exists", () => {
+    const workflow = summarizeWorkerResult(
+      transcriptResult({
+        draft: "# 草稿正文",
+        insights: [
+          {
+            id: 1,
+            topic: "灵感",
+            matchReason: "理由",
+            followUpQuestions: ["问题"],
+            suitableUse: "复盘",
+            sourceChunkId: null,
+          },
+        ],
+      }),
+    );
+
+    const model = createTaskWorkspaceViewModel(workflow, entitledAccount());
+
+    expect(model.ai.draft.status).toBe("ready");
+  });
+
+  test("marks the draft target generating while a draft retry is active", () => {
+    const workflow = startInsightRetry(
+      summarizeWorkerResult(transcriptResult()),
+      "draft",
+    );
+
+    const model = createTaskWorkspaceViewModel(workflow, entitledAccount());
+
+    expect(workflow.activeAiTarget).toBe("draft");
+    expect(model.ai.draft.status).toBe("generating");
+    // Other targets are not generating.
+    expect(model.ai.summary.status).not.toBe("generating");
+    expect(model.ai.insights.status).not.toBe("generating");
+  });
+
+  test("marks the draft target failed from a draft_generating error without inferring target from copy", () => {
+    const state = finishInsightRetry(
+      startInsightRetry(summarizeWorkerResult(transcriptResult()), "draft"),
+      transcriptResult({
+        status: "partial_completed",
+        error: {
+          code: "DRAFT_SEED_INVALID",
+          message: "Seed insight 7 is not in insights.json.",
+          stage: "draft_generating",
+        },
+      }),
+      "draft",
+    );
+
+    const model = createTaskWorkspaceViewModel(state, entitledAccount());
+
+    expect(state.aiErrorTarget).toBe("draft");
+    expect(model.ai.draft.status).toBe("failed");
+    expect(model.ai.draft.errorCode).toBe("DRAFT_SEED_INVALID");
+    // Summary and insights are untouched by the draft failure.
+    expect(model.ai.summary.status).not.toBe("failed");
+    expect(model.ai.insights.status).not.toBe("failed");
   });
 });

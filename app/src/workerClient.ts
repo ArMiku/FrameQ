@@ -22,7 +22,7 @@ export type WorkerProgressListener = (
 export type WorkerProgressHandler = (event: WorkerProgressEvent) => void;
 
 export const WORKER_PROGRESS_EVENT = "worker-progress";
-export type RetryInsightTarget = "summary" | "insights";
+export type RetryInsightTarget = "summary" | "insights" | "draft";
 
 export type ProcessVideoRequest = {
   url: string;
@@ -36,6 +36,7 @@ export type RetryInsightsRequest = {
   task_id: string;
   target: RetryInsightTarget;
   preference_snapshot?: PreferenceSnapshot;
+  insight_id?: number;
 };
 
 const defaultWorkerRunner: WorkerCommandRunner = (command, args) => invoke(command, args);
@@ -84,12 +85,20 @@ export async function retryInsights(
   target: RetryInsightTarget,
   preferenceSnapshot: PreferenceSnapshot | null = null,
   runner: WorkerCommandRunner = defaultWorkerRunner,
+  insightId?: number,
 ): Promise<WorkerResult> {
   const request: RetryInsightsRequest = {
     task_id: taskId,
     target,
   };
-  if (preferenceSnapshot) {
+  // Draft generation reads the preference snapshot from disk (design A1), so it
+  // MUST NOT carry preference_snapshot on the wire. It selects the seed via
+  // insight_id. Summary/insights keep their existing preference_snapshot behavior.
+  if (target === "draft") {
+    if (insightId !== undefined) {
+      request.insight_id = insightId;
+    }
+  } else if (preferenceSnapshot) {
     request.preference_snapshot = preferenceSnapshot;
   }
 
@@ -105,10 +114,11 @@ export async function retryInsights(
       summary: "",
       insights: [],
       transcript: null,
+      draft: "",
       error: {
         code: "TAURI_COMMAND_FAILED",
         message: error instanceof Error ? error.message : String(error),
-        stage: "insights_generating",
+        stage: target === "draft" ? "draft_generating" : "insights_generating",
       },
     };
   }
@@ -158,6 +168,7 @@ function failedResult(code: string, message: string, stage: WorkflowStage): Work
     summary: "",
     insights: [],
     transcript: null,
+    draft: "",
     error: {
       code,
       message,

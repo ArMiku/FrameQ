@@ -68,6 +68,10 @@ const stageCopy: Record<WorkflowState["stage"], { title: string; body: string }>
     title: "AI 整理中",
     body: "正在使用云端 LLM 生成所选 AI 结果。",
   },
+  draft_generating: {
+    title: "AI 整理中",
+    body: "正在使用云端 LLM 生成所选 AI 结果。",
+  },
   completed: {
     title: "文字稿完成",
     body: "视频、音频和文字稿已准备好；启发灵感可单独确认生成。",
@@ -586,7 +590,11 @@ function App() {
                   onInsightsAction={() => void openInsightPreferenceFlow()}
                   onViewTarget={(target) => {
                     setActionNotice("");
-                    openDetailTab(target);
+                    // Draft has its own viewer (Task 6); only summary/insights
+                    // route through the shared AI detail tab today.
+                    if (target === "summary" || target === "insights") {
+                      openDetailTab(target);
+                    }
                   }}
                   onCancel={() => void cancelCurrentProcessing()}
                 />

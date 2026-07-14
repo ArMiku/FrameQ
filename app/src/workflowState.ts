@@ -6,6 +6,12 @@ export type WorkflowStage =
   | "video_extracting"
   | "video_transcribing"
   | "insights_generating"
+  // draft_generating is an ERROR-only stage (D9): draft generation reuses the
+  // insights_generating PROGRESS phase (D7), but a draft failure is reported
+  // with error.stage = "draft_generating". It is never a live progress phase,
+  // so isProcessingStage / cancellation logic (which use an allow-list) treat
+  // it as a terminal state.
+  | "draft_generating"
   | "completed"
   | "partial_completed"
   | "failed";
@@ -27,7 +33,8 @@ export type TaskArtifactKey =
   | "mindmap"
   | "insights"
   | "insights_md"
-  | "preference_snapshot";
+  | "preference_snapshot"
+  | "draft";
 
 export type TaskArtifacts = Partial<Record<TaskArtifactKey, string>>;
 
@@ -46,6 +53,7 @@ export type WorkerResult = {
   summary: string;
   insights: Insight[];
   transcript: TranscriptMetadata | null;
+  draft: string;
   error: WorkerErrorResult | null;
 };
 
@@ -61,7 +69,24 @@ export type WorkerProgressEvent = {
   progress: number;
 };
 
-export type InsightRetryTarget = "summary" | "insights";
+export type InsightRetryTarget = "summary" | "insights" | "draft";
+
+/**
+ * The worker stages that represent an AI-target generation failure. Draft
+ * generation reuses the `insights_generating` progress phase (D7) but reports
+ * failures with `error.stage = "draft_generating"` (D9). Any of these stages
+ * on a retry result means the active AI target failed — attribution is done by
+ * target identity (the `target` arg passed to finishInsightRetry), never by
+ * inferring the target from the stage copy.
+ */
+const AI_FAILURE_STAGES: ReadonlySet<WorkflowStage> = new Set([
+  "insights_generating",
+  "draft_generating",
+]);
+
+function isAiTargetFailure(error: WorkerErrorResult | null): error is WorkerErrorResult {
+  return Boolean(error && AI_FAILURE_STAGES.has(error.stage));
+}
 
 export type ToolbarNewTaskButtonState = {
   disabled: boolean;
@@ -71,7 +96,10 @@ export type ToolbarNewTaskButtonState = {
 
 export type WorkflowState = {
   stage: WorkflowStage;
-  cancellingFromStage: Exclude<WorkflowStage, "waiting_input" | "cancelling" | "completed" | "partial_completed" | "failed"> | null;
+  // cancellingFromStage is one of the live processing phases the user can
+  // cancel. draft_generating is an error-only stage (D9), never a live phase,
+  // so it is excluded — the draft progress phase is insights_generating (D7).
+  cancellingFromStage: Exclude<WorkflowStage, "waiting_input" | "cancelling" | "draft_generating" | "completed" | "partial_completed" | "failed"> | null;
   activeAiTarget: InsightRetryTarget | null;
   aiErrorTarget: InsightRetryTarget | null;
   aiTargetErrors: Partial<Record<InsightRetryTarget, WorkerErrorResult>>;
@@ -87,6 +115,7 @@ export type WorkflowState = {
   taskDir: string | null;
   artifacts: TaskArtifacts;
   transcript: TranscriptMetadata | null;
+  draft: string;
   error: WorkerErrorResult | null;
 };
 export function createInitialWorkflow(): WorkflowState {
@@ -108,6 +137,7 @@ export function createInitialWorkflow(): WorkflowState {
     taskDir: null,
     artifacts: {},
     transcript: null,
+    draft: "",
     error: null,
   };
 }
@@ -130,6 +160,7 @@ export function startProcessing(state: WorkflowState, url: string): WorkflowStat
     taskId: null,
     taskDir: null,
     artifacts: {},
+    draft: "",
     error: null,
   };
 }
@@ -148,7 +179,9 @@ export function startInsightRetry(state: WorkflowState, target: InsightRetryTarg
     statusMessage:
       target === "summary"
         ? "正在生成要点总结和 Mermaid mindmap；文字稿片段会发送到管理员配置的云端 LLM 服务。"
-        : "正在生成启发灵感；文字稿片段和本次偏好会发送到管理员配置的云端 LLM 服务。",
+        : target === "draft"
+          ? "正在基于灵感生成文字稿；文字稿片段会发送到管理员配置的云端 LLM 服务。"
+          : "正在生成启发灵感；文字稿片段和本次偏好会发送到管理员配置的云端 LLM 服务。",
     progressPercent: 88,
     error: null,
   };
@@ -246,11 +279,11 @@ export function summarizeWorkerResult(
     taskDir: result.task_dir,
     artifacts: result.artifacts ?? {},
     transcript: result.transcript ?? null,
+    draft: result.draft ?? "",
     error: result.error,
-    aiErrorTarget:
-      result.error?.stage === "insights_generating" ? failedAiTarget : null,
+    aiErrorTarget: isAiTargetFailure(result.error) ? failedAiTarget : null,
     aiTargetErrors:
-      result.error?.stage === "insights_generating" && failedAiTarget
+      isAiTargetFailure(result.error) && failedAiTarget
         ? { [failedAiTarget]: result.error }
         : {},
   };
@@ -263,14 +296,14 @@ export function finishInsightRetry(
 ): WorkflowState {
   const next = summarizeWorkerResult(result);
   const aiTargetErrors = { ...state.aiTargetErrors };
-  if (result.error?.stage === "insights_generating") {
+  if (isAiTargetFailure(result.error)) {
     aiTargetErrors[target] = result.error;
   } else {
     delete aiTargetErrors[target];
   }
   return {
     ...next,
-    aiErrorTarget: result.error?.stage === "insights_generating" ? target : null,
+    aiErrorTarget: isAiTargetFailure(result.error) ? target : null,
     aiTargetErrors,
   };
 }

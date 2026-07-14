@@ -31,6 +31,7 @@ function readyWorkflow(): WorkflowState {
     summary: "",
     insights: [],
     transcript: { source: "asr", language: "zh", engine: "SenseVoice" },
+    draft: "",
     error: null,
   });
 }
@@ -189,6 +190,7 @@ describe("task domain workspaces", () => {
       summary: "",
       insights: [],
       transcript: null,
+      draft: "",
       error: { code: "MEDIA_DOWNLOAD_FAILED", message: "failed", stage: "video_extracting" },
     });
     const failedModel = createTaskWorkspaceViewModel(failedWorkflow, aiAccount());

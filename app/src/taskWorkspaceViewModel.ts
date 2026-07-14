@@ -99,7 +99,24 @@ function aiTargetStatus(
   const ready =
     target === "summary"
       ? Boolean(workflow.summary || workflow.artifacts.summary)
-      : Boolean(workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md);
+      : target === "draft"
+        ? Boolean(workflow.draft || workflow.artifacts.draft)
+        : Boolean(workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md);
+
+  if (target === "draft") {
+    // Draft needs a selectable seed insight. Seed-selection UI is Task 6, so we
+    // treat "insights exist" as the proxy for the draft card being available
+    // before any draft has been generated. This does NOT infer the draft target
+    // from status copy — it is an availability projection from artifact state.
+    const insightsReady = Boolean(
+      workflow.insights.length || workflow.artifacts.insights || workflow.artifacts.insights_md,
+    );
+    return {
+      target,
+      status: ready ? "ready" : insightsReady ? "available" : "locked",
+      errorCode: null,
+    };
+  }
 
   return { target, status: ready ? "ready" : "available", errorCode: null };
 }
@@ -136,6 +153,7 @@ export function createTaskWorkspaceViewModel(
   const readOnly = transcriptReady && (aiActive || isAiCancellation(workflow));
   const summary = aiTargetStatus(workflow, "summary", transcriptReady);
   const insights = aiTargetStatus(workflow, "insights", transcriptReady);
+  const draft = aiTargetStatus(workflow, "draft", transcriptReady);
   const aiPhase: AiWorkspacePhase = !transcriptReady
     ? "waiting_transcript"
     : aiActive || isAiCancellation(workflow)
@@ -178,6 +196,7 @@ export function createTaskWorkspaceViewModel(
       activeTarget: workflow.activeAiTarget,
       summary,
       insights,
+      draft,
     },
   };
 }

@@ -108,6 +108,7 @@ function createWorkerResult(overrides: Partial<WorkerResult> = {}): WorkerResult
     summary: "active summary",
     insights: [],
     transcript: { source: "asr", language: "Chinese", engine: "SenseVoice" },
+    draft: "",
     error: null,
     ...overrides,
   };
