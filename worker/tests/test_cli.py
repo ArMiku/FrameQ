@@ -539,67 +539,37 @@ def test_run_worker_once_uses_configured_asr_model_from_user_data_env(
     assert "- Model: iic/SenseVoiceSmall" in transcript_md.read_text(encoding="utf-8")
 
 
-def test_main_dispatches_generate_draft_json(monkeypatch, capsys) -> None:
-    captured: dict[str, object] = {}
+def test_main_reads_retry_draft_request_from_stdin(monkeypatch, capsys) -> None:
+    """Task 2.5b: draft is now the third target of retry_insights (D3), dispatched
+    via ``--retry-insights-stdin`` with target=draft. The retired
+    ``--generate-draft-json`` flag is gone."""
+    payload = json.dumps({"task_id": "safe-task", "target": "draft", "insight_id": 5})
+    captured: dict[str, str] = {}
 
-    def fake_generate_draft_once(payload, project_root=None, environ=None, draft_runner=None):
-        captured["payload"] = payload
-        captured["project_root"] = project_root
-        return {
-            "status": "completed",
-            "task_id": "20260709-120000-douyin-demo",
-            "task_dir": "outputs/tasks/20260709-120000-douyin-demo",
-            "draft_path": "ai/draft.md",
-            "draft_text": "# 稿子",
-            "error": None,
-        }
+    def fake_retry_insights_once(
+        request_json: str,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        captured["request_json"] = request_json
+        return {"status": "completed", "draft": "# 稿子"}
 
-    monkeypatch.setattr(cli, "generate_draft_once", fake_generate_draft_once)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO(payload))
+    monkeypatch.setattr(cli, "retry_insights_once", fake_retry_insights_once)
 
-    payload = json.dumps(
-        {
-            "task_id": "20260709-120000-douyin-demo",
-            "topic": "t",
-            "summary": "s",
-            "target_platform": "douyin",
-        }
-    )
-    exit_code = cli.main(["--generate-draft-json", payload])
+    exit_code = cli.main(["--retry-insights-stdin"])
 
     assert exit_code == 0
-    assert captured["payload"] == payload
-    assert captured["project_root"] == Path.cwd()
+    assert json.loads(captured["request_json"]) == {
+        "task_id": "safe-task",
+        "target": "draft",
+        "insight_id": 5,
+    }
     output = json.loads(capsys.readouterr().out)
-    assert output["status"] == "completed"
-    assert output["draft_path"] == "ai/draft.md"
+    assert output["draft"] == "# 稿子"
 
 
-def test_main_generate_draft_json_returns_zero_for_structured_failure(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(
-        cli,
-        "generate_draft_once",
-        lambda *args, **kwargs: {
-            "status": "failed",
-            "task_id": None,
-            "task_dir": None,
-            "draft_path": None,
-            "draft_text": "",
-            "error": {
-                "code": "DRAFT_GENERATION_FAILED",
-                "message": "missing config",
-                "stage": "draft_generating",
-            },
-        },
-    )
-
-    exit_code = cli.main(["--generate-draft-json", "{}"])
-
-    assert exit_code == 0
-    output = json.loads(capsys.readouterr().out)
-    assert output["status"] == "failed"
-    assert output["error"]["code"] == "DRAFT_GENERATION_FAILED"
-
-
-def test_main_generate_draft_json_is_mutually_exclusive_with_request_json() -> None:
+def test_main_rejects_retired_generate_draft_json_flag() -> None:
+    """Task 2.5: ``--generate-draft-json`` was retired (draft now flows via
+    ``--retry-insights-stdin`` target=draft). argparse must reject the old flag."""
     with pytest.raises(SystemExit):
-        cli.main(["--request-json", "{}", "--generate-draft-json", "{}"])
+        cli.main(["--generate-draft-json", "{}"])

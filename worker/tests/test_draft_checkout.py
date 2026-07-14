@@ -186,8 +186,8 @@ def test_resolve_mixed_llm_local_anysearch_server() -> None:
 
 
 def test_resolve_propagates_llm_checkout_exception() -> None:
-    # LLM checkout 复用 _managed_checkout_http_error → InsightGenerationError（design D10：姓 insight 但无害，
-    # 经 generate_draft_once 兜为 DRAFT_GENERATION_FAILED）。
+    # LLM checkout 复用 _managed_checkout_http_error → InsightGenerationError（design D10：
+    # 姓 insight 但无害，经 retry_insights draft 分支兜为 DRAFT_GENERATION_FAILED）。
     boom = HTTPError(
         url=LLM_CHECKOUT_URL,
         code=403,

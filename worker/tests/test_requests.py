@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 from frameq_worker.requests import (
-    parse_generate_draft_request,
     parse_process_request,
     parse_retry_insights_request,
 )
@@ -144,6 +143,68 @@ def test_retry_summary_request_rejects_preference_snapshot() -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Task 2.2: target="draft"
+# ---------------------------------------------------------------------------
+
+
+def test_retry_request_accepts_draft_target_with_insight_id() -> None:
+    request = parse_retry_insights_request(
+        {
+            "task_id": "20260705-153012-douyin-demo",
+            "target": "draft",
+            "insight_id": 7,
+        }
+    )
+
+    assert request.target == "draft"
+    assert request.insight_id == 7
+    # preference_snapshot is rejected on draft — and absent here.
+    assert request.preference_snapshot is None
+
+
+def test_retry_draft_target_requires_insight_id() -> None:
+    with pytest.raises(ValueError, match="insight_id"):
+        parse_retry_insights_request(
+            {"task_id": "20260705-153012-douyin-demo", "target": "draft"}
+        )
+
+
+def test_retry_draft_target_rejects_null_insight_id() -> None:
+    with pytest.raises(ValueError, match="insight_id"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": None,
+            }
+        )
+
+
+def test_retry_draft_target_rejects_preference_snapshot() -> None:
+    # D2 / A1: preference_snapshot MUST NOT be sent for draft (read from disk instead).
+    with pytest.raises(ValueError, match="preference_snapshot"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": 7,
+                "preference_snapshot": valid_preference_snapshot(),
+            }
+        )
+
+
+def test_retry_draft_target_rejects_non_int_insight_id() -> None:
+    with pytest.raises(ValueError, match="insight_id"):
+        parse_retry_insights_request(
+            {
+                "task_id": "20260705-153012-douyin-demo",
+                "target": "draft",
+                "insight_id": "not-an-int",
+            }
+        )
+
+
 @pytest.mark.parametrize(
     "task_id",
     [
@@ -157,101 +218,3 @@ def test_retry_summary_request_rejects_preference_snapshot() -> None:
 def test_retry_request_rejects_task_id_path_traversal(task_id: str) -> None:
     with pytest.raises(ValueError, match="task_id"):
         parse_retry_insights_request({"task_id": task_id, "target": "insights"})
-
-
-def test_generate_draft_request_parses_valid_payload() -> None:
-    request = parse_generate_draft_request(
-        {
-            "task_id": "20260705-153012-douyin-demo",
-            "topic": "如何把长视频拆成短视频",
-            "summary": "# 要点总结\n- 要点一",
-            "target_platform": "xiaohongshu",
-        }
-    )
-
-    assert request.task_id == "20260705-153012-douyin-demo"
-    assert request.topic == "如何把长视频拆成短视频"
-    assert request.summary == "# 要点总结\n- 要点一"
-    assert request.target_platform == "xiaohongshu"
-
-
-def test_generate_draft_request_accepts_any_non_empty_target_platform() -> None:
-    # target_platform 不校验枚举成员（design D3）：平台枚举的 source of truth 在前端，
-    # 后端只透传任意非空 id 做槽位填充。
-    request = parse_generate_draft_request(
-        {
-            "task_id": "20260705-153012-douyin-demo",
-            "topic": "topic",
-            "summary": "summary",
-            "target_platform": "totally_unknown_platform_123",
-        }
-    )
-
-    assert request.target_platform == "totally_unknown_platform_123"
-
-
-@pytest.mark.parametrize(
-    "payload, matched_message",
-    [
-        ("not-a-dict", "JSON object"),
-        (
-            {
-                "task_id": "20260705-153012-douyin-demo",
-                "topic": "t",
-                "summary": "s",
-            },
-            "target_platform",
-        ),
-        (
-            {
-                "task_id": "20260705-153012-douyin-demo",
-                "topic": "t",
-                "summary": "s",
-                "target_platform": "",
-            },
-            "target_platform",
-        ),
-        ({"topic": "t", "summary": "s", "target_platform": "p"}, "task_id"),
-        (
-            {
-                "task_id": " ",
-                "topic": "t",
-                "summary": "s",
-                "target_platform": "p",
-            },
-            "task_id",
-        ),
-        (
-            {
-                "task_id": "20260705-153012-douyin-demo",
-                "topic": "  ",
-                "summary": "s",
-                "target_platform": "p",
-            },
-            "topic",
-        ),
-        (
-            {
-                "task_id": "20260705-153012-douyin-demo",
-                "topic": "t",
-                "summary": "",
-                "target_platform": "p",
-            },
-            "summary",
-        ),
-    ],
-)
-def test_generate_draft_request_rejects_invalid_payload(payload, matched_message) -> None:
-    with pytest.raises(ValueError, match=matched_message):
-        parse_generate_draft_request(payload)
-
-
-@pytest.mark.parametrize(
-    "task_id",
-    ["../outside", "nested/task", "nested\\task", "20260705-153012-douyin-demo/../outside"],
-)
-def test_generate_draft_request_rejects_task_id_path_traversal(task_id: str) -> None:
-    with pytest.raises(ValueError, match="task_id"):
-        parse_generate_draft_request(
-            {"task_id": task_id, "topic": "t", "summary": "s", "target_platform": "p"}
-        )

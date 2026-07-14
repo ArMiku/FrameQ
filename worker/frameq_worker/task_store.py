@@ -189,6 +189,7 @@ def result_with_task(
         insights=result.insights,
         transcript=result.transcript,
         error=result.error,
+        draft=result.draft,
     )
 
 

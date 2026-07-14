@@ -39,7 +39,8 @@
     "summary",
     "insights",
     "transcript",
-    "error"
+    "error",
+    "draft"
   ],
   "insightResult": {
     "schemaVersion": 1,

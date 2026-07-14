@@ -6,7 +6,7 @@ from typing import Literal
 
 from frameq_worker.source_identity import SourceIdentity
 
-RetryInsightTarget = Literal["summary", "insights"]
+RetryInsightTarget = Literal["summary", "insights", "draft"]
 InsightGenerationTarget = Literal["all", "summary", "insights"]
 
 
@@ -135,14 +135,9 @@ class RetryInsightsRequest:
     task_id: str
     target: RetryInsightTarget
     preference_snapshot: PreferenceSnapshot | None = None
-
-
-@dataclass(frozen=True)
-class GenerateDraftRequest:
-    task_id: str
-    topic: str
-    summary: str
-    target_platform: str
+    # D2/A1: preference_snapshot for draft is read from disk, not sent over the wire.
+    # insight_id is the seed Insight id; required (non-null) when target == "draft".
+    insight_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -209,6 +204,7 @@ class ProcessResult:
     insights: list[Insight] = field(default_factory=list)
     transcript: TranscriptMetadata | None = None
     error: WorkerError | None = None
+    draft: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -221,24 +217,6 @@ class ProcessResult:
             "insights": [insight.to_dict() for insight in self.insights],
             "transcript": self.transcript.to_dict() if self.transcript else None,
             "error": self.error.to_dict() if self.error else None,
+            "draft": self.draft,
         }
 
-
-@dataclass(frozen=True)
-class DraftResult:
-    status: JobStage
-    task_id: str | None = None
-    task_dir: str | None = None
-    draft_path: str | None = None
-    draft_text: str = ""
-    error: WorkerError | None = None
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "status": self.status.value,
-            "task_id": self.task_id,
-            "task_dir": self.task_dir,
-            "draft_path": self.draft_path,
-            "draft_text": self.draft_text,
-            "error": self.error.to_dict() if self.error else None,
-        }

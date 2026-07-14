@@ -5,7 +5,6 @@ import re
 from frameq_worker.asr import DEFAULT_ASR_MODEL, resolve_asr_model_name
 from frameq_worker.desktop_contract import ASR_MODEL_ENV
 from frameq_worker.models import (
-    GenerateDraftRequest,
     GenerationPreferences,
     InspirationProfile,
     PreferenceLabelSnapshot,
@@ -194,46 +193,31 @@ def parse_retry_insights_request(payload: object) -> RetryInsightsRequest:
     if not isinstance(target, str) or not target.strip():
         raise ValueError("Retry payload must include target.")
     target = target.strip()
-    if target not in {"summary", "insights"}:
-        raise ValueError("Retry payload target must be summary or insights.")
+    if target not in {"summary", "insights", "draft"}:
+        raise ValueError("Retry payload target must be summary, insights, or draft.")
     if target == "summary" and payload.get("preference_snapshot") is not None:
         raise ValueError("preference_snapshot is only allowed for insights target.")
+    if target == "draft" and payload.get("preference_snapshot") is not None:
+        # D2 / A1: preference_snapshot for draft is read from disk by the worker;
+        # the frontend MUST NOT send it.
+        raise ValueError("preference_snapshot is not allowed for draft target.")
+
+    insight_id: int | None = None
+    if target == "draft":
+        # D8: seed is a single Insight id, validated against insights.json in the worker.
+        if "insight_id" not in payload or payload.get("insight_id") is None:
+            raise ValueError("Retry payload insight_id is required for draft target.")
+        raw_insight_id = payload.get("insight_id")
+        # bool is a subclass of int — reject True/False explicitly.
+        if isinstance(raw_insight_id, bool) or not isinstance(raw_insight_id, int):
+            raise ValueError("Retry payload insight_id must be an integer.")
+        insight_id = raw_insight_id
 
     return RetryInsightsRequest(
         task_id=task_id,
         target=target,
         preference_snapshot=parse_preference_snapshot(payload.get("preference_snapshot")),
-    )
-
-
-def parse_generate_draft_request(payload: object) -> GenerateDraftRequest:
-    if not isinstance(payload, dict):
-        raise ValueError("Draft payload must be a JSON object.")
-
-    task_id = payload.get("task_id")
-    if not isinstance(task_id, str) or not task_id.strip():
-        raise ValueError("Draft payload must include a non-empty task_id.")
-    task_id = task_id.strip()
-    if not TASK_ID_PATTERN.fullmatch(task_id):
-        raise ValueError("Draft payload task_id must be a single task directory name.")
-
-    topic = payload.get("topic")
-    if not isinstance(topic, str) or not topic.strip():
-        raise ValueError("Draft payload must include a non-empty topic.")
-
-    summary = payload.get("summary")
-    if not isinstance(summary, str) or not summary.strip():
-        raise ValueError("Draft payload must include a non-empty summary.")
-
-    target_platform = payload.get("target_platform")
-    if not isinstance(target_platform, str) or not target_platform.strip():
-        raise ValueError("Draft payload must include a non-empty target_platform.")
-
-    return GenerateDraftRequest(
-        task_id=task_id,
-        topic=topic.strip(),
-        summary=summary.strip(),
-        target_platform=target_platform.strip(),
+        insight_id=insight_id,
     )
 
 

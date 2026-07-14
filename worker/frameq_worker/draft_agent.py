@@ -300,7 +300,8 @@ async def generate_draft(
     submit_draft_hit = bool(chosen)
     print(f"[draft] done: submit_draft_hit={submit_draft_hit} chosen_len={len(chosen)}")
     if not submit_draft_hit:
-        # 未命中 submit_draft 契约 → 返回空串，由编排层 generate_draft_once 判 DRAFT_EMPTY_RESULT。
+        # 未命中 submit_draft 契约 → 返回空串，由编排层（retry_insights draft 分支）
+        # 判 DRAFT_EMPTY_RESULT。
         print("[draft] warning: submit_draft not called → empty result → DRAFT_EMPTY_RESULT")
     return chosen
 
