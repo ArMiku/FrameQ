@@ -51,6 +51,7 @@ from frameq_worker.source_identity import (
     resolve_source_request,
 )
 from frameq_worker.task_store import (
+    DRAFT_SEED_UNSET,
     TaskContext,
     ensure_task_dirs,
     load_task_manifest,
@@ -217,6 +218,7 @@ def retry_insights_once(
         return finalize_task_result(
             task_context,
             merge_existing_ai_artifacts(task_context.paths, draft_result),
+            draft_seed_insight_id=request.insight_id,
         ).to_dict()
 
     insight_result = run_insight_generation_step(
@@ -229,9 +231,15 @@ def retry_insights_once(
         target=request.target,
     )
 
+    # D8: target=insights regen changes the insight ids, so the old draft seed id
+    # is now invalid — clear it. target=summary leaves insights untouched, so the
+    # seed is preserved (finalize_task_result defaults to DRAFT_SEED_UNSET which
+    # write_task_manifest carries forward from the prior manifest).
+    draft_seed = None if request.target == "insights" else DRAFT_SEED_UNSET
     return finalize_task_result(
         task_context,
         merge_existing_ai_artifacts(task_context.paths, insight_result),
+        draft_seed_insight_id=draft_seed,
     ).to_dict()
 
 

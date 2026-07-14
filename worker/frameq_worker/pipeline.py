@@ -54,6 +54,7 @@ from frameq_worker.source_identity import (
 )
 from frameq_worker.subtitles import find_subtitle_transcript
 from frameq_worker.task_store import (
+    DRAFT_SEED_UNSET,
     TaskContext,
     create_task_context,
     ensure_task_dirs,
@@ -817,13 +818,22 @@ def failed_result(
     )
 
 
-def finalize_task_result(context: TaskContext, result: ProcessResult) -> ProcessResult:
+def finalize_task_result(
+    context: TaskContext,
+    result: ProcessResult,
+    *,
+    draft_seed_insight_id: int | None | object = DRAFT_SEED_UNSET,
+) -> ProcessResult:
     task_result = result_with_task(
         result,
         context,
         artifacts={**result.artifacts, **task_artifacts_for_existing_files(context.paths)},
     )
-    write_task_manifest(context, task_result)
+    write_task_manifest(
+        context,
+        task_result,
+        draft_seed_insight_id=draft_seed_insight_id,
+    )
     return task_result
 
 
