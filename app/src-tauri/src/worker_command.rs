@@ -916,6 +916,7 @@ Some dependency logged to stdout
                 message: "third-party stderr".to_string(),
                 stage: "video_extracting".to_string(),
             }),
+            draft: String::new(),
         };
 
         let parsed = parse_worker_output_or_fallback(&output, fallback)
@@ -947,6 +948,7 @@ Some dependency logged to stdout
                 message: "worker failed before returning json".to_string(),
                 stage: "video_extracting".to_string(),
             }),
+            draft: String::new(),
         };
 
         let parsed =
@@ -958,6 +960,9 @@ Some dependency logged to stdout
         assert_eq!(parsed["task_id"], serde_json::Value::Null);
         assert_eq!(parsed["task_dir"], serde_json::Value::Null);
         assert_eq!(parsed["artifacts"], serde_json::json!({}));
+        // Fallback must surface an empty draft so downstream consumers never see
+        // a missing key (backward-compat with the new draft contract).
+        assert_eq!(parsed["draft"], "");
     }
 
     #[test]
