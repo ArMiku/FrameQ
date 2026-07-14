@@ -43,7 +43,7 @@ wheels = [
 [[package]]
 name = "agent-runtime"
 version = "0.1.0"
-source = { git = "https://github.com/ArMiku/agent-runtime-template.git#138b2e49f9e161081c53b0eae3afb0b9de3dc34a" }
+source = { git = "https://github.com/ArMiku/agent-runtime-template.git?tag=0.1.0#3bde76aa59cbae4e69fcca67c3cf358f6c81e3b8" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -980,7 +980,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-runtime", git = "https://github.com/ArMiku/agent-runtime-template.git" },
+    { name = "agent-runtime", git = "https://github.com/ArMiku/agent-runtime-template.git?tag=0.1.0" },
     { name = "brotli", specifier = ">=1.2.0" },
     { name = "cryptography", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'", specifier = "<49" },
     { name = "funasr", specifier = ">=1.2.7" },
