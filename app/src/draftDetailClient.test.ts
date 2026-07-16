@@ -28,6 +28,7 @@ describe("draft detail client", () => {
     expect(detail.task_id).toBe("t1");
     expect(detail.markdown).toBe("# hello");
     expect(detail.draft_seed_insight_id).toBeNull();
+    expect(detail.has_original_backup).toBe(false);
     expect(calls).toEqual([
       {
         command: "load_draft_detail",
@@ -63,6 +64,10 @@ describe("draft detail client", () => {
     expect(result.task_id).toBe("t1");
     expect(result.markdown).toBe("# hi");
     expect(result.has_original_backup).toBe(true);
+    expect(result.artifacts).toEqual({
+      draft: "draft/draft.md",
+      summary: "summary/summary.md",
+    });
     expect(calls).toEqual([
       {
         command: "save_draft_edit",

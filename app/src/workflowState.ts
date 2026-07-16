@@ -329,7 +329,10 @@ export function finishInsightRetry(
     aiErrorTarget: isAiTargetFailure(result.error) ? target : null,
     aiTargetErrors,
     draftSeedInsightId,
-    draftEdited: target === "draft" ? false : state.draftEdited,
+    draftEdited:
+      target === "draft" && !isAiTargetFailure(result.error)
+        ? false
+        : state.draftEdited,
   };
 }
 

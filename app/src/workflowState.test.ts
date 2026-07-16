@@ -64,4 +64,33 @@ describe("workflowState", () => {
 
     expect(next.draftEdited).toBe(true);
   });
+
+  test("finishInsightRetry preserves draftEdited when draft regeneration fails", () => {
+    const state: WorkflowState = {
+      ...createInitialWorkflow(),
+      taskId: "task-1",
+      draft: "old draft",
+      draftEdited: true,
+    };
+    const failedResult: WorkerResult = {
+      status: "failed",
+      task_id: "task-1",
+      task_dir: "/tmp/task-1",
+      artifacts: {},
+      text: "",
+      summary: "",
+      insights: [],
+      transcript: null,
+      draft: "old draft",
+      error: {
+        code: "draft_generation_failed",
+        message: "LLM returned empty content",
+        stage: "draft_generating",
+      },
+    };
+
+    const next = finishInsightRetry(state, failedResult, "draft");
+
+    expect(next.draftEdited).toBe(true);
+  });
 });
