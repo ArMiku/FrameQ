@@ -116,6 +116,9 @@ export type WorkflowState = {
   artifacts: TaskArtifacts;
   transcript: TranscriptMetadata | null;
   draft: string;
+  // True when the user has manually edited the draft in the result editor.
+  // Reset to false when draft regeneration succeeds (new baseline).
+  draftEdited: boolean;
   // The id of the Insight the user picked as the single draft seed.
   // In-session selection state; cleared on 启发灵感 regen (the insight ids
   // change) and on workflow reset. The on-disk manifest mirror
@@ -145,6 +148,7 @@ export function createInitialWorkflow(): WorkflowState {
     artifacts: {},
     transcript: null,
     draft: "",
+    draftEdited: false,
     draftSeedInsightId: null,
     error: null,
   };
@@ -169,6 +173,7 @@ export function startProcessing(state: WorkflowState, url: string): WorkflowStat
     taskDir: null,
     artifacts: {},
     draft: "",
+    draftEdited: false,
     draftSeedInsightId: null,
     error: null,
   };
@@ -298,6 +303,10 @@ export function summarizeWorkerResult(
   };
 }
 
+export function editDraft(state: WorkflowState, markdown: string): WorkflowState {
+  return { ...state, draft: markdown, draftEdited: true };
+}
+
 export function finishInsightRetry(
   state: WorkflowState,
   result: WorkerResult,
@@ -320,6 +329,7 @@ export function finishInsightRetry(
     aiErrorTarget: isAiTargetFailure(result.error) ? target : null,
     aiTargetErrors,
     draftSeedInsightId,
+    draftEdited: target === "draft" ? false : state.draftEdited,
   };
 }
 
