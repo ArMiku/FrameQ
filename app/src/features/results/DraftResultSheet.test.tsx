@@ -109,12 +109,12 @@ describe("DraftResultSheet", () => {
     mocks.loadDraftDetail.mockReset();
     mocks.saveDraftEdit.mockReset();
     mocks.revealItemInDir.mockReset();
-    // Default: load returns markdown from disk
+    // Default: load returns markdown from disk with a seed insight id
     mocks.loadDraftDetail.mockResolvedValue({
       task_id: "task-draft-1",
       markdown: "# 标题\n\n从磁盘加载的内容",
       has_original_backup: false,
-      draft_seed_insight_id: null,
+      draft_seed_insight_id: 42,
     });
     mocks.saveDraftEdit.mockResolvedValue(defaultSaveResponse);
   });
@@ -398,7 +398,7 @@ describe("DraftResultSheet", () => {
 
   // ---- 8. Regenerate button ----
 
-  test("regenerate button calls onRegenerate; disabled when no buffer", async () => {
+  test("regenerate button calls onRegenerate with detail seed insight id", async () => {
     const { onRegenerate } = renderSheet();
     await waitFor(() => expect(mocks.loadDraftDetail).toHaveBeenCalledOnce());
 
@@ -408,7 +408,40 @@ describe("DraftResultSheet", () => {
     await act(async () => {
       fireEvent.click(regenButton);
     });
-    expect(onRegenerate).toHaveBeenCalledOnce();
+    expect(onRegenerate).toHaveBeenCalledWith(42);
+  });
+
+  test("regenerate falls back to workflow.draftSeedInsightId when detail seed is null", async () => {
+    mocks.loadDraftDetail.mockResolvedValue({
+      task_id: "task-draft-1",
+      markdown: "# 标题\n\n内容",
+      has_original_backup: false,
+      draft_seed_insight_id: null,
+    });
+    const workflowWithSeed = completedWorkflow({ draftSeedInsightId: 99 });
+    const { onRegenerate } = renderSheet({ workflow: workflowWithSeed });
+    await waitFor(() => expect(mocks.loadDraftDetail).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /重新生成/ }));
+    });
+    expect(onRegenerate).toHaveBeenCalledWith(99);
+  });
+
+  test("regenerate passes null when both detail and workflow seed are absent", async () => {
+    mocks.loadDraftDetail.mockResolvedValue({
+      task_id: "task-draft-1",
+      markdown: "# 标题\n\n内容",
+      has_original_backup: false,
+      draft_seed_insight_id: null,
+    });
+    const { onRegenerate } = renderSheet();
+    await waitFor(() => expect(mocks.loadDraftDetail).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /重新生成/ }));
+    });
+    expect(onRegenerate).toHaveBeenCalledWith(null);
   });
 
   test("regenerate button disabled when buffer is empty", async () => {

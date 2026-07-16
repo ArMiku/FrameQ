@@ -41,6 +41,7 @@ import { AiGenerationWorkspace } from "./features/results/AiGenerationWorkspace"
 import { AiResultDetailSheet } from "./features/results/AiResultDetailSheet";
 import { DraftConfirmationSheet } from "./features/results/DraftConfirmationSheet";
 import { DraftResultSheet } from "./features/results/DraftResultSheet";
+import { handleRegenerateDraft } from "./features/results/regenerateDraft";
 import { TaskStatusBanner } from "./features/results/TaskStatusBanner";
 import { SettingsSheet } from "./features/settings/SettingsSheet";
 import { useSettingsController } from "./features/settings/useSettingsController";
@@ -314,6 +315,24 @@ function App() {
       );
     },
     [account, openAccountPanel, retryInsightGeneration, workflow.draftSeedInsightId],
+  );
+
+  // Regenerate draft — routes back to the first-generation confirmation path.
+  // If the user has edited the draft, a browser confirm warns about discarding
+  // edits. On cancel the function is a no-op (no quota consumed, sheets
+  // unchanged). On confirm (or when not dirty), closes the result sheet, writes
+  // the seed, and opens DraftConfirmationSheet.
+  const regenerateDraft = useCallback(
+    (seedInsightId: number | null) => {
+      handleRegenerateDraft(
+        workflow.draftEdited,
+        seedInsightId,
+        setDraftResultOpen,
+        setDraftConfirmOpen,
+        setDraftSeedInsightId,
+      );
+    },
+    [workflow.draftEdited],
   );
 
   const handleHistoryItemSelected = useCallback(
@@ -802,9 +821,7 @@ function App() {
         open={draftResultOpen}
         workflow={workflow}
         onSaved={applyDraftSave}
-        onRegenerate={() => {
-          // TODO(Task 5): wire regenerate
-        }}
+        onRegenerate={regenerateDraft}
         onClose={() => setDraftResultOpen(false)}
       />
 

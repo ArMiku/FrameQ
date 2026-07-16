@@ -21,7 +21,7 @@ type DraftResultSheetProps = {
   workflow: WorkflowState;
   onClose: () => void;
   onSaved: (markdown: string, artifacts: TaskArtifacts) => void;
-  onRegenerate: () => void;
+  onRegenerate: (seedInsightId: number | null) => void;
 };
 
 /**
@@ -54,6 +54,7 @@ export function DraftResultSheet({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [detailSeedId, setDetailSeedId] = useState<number | null>(null);
   const loadTaskIdRef = useRef<string | null>(null);
 
   // ---- Open: load from disk ----
@@ -81,6 +82,7 @@ export function DraftResultSheet({
         const detail = await loadDraftDetail(taskId);
         if (cancelled) return;
         setBuffer(detail.markdown);
+        setDetailSeedId(detail.draft_seed_insight_id);
       } catch (error) {
         if (cancelled) return;
         setBuffer(workflow.draft);
@@ -245,7 +247,7 @@ export function DraftResultSheet({
             </button>
             <button
               type="button"
-              onClick={onRegenerate}
+              onClick={() => onRegenerate(detailSeedId ?? workflow.draftSeedInsightId ?? null)}
               disabled={!buffer.trim()}
             >
               <RefreshCw size={16} />
