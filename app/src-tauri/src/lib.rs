@@ -13,6 +13,7 @@ mod runtime;
 mod settings;
 mod task_manifest;
 mod transcript_detail;
+mod draft_detail;
 mod updates;
 mod video_processing;
 mod window_chrome;
@@ -95,6 +96,8 @@ pub fn run() {
             history_deletion::delete_history_task,
             transcript_detail::load_transcript_detail,
             transcript_detail::save_transcript_edit,
+            draft_detail::load_draft_detail,
+            draft_detail::save_draft_edit,
             updates::get_update_preferences,
             updates::save_update_preferences,
             updates::get_update_delivery,

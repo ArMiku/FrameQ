@@ -15,7 +15,7 @@ const MAX_SOURCE_STABLE_ID_LENGTH: usize = 80;
 const MAX_SOURCE_QUERY_PAIRS: usize = 1;
 const MAX_SOURCE_QUERY_COMPONENT_LENGTH: usize = 128;
 const MAX_EFFECTIVE_PART: u64 = 100_000;
-const SAFE_ARTIFACT_KEYS: [&str; 10] = [
+const SAFE_ARTIFACT_KEYS: [&str; 11] = [
     "video",
     "audio",
     "transcript_txt",
@@ -26,6 +26,7 @@ const SAFE_ARTIFACT_KEYS: [&str; 10] = [
     "insights",
     "insights_md",
     "preference_snapshot",
+    "draft",
 ];
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -291,6 +292,10 @@ pub(crate) struct TaskManifest {
     pub(crate) error: Option<TaskManifestError>,
     #[serde(default)]
     pub(crate) text_preview: String,
+    #[serde(default)]
+    pub(crate) draft_preview: String,
+    #[serde(default)]
+    pub(crate) draft_seed_insight_id: Option<i64>,
     #[serde(default)]
     pub(crate) insights_count: usize,
     #[serde(flatten)]
