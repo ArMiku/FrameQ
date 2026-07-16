@@ -314,7 +314,7 @@ describe("DraftResultSheet", () => {
 
   // ---- 7. Dirty blocks download/export ----
 
-  test("dirty state blocks download and shows save-first notice", async () => {
+  test("dirty state allows clicking download but shows save-first notice", async () => {
     renderSheet();
     await waitFor(() => expect(mocks.loadDraftDetail).toHaveBeenCalledOnce());
 
@@ -325,17 +325,18 @@ describe("DraftResultSheet", () => {
     });
 
     const downloadButton = screen.getByRole("button", { name: "下载" }) as HTMLButtonElement;
-    // dirty should disable the download button
-    expect(downloadButton.disabled).toBe(true);
+    // dirty should NOT disable the download button
+    expect(downloadButton.disabled).toBe(false);
 
     await act(async () => {
       fireEvent.click(downloadButton);
     });
 
-    // Should not create blob (button is disabled, click does nothing)
+    // Should show save-first notice and NOT trigger download
+    expect(document.querySelector(".action-notice")?.textContent).toContain("有未保存修改，请先保存后再下载");
     expect(createObjectURLSpy).not.toHaveBeenCalled();
 
-    // After save, download is re-enabled
+    // After save, download proceeds normally
     mocks.saveDraftEdit.mockResolvedValue(defaultSaveResponse);
     const saveButton = screen.getByRole("button", { name: "保存" });
     await act(async () => {
@@ -343,15 +344,13 @@ describe("DraftResultSheet", () => {
     });
     await waitFor(() => expect(mocks.saveDraftEdit).toHaveBeenCalledOnce());
 
-    // Download button now enabled
-    expect((screen.getByRole("button", { name: "下载" }) as HTMLButtonElement).disabled).toBe(false);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "下载" }));
     });
     expect(createObjectURLSpy).toHaveBeenCalledOnce();
   });
 
-  test("dirty state blocks export and shows save-first notice", async () => {
+  test("dirty state allows clicking export but shows save-first notice", async () => {
     renderSheet();
     await waitFor(() => expect(mocks.loadDraftDetail).toHaveBeenCalledOnce());
 
@@ -361,12 +360,14 @@ describe("DraftResultSheet", () => {
     });
 
     const exportButton = screen.getByRole("button", { name: "导出" }) as HTMLButtonElement;
-    expect(exportButton.disabled).toBe(true);
+    expect(exportButton.disabled).toBe(false);
 
     await act(async () => {
       fireEvent.click(exportButton);
     });
 
+    // Should show save-first notice and NOT locate file
+    expect(document.querySelector(".action-notice")?.textContent).toContain("有未保存修改，请先保存后再定位导出文件");
     expect(mocks.revealItemInDir).not.toHaveBeenCalled();
   });
 

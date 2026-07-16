@@ -231,14 +231,14 @@ export function DraftResultSheet({
               <Copy size={16} />
               <span>复制</span>
             </button>
-            <button type="button" onClick={handleDownload} disabled={dirty || !buffer.trim()}>
+            <button type="button" onClick={handleDownload} disabled={!buffer.trim()}>
               <Download size={16} />
               <span>下载</span>
             </button>
             <button
               type="button"
               onClick={handleExport}
-              disabled={dirty || !getTaskArtifactPath(workflow, "draft")}
+              disabled={!getTaskArtifactPath(workflow, "draft")}
             >
               <Download size={16} />
               <span>导出</span>
