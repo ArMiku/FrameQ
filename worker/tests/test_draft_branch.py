@@ -390,3 +390,95 @@ def test_draft_branch_failure_keeps_existing_ai_artifacts(tmp_path: Path) -> Non
     # Other artifacts survive.
     assert result["summary"] == "# 要点总结\n- 要点一"
     assert isinstance(result["insights"], list) and len(result["insights"]) == 1
+
+
+# --------------------------------------------------------------------------- #
+# 2.7 stale draft original backup is removed after successful regeneration
+# --------------------------------------------------------------------------- #
+
+
+def _original_draft_path(tmp_path: Path) -> Path:
+    return _task_dir(tmp_path) / "ai" / "original" / "draft.md"
+
+
+def test_draft_branch_success_deletes_stale_original_backup(tmp_path: Path) -> None:
+    """After successful draft regeneration, stale ai/original/draft.md is deleted."""
+
+    _write_task_skeleton(tmp_path, with_summary=True, with_preference_snapshot=True)
+
+    # Pre-populate stale original backup.
+    original_path = _original_draft_path(tmp_path)
+    original_path.parent.mkdir(parents=True, exist_ok=True)
+    original_path.write_text("# 旧稿备份\n\n旧内容", encoding="utf-8")
+    assert original_path.exists()  # sanity check
+
+    def fake_run_draft(insight, preference_snapshot, summary, platform, env):
+        return "# 新生成稿\n\n新内容"
+
+    with patch("frameq_worker.worker_service.run_draft", side_effect=fake_run_draft):
+        result = retry_insights_once(
+            _draft_request(),
+            project_root=tmp_path,
+            environ=_env(tmp_path),
+        )
+
+    # Generation succeeded.
+    assert result["draft"] == "# 新生成稿\n\n新内容"
+    assert result["error"] is None
+
+    # ai/draft.md has new content.
+    assert _draft_path(tmp_path).read_text(encoding="utf-8") == "# 新生成稿\n\n新内容"
+
+    # Stale original backup must have been removed.
+    assert not original_path.exists(), (
+        "ai/original/draft.md should be deleted after successful regeneration"
+    )
+
+
+def test_draft_branch_success_no_original_is_ok(tmp_path: Path) -> None:
+    """When no original backup exists, deletion is a no-op (missing_ok=True)."""
+
+    _write_task_skeleton(tmp_path, with_summary=True, with_preference_snapshot=True)
+
+    original_path = _original_draft_path(tmp_path)
+    assert not original_path.exists()  # no backup to begin with
+
+    def fake_run_draft(insight, preference_snapshot, summary, platform, env):
+        return "# 新生成稿\n\n新内容"
+
+    with patch("frameq_worker.worker_service.run_draft", side_effect=fake_run_draft):
+        result = retry_insights_once(
+            _draft_request(),
+            project_root=tmp_path,
+            environ=_env(tmp_path),
+        )
+
+    # Generation succeeded without error.
+    assert result["draft"] == "# 新生成稿\n\n新内容"
+    assert result["error"] is None
+
+    # ai/original/draft.md still does not exist (no crash from missing_ok).
+    assert not original_path.exists()
+
+
+def test_draft_branch_failure_preserves_original_backup(tmp_path: Path) -> None:
+    """When draft generation fails, ai/original/draft.md must NOT be deleted."""
+
+    _write_task_skeleton(tmp_path, with_summary=True, with_preference_snapshot=True)
+
+    original_path = _original_draft_path(tmp_path)
+    original_path.parent.mkdir(parents=True, exist_ok=True)
+    original_path.write_text("# 旧稿备份\n\n旧内容", encoding="utf-8")
+
+    with patch("frameq_worker.worker_service.run_draft", return_value=""):
+        result = retry_insights_once(
+            _draft_request(),
+            project_root=tmp_path,
+            environ=_env(tmp_path),
+        )
+
+    # Draft failed.
+    assert result["error"]["code"] == "DRAFT_EMPTY_RESULT"
+
+    # Original backup must still exist (write_text didn't succeed, so unlink skipped).
+    assert original_path.exists()

@@ -387,6 +387,13 @@ def run_draft_generation_step(
     paths.draft_path.parent.mkdir(parents=True, exist_ok=True)
     paths.draft_path.write_text(draft_text, encoding="utf-8")
 
+    # 重生会产出新 AI 稿；旧的手改 original 备份已陈旧，删除以便下次首次编辑以新稿为基线重新备份。
+    # best-effort：失败不影响生成结果（最坏只是陈旧备份留到下次编辑）。
+    try:
+        paths.draft_original_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
     return ProcessResult(
         status=JobStage.COMPLETED,
         artifacts={"draft": "ai/draft.md"},

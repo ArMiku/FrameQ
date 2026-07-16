@@ -60,6 +60,14 @@ class TaskPaths:
         return self.task_dir / "ai"
 
     @property
+    def draft_original_dir(self) -> Path:
+        return self.ai_dir / "original"
+
+    @property
+    def draft_original_path(self) -> Path:
+        return self.draft_original_dir / "draft.md"
+
+    @property
     def manifest_path(self) -> Path:
         return self.task_dir / TASK_MANIFEST_FILE_NAME
 
